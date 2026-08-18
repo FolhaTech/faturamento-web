@@ -3,8 +3,8 @@ import { resetDbForTests } from "@/lib/db";
 import { getColaborador, upsertColaborador } from "@/lib/repo/colaboradores";
 import { PUT } from "./route";
 
-beforeEach(() => {
-  resetDbForTests();
+beforeEach(async () => {
+  await resetDbForTests();
 });
 
 function putRequest(dados: Record<string, unknown>): Request {
@@ -17,7 +17,7 @@ function putRequest(dados: Record<string, unknown>): Request {
 
 describe("PUT /api/colaboradores/[matricula]", () => {
   it("mescla com o cadastro existente em vez de apagar campos ausentes do corpo da requisição", async () => {
-    upsertColaborador({
+    await upsertColaborador({
       matricula: 1,
       dados: { cod_epr: 1, nome: "FULANO DA SILVA", cpf: "111.111.111-11", endereco: "Rua A", salario: 1500 },
     });
@@ -28,7 +28,7 @@ describe("PUT /api/colaboradores/[matricula]", () => {
     });
     expect(res.status).toBe(200);
 
-    const colaborador = getColaborador(1)!;
+    const colaborador = (await getColaborador(1))!;
     expect(colaborador.dados.telefone).toBe("11999998888");
     expect(colaborador.dados.cpf).toBe("111.111.111-11");
     expect(colaborador.dados.endereco).toBe("Rua A");

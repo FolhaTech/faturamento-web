@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   const page = Number(url.searchParams.get("page") ?? "1");
   const pageSize = Number(url.searchParams.get("pageSize") ?? "25");
 
-  const result = listColaboradores({ busca, situacao, page, pageSize });
+  const result = await listColaboradores({ busca, situacao, page, pageSize });
   return NextResponse.json(result);
 }
 
@@ -27,6 +27,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Informe o nome." }, { status: 400 });
   }
 
-  const colaborador = upsertColaborador({ matricula, dados });
+  const colaborador = await upsertColaborador({ matricula, dados });
   return NextResponse.json({ colaborador }, { status: 201 });
 }

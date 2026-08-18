@@ -4,7 +4,7 @@ import { listTomadores, upsertTomador } from "@/lib/repo/tomadores";
 export const runtime = "nodejs";
 
 export async function GET() {
-  return NextResponse.json({ tomadores: listTomadores() });
+  return NextResponse.json({ tomadores: await listTomadores() });
 }
 
 export async function POST(request: Request) {
@@ -16,6 +16,6 @@ export async function POST(request: Request) {
   if (fpas !== 515 && fpas !== 655) return NextResponse.json({ error: "FPAS deve ser 515 ou 655." }, { status: 400 });
   if (!Number.isFinite(taxaAdm) || taxaAdm < 0) return NextResponse.json({ error: "Taxa administrativa inválida." }, { status: 400 });
 
-  const tomador = upsertTomador({ codigo, nome: nome.trim(), fpas, taxaAdm });
+  const tomador = await upsertTomador({ codigo, nome: nome.trim(), fpas, taxaAdm });
   return NextResponse.json({ tomador }, { status: 201 });
 }

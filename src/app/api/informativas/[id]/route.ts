@@ -11,7 +11,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   if (typeof evento !== "string" || !evento.trim()) return NextResponse.json({ error: "Informe o evento." }, { status: 400 });
 
   try {
-    const informativa = updateInformativa(id, {
+    const informativa = await updateInformativa(id, {
       codigo: Number.isFinite(codigo) && codigo > 0 ? codigo : null,
       evento: evento.trim(),
       valor: Number(valor) || 0,
@@ -28,6 +28,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  deleteInformativa(id);
+  await deleteInformativa(id);
   return NextResponse.json({ ok: true });
 }

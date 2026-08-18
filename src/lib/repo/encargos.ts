@@ -1,4 +1,4 @@
-import { getDb } from "../db";
+import { ensureSchema, getDb } from "../db";
 import type { Encargo, TipoEvento } from "../types";
 
 interface Row {
@@ -25,14 +25,16 @@ function toEncargo(row: Row): Encargo {
   };
 }
 
-export function listEncargos(): Encargo[] {
-  const rows = getDb().prepare("SELECT * FROM encargos ORDER BY evento").all() as unknown as Row[];
+export async function listEncargos(): Promise<Encargo[]> {
+  await ensureSchema();
+  const rows = await getDb()<Row[]>`SELECT * FROM encargos ORDER BY evento`;
   return rows.map(toEncargo);
 }
 
-export function getEncargo(codigo: number): Encargo | null {
-  const row = getDb().prepare("SELECT * FROM encargos WHERE codigo = ?").get(codigo) as unknown as Row | undefined;
-  return row ? toEncargo(row) : null;
+export async function getEncargo(codigo: number): Promise<Encargo | null> {
+  await ensureSchema();
+  const rows = await getDb()<Row[]>`SELECT * FROM encargos WHERE codigo = ${codigo}`;
+  return rows[0] ? toEncargo(rows[0]) : null;
 }
 
 export interface EncargoInput {
@@ -46,24 +48,25 @@ export interface EncargoInput {
   prov13: number;
 }
 
-export function upsertEncargo(input: EncargoInput): Encargo {
-  getDb()
-    .prepare(
-      `INSERT INTO encargos (codigo, evento, tipo, inss_655, inss_515, fgts, prov_ferias, prov_13)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(codigo) DO UPDATE SET
-         evento = excluded.evento, tipo = excluded.tipo, inss_655 = excluded.inss_655,
-         inss_515 = excluded.inss_515, fgts = excluded.fgts, prov_ferias = excluded.prov_ferias, prov_13 = excluded.prov_13`,
-    )
-    .run(input.codigo, input.evento, input.tipo, input.inss655, input.inss515, input.fgts, input.provFerias, input.prov13);
-  return getEncargo(input.codigo)!;
+export async function upsertEncargo(input: EncargoInput): Promise<Encargo> {
+  await ensureSchema();
+  await getDb()`
+    INSERT INTO encargos (codigo, evento, tipo, inss_655, inss_515, fgts, prov_ferias, prov_13)
+    VALUES (${input.codigo}, ${input.evento}, ${input.tipo}, ${input.inss655}, ${input.inss515}, ${input.fgts}, ${input.provFerias}, ${input.prov13})
+    ON CONFLICT (codigo) DO UPDATE SET
+      evento = excluded.evento, tipo = excluded.tipo, inss_655 = excluded.inss_655,
+      inss_515 = excluded.inss_515, fgts = excluded.fgts, prov_ferias = excluded.prov_ferias, prov_13 = excluded.prov_13
+  `;
+  return (await getEncargo(input.codigo))!;
 }
 
-export function deleteEncargo(codigo: number): void {
-  getDb().prepare("DELETE FROM encargos WHERE codigo = ?").run(codigo);
+export async function deleteEncargo(codigo: number): Promise<void> {
+  await ensureSchema();
+  await getDb()`DELETE FROM encargos WHERE codigo = ${codigo}`;
 }
 
-export function countEncargos(): number {
-  const row = getDb().prepare("SELECT COUNT(*) as n FROM encargos").get() as unknown as { n: number };
-  return row.n;
+export async function countEncargos(): Promise<number> {
+  await ensureSchema();
+  const [{ n }] = await getDb()<{ n: number }[]>`SELECT COUNT(*)::int as n FROM encargos`;
+  return n;
 }

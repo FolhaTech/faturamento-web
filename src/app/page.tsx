@@ -9,32 +9,38 @@ import { ImportForm } from "./ImportForm";
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const competencias = listCompetencias();
-  const totalMovimentos = countMovimentos();
+  const [competencias, totalMovimentos, qtdColaboradores, qtdEncargos, qtdInformativas, qtdTomadores] = await Promise.all([
+    listCompetencias(),
+    countMovimentos(),
+    countColaboradores(),
+    countEncargos(),
+    countInformativas(),
+    countTomadores(),
+  ]);
 
   const cards = [
     {
       href: "/colaboradores",
       title: "Colaboradores",
-      count: countColaboradores(),
+      count: qtdColaboradores,
       desc: "Cadastro completo — dados pessoais, cargo, documentos, endereço, dependentes.",
     },
     {
       href: "/encargos",
       title: "Encargos",
-      count: countEncargos(),
+      count: qtdEncargos,
       desc: "Alíquotas de INSS, FGTS e provisões por código de evento de folha.",
     },
     {
       href: "/informativas",
       title: "Informativas",
-      count: countInformativas(),
+      count: qtdInformativas,
       desc: "Benefícios de valor fixo mensal (vale-refeição, seguro de vida, crachá etc.).",
     },
     {
       href: "/tomadores",
       title: "Tomadores",
-      count: countTomadores(),
+      count: qtdTomadores,
       desc: "Clientes: regime FPAS e taxa administrativa.",
     },
   ];

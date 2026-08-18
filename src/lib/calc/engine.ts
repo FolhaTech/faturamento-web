@@ -44,10 +44,14 @@ export interface EngineContext {
   tomadoresPorCodigo: Map<number, Tomador>;
 }
 
-export function buildContext(movimentos: Movimento[]): EngineContext {
-  const encargosPorCodigo = new Map(listEncargos().map((e) => [e.codigo, e]));
-  const tomadoresPorCodigo = new Map(listTomadores().map((t) => [t.codigo, t]));
-  const colaboradoresPorMatricula = getColaboradoresPorMatriculas(movimentos.map((m) => m.matricula));
+export async function buildContext(movimentos: Movimento[]): Promise<EngineContext> {
+  const [encargos, tomadores, colaboradoresPorMatricula] = await Promise.all([
+    listEncargos(),
+    listTomadores(),
+    getColaboradoresPorMatriculas(movimentos.map((m) => m.matricula)),
+  ]);
+  const encargosPorCodigo = new Map(encargos.map((e) => [e.codigo, e]));
+  const tomadoresPorCodigo = new Map(tomadores.map((t) => [t.codigo, t]));
   return { encargosPorCodigo, colaboradoresPorMatricula, tomadoresPorCodigo };
 }
 
@@ -203,8 +207,8 @@ export interface RunResult {
   warnings: string[];
 }
 
-export function runEngine(movimentos: Movimento[]): RunResult {
-  const ctx = buildContext(movimentos);
+export async function runEngine(movimentos: Movimento[]): Promise<RunResult> {
+  const ctx = await buildContext(movimentos);
   const lines: CalculatedLine[] = [];
   const warnings: string[] = [];
 
@@ -214,7 +218,7 @@ export function runEngine(movimentos: Movimento[]): RunResult {
     if (warning) warnings.push(warning);
   }
 
-  lines.push(...generateComplementaryCharges(movimentos, ctx, warnings));
+  lines.push(...(await generateComplementaryCharges(movimentos, ctx, warnings)));
 
   return { lines, warnings };
 }
@@ -232,8 +236,8 @@ export function runEngine(movimentos: Movimento[]): RunResult {
  * sistema": um upload cobrindo só parte do quadro (ex. um colaborador de
  * teste) não deve gerar cobrança para o resto da empresa.
  */
-function generateComplementaryCharges(movimentos: Movimento[], ctx: EngineContext, warnings: string[]): CalculatedLine[] {
-  const informativas = listInformativas();
+async function generateComplementaryCharges(movimentos: Movimento[], ctx: EngineContext, warnings: string[]): Promise<CalculatedLine[]> {
+  const informativas = await listInformativas();
   const fixas = informativas.filter((i) => normalizaTexto(i.recorrencia ?? "") === normalizaTexto("Valor fixo mensal"));
   if (fixas.length === 0) return [];
 

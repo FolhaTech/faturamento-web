@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 export default async function EditarColaboradorPage({ params }: { params: Promise<{ matricula: string }> }) {
   const { matricula } = await params;
-  const colaborador = getColaborador(Number(matricula));
+  const colaborador = await getColaborador(Number(matricula));
   if (!colaborador) notFound();
 
   return (

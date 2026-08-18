@@ -14,7 +14,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ codi
   if (typeof evento !== "string" || !evento.trim()) return NextResponse.json({ error: "Informe o evento." }, { status: 400 });
   if (!TIPOS.includes(tipo)) return NextResponse.json({ error: `Tipo deve ser um de: ${TIPOS.join(", ")}.` }, { status: 400 });
 
-  const encargo = upsertEncargo({
+  const encargo = await upsertEncargo({
     codigo: Number(codigo),
     evento: evento.trim(),
     tipo,
@@ -29,6 +29,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ codi
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ codigo: string }> }) {
   const { codigo } = await params;
-  deleteEncargo(Number(codigo));
+  await deleteEncargo(Number(codigo));
   return NextResponse.json({ ok: true });
 }

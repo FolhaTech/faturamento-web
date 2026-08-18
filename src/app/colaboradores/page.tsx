@@ -18,8 +18,10 @@ export default async function ColaboradoresPage({ searchParams }: { searchParams
   const page = Number(sp.page ?? "1") || 1;
   const pageSize = 25;
 
-  const { items, total } = listColaboradores({ busca, situacao, page, pageSize });
-  const situacoes = listSituacoes();
+  const [{ items, total }, situacoes] = await Promise.all([
+    listColaboradores({ busca, situacao, page, pageSize }),
+    listSituacoes(),
+  ]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 

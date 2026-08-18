@@ -5,7 +5,8 @@ import { parseMovimentosFile } from "@/lib/xlsx/parseMovimentos";
 export const runtime = "nodejs";
 
 export async function GET() {
-  return NextResponse.json({ competencias: listCompetencias(), total: countMovimentos() });
+  const [competencias, total] = await Promise.all([listCompetencias(), countMovimentos()]);
+  return NextResponse.json({ competencias, total });
 }
 
 export async function POST(request: Request) {
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Nenhum lançamento reconhecido no arquivo." }, { status: 422 });
   }
 
-  replaceMovimentosPorCompetencia(linhas);
+  await replaceMovimentosPorCompetencia(linhas);
   const competencias = [...new Set(linhas.map((l) => l.competencia))];
 
   return NextResponse.json({ importados: linhas.length, competencias });

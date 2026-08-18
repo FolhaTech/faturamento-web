@@ -9,14 +9,14 @@ export const dynamic = "force-dynamic";
 
 export default async function FaturamentoPage({ searchParams }: { searchParams: Promise<{ competencia?: string }> }) {
   const sp = await searchParams;
-  const competencias = listCompetencias();
+  const competencias = await listCompetencias();
   const competenciaAtual = sp.competencia ?? competencias[0] ?? null;
 
   let resumos: ReturnType<typeof aggregateByTomador> = [];
   let warnings: string[] = [];
   if (competenciaAtual) {
-    const movimentos = listMovimentosByCompetencia(competenciaAtual);
-    const engineResult = runEngine(movimentos);
+    const movimentos = await listMovimentosByCompetencia(competenciaAtual);
+    const engineResult = await runEngine(movimentos);
     warnings = engineResult.warnings;
     resumos = aggregateByTomador(engineResult.lines, competenciaAtual);
   }

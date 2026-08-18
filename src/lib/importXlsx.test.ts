@@ -7,8 +7,8 @@ import { getEncargo } from "./repo/encargos";
 import { listInformativas } from "./repo/informativas";
 import { getTomador } from "./repo/tomadores";
 
-beforeEach(() => {
-  resetDbForTests();
+beforeEach(async () => {
+  await resetDbForTests();
 });
 
 function bufferFromSheets(sheets: Record<string, unknown[][]>): Buffer {
@@ -43,14 +43,14 @@ describe("importReferenceBase", () => {
     const result = await importReferenceBase(buffer);
     expect(result).toMatchObject({ tomadores: 1, encargos: 1, informativas: 1, colaboradores: 1, avisos: [] });
 
-    expect(getTomador(36)).toMatchObject({ nome: "GRUPO CHAMA DE DISTRIBUICAO LTDA", fpas: 655, taxaAdm: 0.12 });
-    expect(getEncargo(8781)).toMatchObject({ evento: "DIAS NORMAIS", inss515: 0.288 });
+    expect(await getTomador(36)).toMatchObject({ nome: "GRUPO CHAMA DE DISTRIBUICAO LTDA", fpas: 655, taxaAdm: 0.12 });
+    expect(await getEncargo(8781)).toMatchObject({ evento: "DIAS NORMAIS", inss515: 0.288 });
 
-    const informativas = listInformativas();
+    const informativas = await listInformativas();
     expect(informativas).toHaveLength(1);
     expect(informativas[0].valor).toBe(5.5);
 
-    const colaborador = getColaborador(90103478)!;
+    const colaborador = (await getColaborador(90103478))!;
     expect(colaborador.nome).toBe("RICARDO HAELITO DA SILVA ARAUJO");
     expect(colaborador.codServico).toBe(36);
     // "Cód Epr" é campo de texto no formulário (ver colaboradorFields.ts) — a matrícula
@@ -73,8 +73,8 @@ describe("importReferenceBase", () => {
     await importReferenceBase(buffer);
     await importReferenceBase(buffer);
 
-    expect(getTomador(36)).not.toBeNull();
-    expect(getColaborador(1)).not.toBeNull();
+    expect(await getTomador(36)).not.toBeNull();
+    expect(await getColaborador(1)).not.toBeNull();
   });
 
   it("avisa quando uma aba esperada não existe no arquivo", async () => {

@@ -17,12 +17,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Informe a competência (?competencia=MM/AAAA)." }, { status: 400 });
   }
 
-  const movimentos = listMovimentosByCompetencia(competencia);
+  const movimentos = await listMovimentosByCompetencia(competencia);
   if (movimentos.length === 0) {
     return NextResponse.json({ error: `Nenhum lançamento encontrado para a competência ${competencia}.` }, { status: 404 });
   }
 
-  const { lines, warnings } = runEngine(movimentos);
+  const { lines, warnings } = await runEngine(movimentos);
   const resumos = aggregateByTomador(lines, competencia);
   const resumo = resumos.find((r) => r.tomadorCodigo === tomadorCodigo);
 

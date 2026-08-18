@@ -10,11 +10,11 @@ import { buildContext, calculateLine, runEngine } from "./engine";
 const TOMADOR_TERCEIRO = { codigo: 1, nome: "GENTER SERVICOS EM RECURSOS HUMANOS LTDA", fpas: 515 as const, taxaAdm: 0.1 };
 const TOMADOR_TEMPORARIO = { codigo: 36, nome: "GRUPO CHAMA DE DISTRIBUICAO LTDA", fpas: 655 as const, taxaAdm: 0.12 };
 
-function seedBase() {
-  resetDbForTests();
-  upsertTomador(TOMADOR_TERCEIRO);
-  upsertTomador(TOMADOR_TEMPORARIO);
-  upsertEncargo({
+async function seedBase() {
+  await resetDbForTests();
+  await upsertTomador(TOMADOR_TERCEIRO);
+  await upsertTomador(TOMADOR_TEMPORARIO);
+  await upsertEncargo({
     codigo: 8781,
     evento: "DIAS NORMAIS",
     tipo: "P",
@@ -24,19 +24,19 @@ function seedBase() {
     provFerias: 0.11110833333333332,
     prov13: 0.08333333333333333,
   });
-  upsertEncargo({ codigo: 48, evento: "VALE TRANSPORTE", tipo: "D", inss655: 0, inss515: 0, fgts: 0, provFerias: 0, prov13: 0 });
-  upsertColaborador({
+  await upsertEncargo({ codigo: 48, evento: "VALE TRANSPORTE", tipo: "D", inss655: 0, inss515: 0, fgts: 0, provFerias: 0, prov13: 0 });
+  await upsertColaborador({
     matricula: 90103392,
     dados: { cod_epr: 90103392, nome: "ADALBERTO ALVARES JUNIOR", situacao: "Trabalhando", cod_servico: 1, salario: 2000 },
   });
 }
 
-beforeEach(() => {
-  seedBase();
+beforeEach(async () => {
+  await seedBase();
 });
 
 describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
-  it("aplica INSS 515 (Terceiro), FGTS e provisões corretas sobre um provento", () => {
+  it("aplica INSS 515 (Terceiro), FGTS e provisões corretas sobre um provento", async () => {
     const mov: Movimento = {
       id: "1",
       codigo: 8781,
@@ -49,7 +49,7 @@ describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
       tipo: "P",
       forma: "Dias",
     };
-    const ctx = buildContext([mov]);
+    const ctx = await buildContext([mov]);
 
     const { line, warning } = calculateLine(mov, ctx);
     expect(warning).toBeNull();
@@ -71,8 +71,8 @@ describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
     expect(l.trilha).toBe("encargos");
   });
 
-  it("usa INSS 655 e encargo sobre provisão baseado só na Prov. 13º quando o tomador é FPAS 655 (Temporario)", () => {
-    upsertColaborador({
+  it("usa INSS 655 e encargo sobre provisão baseado só na Prov. 13º quando o tomador é FPAS 655 (Temporario)", async () => {
+    await upsertColaborador({
       matricula: 1,
       dados: { cod_epr: 1, nome: "FULANO", situacao: "Trabalhando", cod_servico: TOMADOR_TEMPORARIO.codigo },
     });
@@ -88,7 +88,7 @@ describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
       tipo: "P",
       forma: "Dias",
     };
-    const ctx = buildContext([mov]);
+    const ctx = await buildContext([mov]);
     const { line } = calculateLine(mov, ctx);
     const l = line!;
     expect(l.inss).toBeCloseTo(1000 * 0.255, 6);
@@ -97,11 +97,10 @@ describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
     expect(l.encFgts).toBeCloseTo(l.prov13 * 0.08, 6);
     expect(l.taxaAdmValor).toBeCloseTo(l.base * 0.12, 6);
   });
-
 });
 
 describe("calculateLine — desconto (Tipo D) não entra na soma do faturamento", () => {
-  it("mantém o DRE negativo para referência, mas zera base/taxa/fatura/NF", () => {
+  it("mantém o DRE negativo para referência, mas zera base/taxa/fatura/NF", async () => {
     const mov: Movimento = {
       id: "1",
       codigo: 48,
@@ -114,7 +113,7 @@ describe("calculateLine — desconto (Tipo D) não entra na soma do faturamento"
       tipo: "D",
       forma: "Valor",
     };
-    const ctx = buildContext([mov]);
+    const ctx = await buildContext([mov]);
     const { line, warning } = calculateLine(mov, ctx);
     expect(warning).toBeNull();
     const l = line!;
@@ -129,7 +128,7 @@ describe("calculateLine — desconto (Tipo D) não entra na soma do faturamento"
 });
 
 describe("calculateLine — trilha de benefício em espécie (Tipo I / R)", () => {
-  it("cobra vale-refeição fornecido pelo valor de face + taxa adm, sem encargos", () => {
+  it("cobra vale-refeição fornecido pelo valor de face + taxa adm, sem encargos", async () => {
     const mov: Movimento = {
       id: "1",
       codigo: 322,
@@ -142,7 +141,7 @@ describe("calculateLine — trilha de benefício em espécie (Tipo I / R)", () =
       tipo: "I",
       forma: "Valor",
     };
-    const ctx = buildContext([mov]);
+    const ctx = await buildContext([mov]);
     const { line, warning } = calculateLine(mov, ctx);
     expect(warning).toBeNull();
     const l = line!;
@@ -156,7 +155,7 @@ describe("calculateLine — trilha de benefício em espécie (Tipo I / R)", () =
 });
 
 describe("calculateLine — linhas de restatement (Tipo FGTS / INSS)", () => {
-  it("exclui do faturamento uma linha informativa de FGTS do mês (já refletida no provento)", () => {
+  it("exclui do faturamento uma linha informativa de FGTS do mês (já refletida no provento)", async () => {
     const mov: Movimento = {
       id: "1",
       codigo: 996,
@@ -169,7 +168,7 @@ describe("calculateLine — linhas de restatement (Tipo FGTS / INSS)", () => {
       tipo: "FGTS",
       forma: "Valor",
     };
-    const ctx = buildContext([mov]);
+    const ctx = await buildContext([mov]);
     const { line } = calculateLine(mov, ctx);
     const l = line!;
     expect(l.trilha).toBe("excluido");
@@ -177,11 +176,11 @@ describe("calculateLine — linhas de restatement (Tipo FGTS / INSS)", () => {
     expect(l.nf).toBe(0);
   });
 
-  it("usa o tipo cadastrado em Encargos mesmo quando o arquivo do mês marca a linha com outro Tipo (evita duplicar o FGTS já embutido no provento)", () => {
+  it("usa o tipo cadastrado em Encargos mesmo quando o arquivo do mês marca a linha com outro Tipo (evita duplicar o FGTS já embutido no provento)", async () => {
     // Caso real: Movimentos072026.xls traz "F.G.T.S DO MES" (cód. 996) com
     // Tipo="I" na coluna G, mas o código já está cadastrado em Encargos como
     // tipo="FGTS" — tem que prevalecer o cadastro, não a coluna do arquivo.
-    upsertEncargo({ codigo: 996, evento: "F.G.T.S  DO MES", tipo: "FGTS", inss655: 0, inss515: 0, fgts: 0, provFerias: 0, prov13: 0 });
+    await upsertEncargo({ codigo: 996, evento: "F.G.T.S  DO MES", tipo: "FGTS", inss655: 0, inss515: 0, fgts: 0, provFerias: 0, prov13: 0 });
     const mov: Movimento = {
       id: "1",
       codigo: 996,
@@ -194,7 +193,7 @@ describe("calculateLine — linhas de restatement (Tipo FGTS / INSS)", () => {
       tipo: "I", // como vem no arquivo real, apesar de já ser FGTS no cadastro
       forma: "Valor",
     };
-    const ctx = buildContext([mov]);
+    const ctx = await buildContext([mov]);
     const { line } = calculateLine(mov, ctx);
     const l = line!;
     expect(l.trilha).toBe("excluido");
@@ -206,7 +205,7 @@ describe("calculateLine — linhas de restatement (Tipo FGTS / INSS)", () => {
 });
 
 describe("calculateLine — dados ausentes geram avisos em vez de derrubar o cálculo", () => {
-  it("matrícula sem cadastro em Colaboradores gera aviso e a linha é ignorada", () => {
+  it("matrícula sem cadastro em Colaboradores gera aviso e a linha é ignorada", async () => {
     const mov: Movimento = {
       id: "1",
       codigo: 8781,
@@ -219,13 +218,13 @@ describe("calculateLine — dados ausentes geram avisos em vez de derrubar o cá
       tipo: "P",
       forma: "Dias",
     };
-    const ctx = buildContext([mov]);
+    const ctx = await buildContext([mov]);
     const { line, warning } = calculateLine(mov, ctx);
     expect(line).toBeNull();
     expect(warning).toMatch(/999999/);
   });
 
-  it("evento sem alíquota em Encargos ainda gera BASE = valor (sem encargo), com aviso", () => {
+  it("evento sem alíquota em Encargos ainda gera BASE = valor (sem encargo), com aviso", async () => {
     const mov: Movimento = {
       id: "1",
       codigo: 424242,
@@ -238,7 +237,7 @@ describe("calculateLine — dados ausentes geram avisos em vez de derrubar o cá
       tipo: "P",
       forma: "Valor",
     };
-    const ctx = buildContext([mov]);
+    const ctx = await buildContext([mov]);
     const { line, warning } = calculateLine(mov, ctx);
     expect(warning).toMatch(/424242/);
     expect(line!.base).toBe(50);
@@ -261,11 +260,11 @@ describe("runEngine — benefícios de Informativas com recorrência fixa", () =
     },
   ];
 
-  it("gera cobrança de Ponto Eletrônico para colaboradores ativos quando o evento não existe em Movimentos", () => {
-    createInformativa({ codigo: null, evento: "PONTO ELETRÔNICO*", valor: 7, recorrencia: "VALOR FIXO MENSAL", inicio: null, obs: null });
-    createInformativa({ codigo: null, evento: "COMPUTADOR*", valor: 0, recorrencia: "VALOR FIXO MENSAL", inicio: null, obs: null });
+  it("gera cobrança de Ponto Eletrônico para colaboradores ativos quando o evento não existe em Movimentos", async () => {
+    await createInformativa({ codigo: null, evento: "PONTO ELETRÔNICO*", valor: 7, recorrencia: "VALOR FIXO MENSAL", inicio: null, obs: null });
+    await createInformativa({ codigo: null, evento: "COMPUTADOR*", valor: 0, recorrencia: "VALOR FIXO MENSAL", inicio: null, obs: null });
 
-    const { lines, warnings } = runEngine(movimentosBase);
+    const { lines, warnings } = await runEngine(movimentosBase);
     const ponto = lines.find((l) => l.evento === "PONTO ELETRÔNICO*");
     expect(ponto).toBeDefined();
     expect(ponto!.base).toBe(7);
@@ -273,10 +272,10 @@ describe("runEngine — benefícios de Informativas com recorrência fixa", () =
     expect(warnings.some((w) => w.includes("COMPUTADOR*"))).toBe(true);
   });
 
-  it("não duplica quando o colaborador já tem lançamento real para a mesma categoria no mês", () => {
-    createInformativa({ codigo: 327, evento: "SEGURO DE VIDA FORNECIDO*", valor: 999, recorrencia: "VALOR FIXO MENSAL", inicio: null, obs: null });
+  it("não duplica quando o colaborador já tem lançamento real para a mesma categoria no mês", async () => {
+    await createInformativa({ codigo: 327, evento: "SEGURO DE VIDA FORNECIDO*", valor: 999, recorrencia: "VALOR FIXO MENSAL", inicio: null, obs: null });
 
-    const { lines } = runEngine([
+    const { lines } = await runEngine([
       ...movimentosBase,
       {
         id: "2",

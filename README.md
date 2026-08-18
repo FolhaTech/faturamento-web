@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Faturamento — Terceirização
 
-## Getting Started
+Sistema web para cadastro e cálculo de faturamento de mão de obra terceirizada: importa a planilha mensal de movimentação, calcula INSS, FGTS, provisões de férias/13º e taxa administrativa por tomador, e exporta o resultado em PDF.
 
-First, run the development server:
+## O que tem
+
+- **Colaboradores** — cadastro completo (124 campos: identificação, cargo, documentos, endereço, dados bancários, dependentes), com busca e paginação.
+- **Encargos** — alíquotas de INSS (515/655), FGTS e provisões por código de evento de folha, editável.
+- **Informativas** — benefícios de valor fixo mensal (vale-refeição, seguro de vida, crachá etc.).
+- **Tomadores** — clientes: regime (FPAS) e taxa administrativa.
+- **Faturamento** — sobe o arquivo de Movimentos do mês (`.xlsx`/`.xls`, com ou sem cabeçalho) e calcula o faturamento por tomador, com detalhamento por evento e por colaborador. Exporta em PDF.
+- **Importação** — lê uma planilha-base (abas Colaboradores/Encargos/Informativas/Tomadores) e popula o cadastro de uma vez.
+
+## Motor de cálculo (resumo)
+
+Por lançamento, a trilha de cobrança é decidida pelo tipo cadastrado em Encargos para aquele código de evento:
+
+- **Provento (P)**: `DRE → INSS → FGTS → Prov. Férias → Prov. 13º → Encargo (INSS+FGTS) sobre a provisão → BASE`, mais taxa administrativa do tomador e gross-up de nota fiscal (÷ 0,8675).
+- **Benefício em espécie / reembolso (I/R)**: cobrado pelo valor de face + taxa administrativa + gross-up, sem INSS/FGTS/provisão.
+- **Desconto (D)** e **restatement de FGTS/INSS**: excluídos da soma — são valores descontados do colaborador ou já refletidos na base do provento, não custo adicional para o cliente.
+
+Detalhes completos em [`src/lib/calc/engine.ts`](src/lib/calc/engine.ts).
+
+## Rodando localmente
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Abre em [http://localhost:3000](http://localhost:3000). O banco (SQLite, via `node:sqlite` — nativo do Node ≥ 22) é criado automaticamente em `data/app.db` na primeira execução.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Testes
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npx vitest run
+```
 
-## Learn More
+## Stack
 
-To learn more about Next.js, take a look at the following resources:
+Next.js (App Router) + TypeScript + Tailwind CSS · SQLite (`node:sqlite`) · SheetJS (leitura de `.xlsx`/`.xls`) · `@react-pdf/renderer` (exportação em PDF) · Vitest.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Dados sensíveis
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`data/` (banco com CPF, salário e demais dados pessoais) e qualquer planilha (`.xlsx`/`.xls`) ou PDF gerado ficam fora do controle de versão — ver `.gitignore`.

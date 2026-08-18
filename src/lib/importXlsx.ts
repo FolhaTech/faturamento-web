@@ -58,7 +58,7 @@ export async function importReferenceBase(buffer: Buffer): Promise<ImportResult>
       const nome = asString(get(h.get("TOMADOR")!));
       if (!codigo || !nome) continue;
       const fpasNum = asNumber(get(h.get("FPAS")!));
-      upsertTomador({ codigo, nome, fpas: fpasNum === 515 ? 515 : 655, taxaAdm: asNumber(get(h.get("TAXA ADM")!)) });
+      await upsertTomador({ codigo, nome, fpas: fpasNum === 515 ? 515 : 655, taxaAdm: asNumber(get(h.get("TAXA ADM")!)) });
       nTomadores++;
     }
   } else {
@@ -76,7 +76,7 @@ export async function importReferenceBase(buffer: Buffer): Promise<ImportResult>
       seen.add(codigo);
       const tipoRaw = (asString(get(h.get("tipo")!)) ?? "P").toUpperCase();
       const tipo = (["P", "D", "I", "R", "FGTS", "INSS"].includes(tipoRaw) ? tipoRaw : "P") as TipoEvento;
-      upsertEncargo({
+      await upsertEncargo({
         codigo,
         evento: asString(get(h.get("EVENTO")!)) ?? "",
         tipo,
@@ -108,9 +108,9 @@ export async function importReferenceBase(buffer: Buffer): Promise<ImportResult>
         inicio: asDateString(get(h.get("INÍCIO")!)),
         obs: asString(get(h.get("OBS")!)),
       };
-      const existing = findInformativaByEvento(evento);
-      if (existing) updateInformativa(existing.id, input);
-      else createInformativa(input);
+      const existing = await findInformativaByEvento(evento);
+      if (existing) await updateInformativa(existing.id, input);
+      else await createInformativa(input);
       nInformativas++;
     }
   } else {
@@ -133,7 +133,7 @@ export async function importReferenceBase(buffer: Buffer): Promise<ImportResult>
       });
       const matricula = asNumber(dados.cod_epr);
       if (!matricula) continue;
-      upsertColaborador({ matricula, dados });
+      await upsertColaborador({ matricula, dados });
       nColaboradores++;
     }
   } else {

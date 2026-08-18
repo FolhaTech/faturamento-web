@@ -1,4 +1,4 @@
-import { getDb } from "../db";
+import { ensureSchema, getDb } from "../db";
 import type { Colaborador, DadosColaborador } from "../types";
 
 interface Row {
@@ -41,54 +41,46 @@ export interface ListColaboradoresResult {
   pageSize: number;
 }
 
-export function listColaboradores(opts: ListColaboradoresOptions = {}): ListColaboradoresResult {
+export async function listColaboradores(opts: ListColaboradoresOptions = {}): Promise<ListColaboradoresResult> {
+  await ensureSchema();
+  const sql = getDb();
   const page = Math.max(1, opts.page ?? 1);
   const pageSize = Math.min(200, Math.max(1, opts.pageSize ?? 25));
+  const busca = opts.busca?.trim() || null;
+  const situacao = opts.situacao?.trim() || null;
 
-  const where: string[] = [];
-  const params: (string | number)[] = [];
+  const [{ n: total }] = await sql<{ n: number }[]>`
+    SELECT COUNT(*)::int as n FROM colaboradores
+    WHERE (${busca}::text IS NULL OR nome ILIKE '%' || ${busca} || '%' OR CAST(matricula AS TEXT) LIKE '%' || ${busca} || '%')
+      AND (${situacao}::text IS NULL OR situacao = ${situacao})
+  `;
 
-  if (opts.busca) {
-    where.push("(nome LIKE ? OR CAST(matricula AS TEXT) LIKE ?)");
-    params.push(`%${opts.busca}%`, `%${opts.busca}%`);
-  }
-  if (opts.situacao) {
-    where.push("situacao = ?");
-    params.push(opts.situacao);
-  }
-
-  const whereSql = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
-
-  const total = (
-    getDb()
-      .prepare(`SELECT COUNT(*) as n FROM colaboradores ${whereSql}`)
-      .get(...params) as unknown as { n: number }
-  ).n;
-
-  const rows = getDb()
-    .prepare(`SELECT * FROM colaboradores ${whereSql} ORDER BY nome LIMIT ? OFFSET ?`)
-    .all(...params, pageSize, (page - 1) * pageSize) as unknown as Row[];
+  const rows = await sql<Row[]>`
+    SELECT * FROM colaboradores
+    WHERE (${busca}::text IS NULL OR nome ILIKE '%' || ${busca} || '%' OR CAST(matricula AS TEXT) LIKE '%' || ${busca} || '%')
+      AND (${situacao}::text IS NULL OR situacao = ${situacao})
+    ORDER BY nome
+    LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
+  `;
 
   return { items: rows.map(toColaborador), total, page, pageSize };
 }
 
-export function getColaborador(matricula: number): Colaborador | null {
-  const row = getDb().prepare("SELECT * FROM colaboradores WHERE matricula = ?").get(matricula) as unknown as
-    | Row
-    | undefined;
-  return row ? toColaborador(row) : null;
+export async function getColaborador(matricula: number): Promise<Colaborador | null> {
+  await ensureSchema();
+  const rows = await getDb()<Row[]>`SELECT * FROM colaboradores WHERE matricula = ${matricula}`;
+  return rows[0] ? toColaborador(rows[0]) : null;
 }
 
 /** Busca em lote por matrícula — usado pelo motor de cálculo para não fazer N consultas por lançamento. */
-export function getColaboradoresPorMatriculas(matriculas: number[]): Map<number, Colaborador> {
+export async function getColaboradoresPorMatriculas(matriculas: number[]): Promise<Map<number, Colaborador>> {
   const map = new Map<number, Colaborador>();
   const unicos = [...new Set(matriculas)];
   if (unicos.length === 0) return map;
 
-  const placeholders = unicos.map(() => "?").join(",");
-  const rows = getDb()
-    .prepare(`SELECT * FROM colaboradores WHERE matricula IN (${placeholders})`)
-    .all(...unicos) as unknown as Row[];
+  await ensureSchema();
+  const sql = getDb();
+  const rows = await sql<Row[]>`SELECT * FROM colaboradores WHERE matricula IN ${sql(unicos)}`;
   for (const row of rows) map.set(row.matricula, toColaborador(row));
   return map;
 }
@@ -108,7 +100,8 @@ function asStr(v: unknown): string | null {
   return String(v);
 }
 
-export function upsertColaborador(input: ColaboradorInput): Colaborador {
+export async function upsertColaborador(input: ColaboradorInput): Promise<Colaborador> {
+  await ensureSchema();
   const dados = input.dados;
   const nome = asStr(dados.nome) ?? "";
   const situacao = asStr(dados.situacao);
@@ -119,32 +112,33 @@ export function upsertColaborador(input: ColaboradorInput): Colaborador {
   const admissao = asStr(dados.admissao);
   const dataDemissao = asStr(dados.data_demissao);
 
-  getDb()
-    .prepare(
-      `INSERT INTO colaboradores (matricula, nome, situacao, cod_servico, descricao_servico, salario, admissao, data_demissao, dados)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(matricula) DO UPDATE SET
-         nome = excluded.nome, situacao = excluded.situacao, cod_servico = excluded.cod_servico,
-         descricao_servico = excluded.descricao_servico, salario = excluded.salario,
-         admissao = excluded.admissao, data_demissao = excluded.data_demissao, dados = excluded.dados`,
-    )
-    .run(input.matricula, nome, situacao, codServico, descricaoServico, salario, admissao, dataDemissao, JSON.stringify(dados));
+  await getDb()`
+    INSERT INTO colaboradores (matricula, nome, situacao, cod_servico, descricao_servico, salario, admissao, data_demissao, dados)
+    VALUES (${input.matricula}, ${nome}, ${situacao}, ${codServico}, ${descricaoServico}, ${salario}, ${admissao}, ${dataDemissao}, ${JSON.stringify(dados)})
+    ON CONFLICT (matricula) DO UPDATE SET
+      nome = excluded.nome, situacao = excluded.situacao, cod_servico = excluded.cod_servico,
+      descricao_servico = excluded.descricao_servico, salario = excluded.salario,
+      admissao = excluded.admissao, data_demissao = excluded.data_demissao, dados = excluded.dados
+  `;
 
-  return getColaborador(input.matricula)!;
+  return (await getColaborador(input.matricula))!;
 }
 
-export function deleteColaborador(matricula: number): void {
-  getDb().prepare("DELETE FROM colaboradores WHERE matricula = ?").run(matricula);
+export async function deleteColaborador(matricula: number): Promise<void> {
+  await ensureSchema();
+  await getDb()`DELETE FROM colaboradores WHERE matricula = ${matricula}`;
 }
 
-export function countColaboradores(): number {
-  const row = getDb().prepare("SELECT COUNT(*) as n FROM colaboradores").get() as unknown as { n: number };
-  return row.n;
+export async function countColaboradores(): Promise<number> {
+  await ensureSchema();
+  const [{ n }] = await getDb()<{ n: number }[]>`SELECT COUNT(*)::int as n FROM colaboradores`;
+  return n;
 }
 
-export function listSituacoes(): string[] {
-  const rows = getDb()
-    .prepare("SELECT DISTINCT situacao FROM colaboradores WHERE situacao IS NOT NULL ORDER BY situacao")
-    .all() as unknown as { situacao: string }[];
+export async function listSituacoes(): Promise<string[]> {
+  await ensureSchema();
+  const rows = await getDb()<{ situacao: string }[]>`
+    SELECT DISTINCT situacao FROM colaboradores WHERE situacao IS NOT NULL ORDER BY situacao
+  `;
   return rows.map((r) => r.situacao);
 }

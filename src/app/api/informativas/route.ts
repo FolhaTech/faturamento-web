@@ -4,7 +4,7 @@ import { createInformativa, listInformativas } from "@/lib/repo/informativas";
 export const runtime = "nodejs";
 
 export async function GET() {
-  return NextResponse.json({ informativas: listInformativas() });
+  return NextResponse.json({ informativas: await listInformativas() });
 }
 
 export async function POST(request: Request) {
@@ -13,7 +13,7 @@ export async function POST(request: Request) {
 
   if (typeof evento !== "string" || !evento.trim()) return NextResponse.json({ error: "Informe o evento." }, { status: 400 });
 
-  const informativa = createInformativa({
+  const informativa = await createInformativa({
     codigo: Number.isFinite(codigo) && codigo > 0 ? codigo : null,
     evento: evento.trim(),
     valor: Number(valor) || 0,

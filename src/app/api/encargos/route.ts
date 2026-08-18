@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 const TIPOS: TipoEvento[] = ["P", "D", "I", "R", "FGTS", "INSS"];
 
 export async function GET() {
-  return NextResponse.json({ encargos: listEncargos() });
+  return NextResponse.json({ encargos: await listEncargos() });
 }
 
 export async function POST(request: Request) {
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   if (typeof evento !== "string" || !evento.trim()) return NextResponse.json({ error: "Informe o evento." }, { status: 400 });
   if (!TIPOS.includes(tipo)) return NextResponse.json({ error: `Tipo deve ser um de: ${TIPOS.join(", ")}.` }, { status: 400 });
 
-  const encargo = upsertEncargo({
+  const encargo = await upsertEncargo({
     codigo,
     evento: evento.trim(),
     tipo,

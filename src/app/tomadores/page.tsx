@@ -5,7 +5,7 @@ import { TomadoresEditor } from "./TomadoresEditor";
 export const dynamic = "force-dynamic";
 
 export default async function TomadoresPage() {
-  const tomadores = listTomadores();
+  const tomadores = await listTomadores();
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-6 py-12">

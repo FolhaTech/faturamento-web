@@ -5,7 +5,7 @@ import { InformativasEditor } from "./InformativasEditor";
 export const dynamic = "force-dynamic";
 
 export default async function InformativasPage() {
-  const informativas = listInformativas();
+  const informativas = await listInformativas();
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-12">

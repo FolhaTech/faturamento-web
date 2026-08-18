@@ -1,4 +1,4 @@
-import { getDb } from "../db";
+import { ensureSchema, getDb } from "../db";
 import type { Tomador } from "../types";
 
 interface Row {
@@ -12,14 +12,16 @@ function toTomador(row: Row): Tomador {
   return { codigo: row.codigo, nome: row.nome, fpas: row.fpas === 515 ? 515 : 655, taxaAdm: row.taxa_adm };
 }
 
-export function listTomadores(): Tomador[] {
-  const rows = getDb().prepare("SELECT * FROM tomadores ORDER BY nome").all() as unknown as Row[];
+export async function listTomadores(): Promise<Tomador[]> {
+  await ensureSchema();
+  const rows = await getDb()<Row[]>`SELECT * FROM tomadores ORDER BY nome`;
   return rows.map(toTomador);
 }
 
-export function getTomador(codigo: number): Tomador | null {
-  const row = getDb().prepare("SELECT * FROM tomadores WHERE codigo = ?").get(codigo) as unknown as Row | undefined;
-  return row ? toTomador(row) : null;
+export async function getTomador(codigo: number): Promise<Tomador | null> {
+  await ensureSchema();
+  const rows = await getDb()<Row[]>`SELECT * FROM tomadores WHERE codigo = ${codigo}`;
+  return rows[0] ? toTomador(rows[0]) : null;
 }
 
 export interface TomadorInput {
@@ -29,21 +31,22 @@ export interface TomadorInput {
   taxaAdm: number;
 }
 
-export function upsertTomador(input: TomadorInput): Tomador {
-  getDb()
-    .prepare(
-      `INSERT INTO tomadores (codigo, nome, fpas, taxa_adm) VALUES (?, ?, ?, ?)
-       ON CONFLICT(codigo) DO UPDATE SET nome = excluded.nome, fpas = excluded.fpas, taxa_adm = excluded.taxa_adm`,
-    )
-    .run(input.codigo, input.nome, input.fpas, input.taxaAdm);
-  return getTomador(input.codigo)!;
+export async function upsertTomador(input: TomadorInput): Promise<Tomador> {
+  await ensureSchema();
+  await getDb()`
+    INSERT INTO tomadores (codigo, nome, fpas, taxa_adm) VALUES (${input.codigo}, ${input.nome}, ${input.fpas}, ${input.taxaAdm})
+    ON CONFLICT (codigo) DO UPDATE SET nome = excluded.nome, fpas = excluded.fpas, taxa_adm = excluded.taxa_adm
+  `;
+  return (await getTomador(input.codigo))!;
 }
 
-export function deleteTomador(codigo: number): void {
-  getDb().prepare("DELETE FROM tomadores WHERE codigo = ?").run(codigo);
+export async function deleteTomador(codigo: number): Promise<void> {
+  await ensureSchema();
+  await getDb()`DELETE FROM tomadores WHERE codigo = ${codigo}`;
 }
 
-export function countTomadores(): number {
-  const row = getDb().prepare("SELECT COUNT(*) as n FROM tomadores").get() as unknown as { n: number };
-  return row.n;
+export async function countTomadores(): Promise<number> {
+  await ensureSchema();
+  const [{ n }] = await getDb()<{ n: number }[]>`SELECT COUNT(*)::int as n FROM tomadores`;
+  return n;
 }

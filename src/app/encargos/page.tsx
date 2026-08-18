@@ -5,7 +5,7 @@ import { EncargosEditor } from "./EncargosEditor";
 export const dynamic = "force-dynamic";
 
 export default async function EncargosPage() {
-  const encargos = listEncargos();
+  const encargos = await listEncargos();
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-6 py-12">
