@@ -99,7 +99,7 @@ describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
   });
 });
 
-describe("calculateLine — desconto (Tipo D) não entra na soma do faturamento", () => {
+describe("calculateLine — desconto (Tipo D/R) não entra na soma do faturamento", () => {
   it("mantém o DRE negativo para referência, mas zera base/taxa/fatura/NF", async () => {
     const mov: Movimento = {
       id: "1",
@@ -125,9 +125,33 @@ describe("calculateLine — desconto (Tipo D) não entra na soma do faturamento"
     expect(l.fatura).toBe(0);
     expect(l.nf).toBe(0);
   });
+
+  it("trata Tipo R (ex.: faltas) igual a Tipo D — desconto do colaborador, não cobrado do cliente", async () => {
+    const mov: Movimento = {
+      id: "1",
+      codigo: 777,
+      matricula: 90103392,
+      nome: "ADALBERTO ALVARES JUNIOR",
+      evento: "FALTAS",
+      competencia: "01/2026",
+      valor: 50,
+      ref: 1,
+      tipo: "R",
+      forma: "Valor",
+    };
+    const ctx = await buildContext([mov]);
+    const { line, warning } = calculateLine(mov, ctx);
+    expect(warning).toBeNull();
+    const l = line!;
+    expect(l.trilha).toBe("excluido");
+    expect(l.dre).toBe(-50);
+    expect(l.base).toBe(0);
+    expect(l.fatura).toBe(0);
+    expect(l.nf).toBe(0);
+  });
 });
 
-describe("calculateLine — trilha de benefício em espécie (Tipo I / R)", () => {
+describe("calculateLine — trilha de benefício em espécie (Tipo I)", () => {
   it("cobra vale-refeição fornecido pelo valor de face + taxa adm, sem encargos", async () => {
     const mov: Movimento = {
       id: "1",

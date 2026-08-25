@@ -50,6 +50,7 @@ export function FaturamentoViewer({ resumos, warnings }: { resumos: TomadorResum
         <>
           <TotalsCard resumo={resumo} />
           <RubricasTable resumo={resumo} />
+          <DescontosTable resumo={resumo} />
           <ColaboradoresTable resumo={resumo} />
         </>
       )}
@@ -105,13 +106,8 @@ function TotalsCard({ resumo }: { resumo: TomadorResumo }) {
   );
 }
 
-/** Uma rubrica sem despesa/fatura/NF é um evento Tipo D/FGTS/INSS — não conta na soma do faturamento (ver engine.ts). Não faz sentido ocupar espaço na tabela de faturamento. */
-function contaNoFaturamento(r: RubricaSomada): boolean {
-  return r.despesa !== 0 || r.fatura !== 0 || r.nf !== 0;
-}
-
 function RubricasTable({ resumo }: { resumo: TomadorResumo }) {
-  const rubricasComImpacto = resumo.rubricas.filter(contaNoFaturamento);
+  const rubricasComImpacto = resumo.rubricas.filter((r) => r.trilha !== "excluido");
   const ocultas = resumo.rubricas.length - rubricasComImpacto.length;
 
   return (
@@ -182,9 +178,65 @@ function RubricasTable({ resumo }: { resumo: TomadorResumo }) {
       </div>
       {ocultas > 0 && (
         <p className="px-1 text-xs text-neutral-400">
-          {ocultas} evento(s) do tipo Desconto/FGTS/INSS não entram na soma do faturamento e por isso não aparecem nesta tabela.
+          {ocultas} evento(s) do tipo Desconto/FGTS/INSS não entram na soma do faturamento — veja a tabela de descontos abaixo.
         </p>
       )}
+    </div>
+  );
+}
+
+function tipoLabel(tipo: RubricaSomada["tipo"]): string {
+  if (tipo === "D" || tipo === "R") return "Desconto";
+  if (tipo === "FGTS" || tipo === "INSS") return "Informativo";
+  return tipo;
+}
+
+/** Rubricas Tipo D/R (desconto real do holerite) e FGTS/INSS (restatement informativo) — não somam faturamento, mas o colaborador precisa ver o que foi retido/reafirmado. */
+function DescontosTable({ resumo }: { resumo: TomadorResumo }) {
+  const descontos = resumo.rubricas.filter((r) => r.trilha === "excluido");
+  if (descontos.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <h3 className="px-1 text-sm font-semibold text-neutral-700">Descontos e linhas informativas</h3>
+      <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
+        <table className="w-full min-w-[560px] text-sm">
+          <thead className="bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
+            <tr>
+              <Th>Evento</Th>
+              <Th>Tipo</Th>
+              <Th right>Lançamentos</Th>
+              <Th right>Valor</Th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-neutral-100">
+            {descontos.map((r) => (
+              <tr key={r.evento} className="hover:bg-neutral-50">
+                <Td>{r.evento}</Td>
+                <Td>
+                  <span
+                    className={`rounded px-1.5 py-0.5 text-xs font-medium ${
+                      r.tipo === "D" || r.tipo === "R" ? "bg-red-50 text-red-700" : "bg-neutral-100 text-neutral-600"
+                    }`}
+                  >
+                    {tipoLabel(r.tipo)}
+                  </span>
+                </Td>
+                <Td right mono>
+                  {r.qtdLancamentos}
+                </Td>
+                <Td right mono>
+                  <span className={r.valorBruto < 0 ? "text-red-700" : "text-neutral-700"}>{fmt(r.valorBruto)}</span>
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="px-1 text-xs text-neutral-400">
+        Descontos (Tipo D/R) são retidos do holerite do colaborador e não reduzem a fatura cobrada do tomador. Linhas informativas (FGTS/INSS) só
+        reafirmam um valor já embutido no provento correspondente.
+      </p>
     </div>
   );
 }

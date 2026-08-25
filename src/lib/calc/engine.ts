@@ -98,15 +98,17 @@ export interface CalculateResult {
  *  - "P" (provento): cadeia completa DRE -> INSS/FGTS/provisões -> encargo
  *    sobre a provisão, usando a alíquota de Encargos correspondente ao
  *    regime do Tomador (INSS 515 se FPAS 515, INSS 655 se FPAS 655).
- *  - "I"/"R" (benefício em espécie / reembolso, ex. vale-refeição
- *    fornecido): cobrados pelo valor de face + taxa administrativa + gross-up
- *    de NF, SEM INSS/FGTS/provisões — benefícios em espécie não geram
- *    encargo trabalhista, mas ainda são um custo real repassado ao cliente.
- *  - "D" (desconto): é dinheiro retido do HOLERITE do colaborador (INSS
- *    empregado, IRRF, adiantamento, empréstimo consignado etc.) — não reduz
- *    o custo que a agência cobra do cliente, que continua devendo o salário
- *    bruto + encargos independente do que foi descontado do empregado. Por
- *    isso não entra na soma do faturamento (excluído, igual FGTS/INSS).
+ *  - "I" (benefício em espécie / reembolso, ex. vale-refeição fornecido):
+ *    cobrado pelo valor de face + taxa administrativa + gross-up de NF, SEM
+ *    INSS/FGTS/provisões — benefícios em espécie não geram encargo
+ *    trabalhista, mas ainda são um custo real repassado ao cliente.
+ *  - "D"/"R" (desconto): é dinheiro retido do HOLERITE do colaborador (INSS
+ *    empregado, IRRF, adiantamento, empréstimo consignado, faltas etc.) —
+ *    não reduz o custo que a agência cobra do cliente, que continua devendo
+ *    o salário bruto + encargos independente do que foi descontado do
+ *    empregado. Por isso não entra na soma do faturamento (excluído, igual
+ *    FGTS/INSS). "R" é o indicador usado pelo sistema de origem para esse
+ *    mesmo tipo de desconto (ex.: faltas).
  *  - "FGTS"/"INSS": linhas de restatement (ex. "F.G.T.S DO MÊS", "I.N.S.S.")
  *    que só reafirmam um valor já refletido nas rubricas de provento do
  *    mesmo colaborador; excluídas para não duplicar a cobrança.
@@ -127,13 +129,13 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
   const encargo = ctx.encargosPorCodigo.get(mov.codigo);
   const tipo: TipoEvento = encargo?.tipo ?? mov.tipo;
 
-  const valorFace = tipo === "D" ? -mov.valor : mov.valor;
+  const valorFace = tipo === "D" || tipo === "R" ? -mov.valor : mov.valor;
 
-  if (tipo === "FGTS" || tipo === "INSS" || tipo === "D") {
+  if (tipo === "FGTS" || tipo === "INSS" || tipo === "D" || tipo === "R") {
     return { line: zeroLine(mov, tomador, "excluido", valorFace, tipo), warning: null };
   }
 
-  if (tipo === "I" || tipo === "R") {
+  if (tipo === "I") {
     const base = valorFace;
     const taxaAdmValor = base * tomador.taxaAdm;
     const fatura = base + taxaAdmValor;

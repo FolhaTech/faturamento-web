@@ -14,10 +14,11 @@ export default defineConfig(({ mode }) => {
     test: {
       environment: "node",
       include: ["src/**/*.test.ts"],
-      // Todos os arquivos de teste compartilham o mesmo banco Postgres remoto (Supabase) —
-      // resetDbForTests() faz TRUNCATE, então rodar arquivos em paralelo causa condição de
-      // corrida entre eles. Precisa ser sequencial.
+      // Todos os arquivos de teste compartilham o mesmo banco Postgres de TESTE (ver
+      // testSetup.ts) — resetDbForTests() faz TRUNCATE, então rodar arquivos em paralelo
+      // causa condição de corrida entre eles. Precisa ser sequencial.
       fileParallelism: false,
+      setupFiles: ["./src/lib/testSetup.ts"],
     },
   };
 });

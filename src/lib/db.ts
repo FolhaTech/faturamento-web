@@ -96,8 +96,18 @@ export async function ensureSchema(): Promise<void> {
   return globalThis.__schemaReady__;
 }
 
-/** Uso exclusivo em testes: limpa os dados mantendo o schema (o projeto Supabase é compartilhado entre execuções de teste). */
+/**
+ * Uso exclusivo em testes: limpa os dados mantendo o schema. Recusa-se a rodar sem
+ * TEST_DATABASE_URL configurada (ver src/lib/testSetup.ts) — já apagamos os dados de
+ * produção uma vez porque resetDbForTests() rodava TRUNCATE direto no DATABASE_URL
+ * de produção, que era o mesmo usado pelos testes. Nunca remova essa checagem.
+ */
 export async function resetDbForTests(): Promise<void> {
+  if (!process.env.TEST_DATABASE_URL) {
+    throw new Error(
+      "resetDbForTests(): TEST_DATABASE_URL não configurada. Recusando rodar TRUNCATE — configure um banco de testes separado (ver .env.example) antes de rodar a suíte.",
+    );
+  }
   await ensureSchema();
   const sql = getDb();
   await sql`TRUNCATE tomadores, encargos, informativas, colaboradores, movimentos`;

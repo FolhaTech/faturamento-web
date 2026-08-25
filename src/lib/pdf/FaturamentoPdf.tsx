@@ -184,7 +184,7 @@ const RUBRICA_COLS: { key: keyof RubricaSomada; label: string; width: string; st
 ];
 
 function RubricasSection({ resumo }: { resumo: TomadorResumo }) {
-  const comImpacto = resumo.rubricas.filter((r) => r.despesa !== 0 || r.fatura !== 0 || r.nf !== 0);
+  const comImpacto = resumo.rubricas.filter((r) => r.trilha !== "excluido");
   const ocultas = resumo.rubricas.length - comImpacto.length;
 
   return (
@@ -231,9 +231,46 @@ function RubricasSection({ resumo }: { resumo: TomadorResumo }) {
       </View>
       {ocultas > 0 && (
         <Text style={styles.footnote}>
-          {ocultas} evento(s) do tipo Desconto/FGTS/INSS não somam faturamento (já refletidos na base do provento) e não aparecem nesta tabela.
+          {ocultas} evento(s) do tipo Desconto/FGTS/INSS não somam faturamento (já refletidos na base do provento) — ver detalhamento de descontos a seguir.
         </Text>
       )}
+    </View>
+  );
+}
+
+function tipoLabel(tipo: RubricaSomada["tipo"]): string {
+  if (tipo === "D" || tipo === "R") return "Desconto";
+  if (tipo === "FGTS" || tipo === "INSS") return "Informativo";
+  return tipo;
+}
+
+function DescontosSection({ resumo }: { resumo: TomadorResumo }) {
+  const descontos = resumo.rubricas.filter((r) => r.trilha === "excluido");
+  if (descontos.length === 0) return null;
+
+  return (
+    <View break>
+      <Text style={styles.sectionTitle}>Descontos e linhas informativas</Text>
+      <View style={styles.table}>
+        <View style={styles.tHeadRow} fixed>
+          <Text style={[styles.tHeadCell, { width: "50%" }]}>Evento</Text>
+          <Text style={[styles.tHeadCell, { width: "20%" }]}>Tipo</Text>
+          <Text style={[styles.tHeadCell, { width: "15%", textAlign: "right" }]}>Lançamentos</Text>
+          <Text style={[styles.tHeadCell, { width: "15%", textAlign: "right" }]}>Valor</Text>
+        </View>
+        {descontos.map((r, i) => (
+          <View key={r.evento} style={i % 2 === 1 ? styles.tRowAlt : styles.tRow} wrap={false}>
+            <Text style={[styles.tCell, { width: "50%" }]}>{r.evento}</Text>
+            <Text style={[styles.tCell, { width: "20%" }]}>{tipoLabel(r.tipo)}</Text>
+            <Text style={[styles.tCellRight, { width: "15%" }]}>{r.qtdLancamentos}</Text>
+            <Text style={[styles.tCellRight, { width: "15%" }]}>{fmt(r.valorBruto)}</Text>
+          </View>
+        ))}
+      </View>
+      <Text style={styles.footnote}>
+        Descontos (Tipo D/R) são retidos do holerite do colaborador e não reduzem a fatura cobrada do tomador. Linhas informativas (FGTS/INSS) só
+        reafirmam um valor já embutido no provento correspondente.
+      </Text>
     </View>
   );
 }
@@ -316,6 +353,7 @@ export function FaturamentoPdf({ resumo, warnings }: { resumo: TomadorResumo; wa
         )}
 
         <RubricasSection resumo={resumo} />
+        <DescontosSection resumo={resumo} />
         <ColaboradoresSection resumo={resumo} />
 
         <Footer resumo={resumo} />
