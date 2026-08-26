@@ -42,6 +42,8 @@ export interface ListColaboradoresOptions {
   codServico?: number;
   /** Descrição Dpto (dentro de dados). */
   descricaoDpto?: string;
+  /** Descrição Ccusto — centro de custo (dentro de dados). */
+  descricaoCcusto?: string;
   page?: number;
   pageSize?: number;
 }
@@ -64,6 +66,7 @@ export async function listColaboradores(opts: ListColaboradoresOptions = {}): Pr
   const descricaoCargo = opts.descricaoCargo?.trim() || null;
   const codServico = opts.codServico ?? null;
   const descricaoDpto = opts.descricaoDpto?.trim() || null;
+  const descricaoCcusto = opts.descricaoCcusto?.trim() || null;
 
   const [{ n: total }] = await sql<{ n: number }[]>`
     SELECT COUNT(*)::int as n FROM colaboradores
@@ -73,6 +76,7 @@ export async function listColaboradores(opts: ListColaboradoresOptions = {}): Pr
       AND (${descricaoCargo}::text IS NULL OR dados::jsonb ->> 'descricao_cargo' = ${descricaoCargo})
       AND (${codServico}::int IS NULL OR cod_servico = ${codServico})
       AND (${descricaoDpto}::text IS NULL OR dados::jsonb ->> 'descricao_dpto' = ${descricaoDpto})
+      AND (${descricaoCcusto}::text IS NULL OR dados::jsonb ->> 'descricao_ccusto' = ${descricaoCcusto})
   `;
 
   const rows = await sql<Row[]>`
@@ -83,6 +87,7 @@ export async function listColaboradores(opts: ListColaboradoresOptions = {}): Pr
       AND (${descricaoCargo}::text IS NULL OR dados::jsonb ->> 'descricao_cargo' = ${descricaoCargo})
       AND (${codServico}::int IS NULL OR cod_servico = ${codServico})
       AND (${descricaoDpto}::text IS NULL OR dados::jsonb ->> 'descricao_dpto' = ${descricaoDpto})
+      AND (${descricaoCcusto}::text IS NULL OR dados::jsonb ->> 'descricao_ccusto' = ${descricaoCcusto})
     ORDER BY nome
     LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
   `;

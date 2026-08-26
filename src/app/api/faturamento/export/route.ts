@@ -3,6 +3,7 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { NextResponse } from "next/server";
 import { aggregateByTomador } from "@/lib/calc/aggregate";
 import { runEngine } from "@/lib/calc/engine";
+import { filtrarLinesPorColaborador } from "@/lib/calc/filtroColaboradores";
 import { FaturamentoPdf } from "@/lib/pdf/FaturamentoPdf";
 import { listMovimentosByCompetencia } from "@/lib/repo/movimentos";
 
@@ -12,6 +13,10 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const competencia = url.searchParams.get("competencia");
   const tomadorCodigo = Number(url.searchParams.get("tomador"));
+  const codEmp = url.searchParams.get("codEmp") ?? undefined;
+  const descricaoCargo = url.searchParams.get("descricaoCargo") ?? undefined;
+  const descricaoDpto = url.searchParams.get("descricaoDpto") ?? undefined;
+  const descricaoCcusto = url.searchParams.get("descricaoCcusto") ?? undefined;
 
   if (!competencia) {
     return NextResponse.json({ error: "Informe a competência (?competencia=MM/AAAA)." }, { status: 400 });
@@ -22,7 +27,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: `Nenhum lançamento encontrado para a competência ${competencia}.` }, { status: 404 });
   }
 
-  const { lines, warnings } = await runEngine(movimentos);
+  const { lines: allLines, warnings } = await runEngine(movimentos);
+  const lines = await filtrarLinesPorColaborador(allLines, { codEmp, descricaoCargo, descricaoDpto, descricaoCcusto });
   const resumos = aggregateByTomador(lines, competencia);
   const resumo = resumos.find((r) => r.tomadorCodigo === tomadorCodigo);
 

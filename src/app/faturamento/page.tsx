@@ -1,16 +1,38 @@
 import Link from "next/link";
 import { aggregateByTomador } from "@/lib/calc/aggregate";
 import { runEngine } from "@/lib/calc/engine";
+import { filtrarLinesPorColaborador } from "@/lib/calc/filtroColaboradores";
 import { listCompetencias, listMovimentosByCompetencia } from "@/lib/repo/movimentos";
+import { listValoresDistintosDados } from "@/lib/repo/colaboradores";
 import { FaturamentoViewer } from "./FaturamentoViewer";
 import { UploadMovimentosForm } from "./UploadMovimentosForm";
 
 export const dynamic = "force-dynamic";
 
-export default async function FaturamentoPage({ searchParams }: { searchParams: Promise<{ competencia?: string }> }) {
+interface SearchParams {
+  competencia?: string;
+  codEmp?: string;
+  descricaoCargo?: string;
+  descricaoDpto?: string;
+  descricaoCcusto?: string;
+}
+
+export default async function FaturamentoPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const sp = await searchParams;
   const competencias = await listCompetencias();
   const competenciaAtual = sp.competencia ?? competencias[0] ?? null;
+  const codEmp = sp.codEmp ?? "";
+  const descricaoCargo = sp.descricaoCargo ?? "";
+  const descricaoDpto = sp.descricaoDpto ?? "";
+  const descricaoCcusto = sp.descricaoCcusto ?? "";
+  const filtrosAtivos = Boolean(codEmp || descricaoCargo || descricaoDpto || descricaoCcusto);
+
+  const [codEmps, descricoesCargo, descricoesDpto, descricoesCcusto] = await Promise.all([
+    listValoresDistintosDados("cod_emp"),
+    listValoresDistintosDados("descricao_cargo"),
+    listValoresDistintosDados("descricao_dpto"),
+    listValoresDistintosDados("descricao_ccusto"),
+  ]);
 
   let resumos: ReturnType<typeof aggregateByTomador> = [];
   let warnings: string[] = [];
@@ -18,7 +40,26 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
     const movimentos = await listMovimentosByCompetencia(competenciaAtual);
     const engineResult = await runEngine(movimentos);
     warnings = engineResult.warnings;
-    resumos = aggregateByTomador(engineResult.lines, competenciaAtual);
+
+    const lines = await filtrarLinesPorColaborador(engineResult.lines, { codEmp, descricaoCargo, descricaoDpto, descricaoCcusto });
+    resumos = aggregateByTomador(lines, competenciaAtual);
+  }
+
+  const filtrosQuery = new URLSearchParams();
+  if (codEmp) filtrosQuery.set("codEmp", codEmp);
+  if (descricaoCargo) filtrosQuery.set("descricaoCargo", descricaoCargo);
+  if (descricaoDpto) filtrosQuery.set("descricaoDpto", descricaoDpto);
+  if (descricaoCcusto) filtrosQuery.set("descricaoCcusto", descricaoCcusto);
+
+  function filterHref(overrides: Partial<SearchParams>): string {
+    const params = new URLSearchParams();
+    const merged = { competencia: competenciaAtual ?? undefined, codEmp, descricaoCargo, descricaoDpto, descricaoCcusto, ...overrides };
+    if (merged.competencia) params.set("competencia", merged.competencia);
+    if (merged.codEmp) params.set("codEmp", merged.codEmp);
+    if (merged.descricaoCargo) params.set("descricaoCargo", merged.descricaoCargo);
+    if (merged.descricaoDpto) params.set("descricaoDpto", merged.descricaoDpto);
+    if (merged.descricaoCcusto) params.set("descricaoCcusto", merged.descricaoCcusto);
+    return `/faturamento?${params.toString()}`;
   }
 
   return (
@@ -46,7 +87,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
             {competencias.map((c) => (
               <Link
                 key={c}
-                href={`/faturamento?competencia=${encodeURIComponent(c)}`}
+                href={filterHref({ competencia: c })}
                 className={`rounded-full px-3 py-1 text-sm ${
                   c === competenciaAtual ? "bg-emerald-700 text-white" : "border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
                 }`}
@@ -56,7 +97,83 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
             ))}
           </div>
 
-          <FaturamentoViewer resumos={resumos} warnings={warnings} />
+          <form method="GET" className="flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-4">
+            {competenciaAtual && <input type="hidden" name="competencia" value={competenciaAtual} />}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-neutral-500">Cód Emp</label>
+              <select name="codEmp" defaultValue={codEmp} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm">
+                <option value="">Todos</option>
+                {codEmps.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-neutral-500">Descrição cargo</label>
+              <select
+                name="descricaoCargo"
+                defaultValue={descricaoCargo}
+                className="min-w-48 rounded-md border border-neutral-300 px-3 py-1.5 text-sm"
+              >
+                <option value="">Todos</option>
+                {descricoesCargo.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-neutral-500">Descrição Dpto</label>
+              <select
+                name="descricaoDpto"
+                defaultValue={descricaoDpto}
+                className="min-w-48 rounded-md border border-neutral-300 px-3 py-1.5 text-sm"
+              >
+                <option value="">Todos</option>
+                {descricoesDpto.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-neutral-500">Descrição Ccusto</label>
+              <select
+                name="descricaoCcusto"
+                defaultValue={descricaoCcusto}
+                className="min-w-48 rounded-md border border-neutral-300 px-3 py-1.5 text-sm"
+              >
+                <option value="">Todos</option>
+                {descricoesCcusto.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button type="submit" className="rounded-md border border-neutral-300 bg-white px-4 py-1.5 text-sm font-medium hover:bg-neutral-50">
+              Filtrar
+            </button>
+            {filtrosAtivos && (
+              <Link
+                href={filterHref({ codEmp: undefined, descricaoCargo: undefined, descricaoDpto: undefined, descricaoCcusto: undefined })}
+                className="text-sm text-neutral-500 hover:underline"
+              >
+                limpar
+              </Link>
+            )}
+          </form>
+          {filtrosAtivos && (
+            <p className="-mt-3 px-1 text-xs text-neutral-500">
+              Faturamento recalculado só com os colaboradores que atendem aos filtros acima — os totais por tomador refletem essa seleção, não a folha inteira.
+            </p>
+          )}
+
+          <FaturamentoViewer resumos={resumos} warnings={warnings} filtrosQuery={filtrosQuery} />
         </>
       )}
     </main>

@@ -8,7 +8,16 @@ function fmt(n: number): string {
   return currency.format(n);
 }
 
-export function FaturamentoViewer({ resumos, warnings }: { resumos: TomadorResumo[]; warnings: string[] }) {
+export function FaturamentoViewer({
+  resumos,
+  warnings,
+  filtrosQuery,
+}: {
+  resumos: TomadorResumo[];
+  warnings: string[];
+  /** Filtros de colaborador (Cód Emp/Cargo/Dpto) ativos na tela, já como querystring — repassados ao export de PDF pra não divergir do que está sendo mostrado. */
+  filtrosQuery?: URLSearchParams;
+}) {
   const [tomadorCodigo, setTomadorCodigo] = useState<number | null>(resumos[0]?.tomadorCodigo ?? null);
   const resumo = useMemo(() => resumos.find((r) => r.tomadorCodigo === tomadorCodigo) ?? resumos[0] ?? null, [resumos, tomadorCodigo]);
 
@@ -36,7 +45,9 @@ export function FaturamentoViewer({ resumos, warnings }: { resumos: TomadorResum
 
         {resumo && (
           <a
-            href={`/api/faturamento/export?competencia=${encodeURIComponent(resumo.competencia)}&tomador=${resumo.tomadorCodigo}`}
+            href={`/api/faturamento/export?competencia=${encodeURIComponent(resumo.competencia)}&tomador=${resumo.tomadorCodigo}${
+              filtrosQuery && filtrosQuery.size > 0 ? `&${filtrosQuery.toString()}` : ""
+            }`}
             className="ml-auto flex items-center gap-2 rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
           >
             Exportar PDF

@@ -13,6 +13,7 @@ interface SearchParams {
   descricaoCargo?: string;
   codServico?: string;
   descricaoDpto?: string;
+  descricaoCcusto?: string;
   page?: string;
 }
 
@@ -25,20 +26,22 @@ export default async function ColaboradoresPage({ searchParams }: { searchParams
   const codServicoStr = sp.codServico ?? "";
   const codServico = codServicoStr ? Number(codServicoStr) : undefined;
   const descricaoDpto = sp.descricaoDpto ?? "";
+  const descricaoCcusto = sp.descricaoCcusto ?? "";
   const page = Number(sp.page ?? "1") || 1;
   const pageSize = 25;
 
-  const [{ items, total }, situacoes, codEmps, descricoesCargo, tomadores, descricoesDpto] = await Promise.all([
-    listColaboradores({ busca, situacao, codEmp, descricaoCargo, codServico, descricaoDpto, page, pageSize }),
+  const [{ items, total }, situacoes, codEmps, descricoesCargo, tomadores, descricoesDpto, descricoesCcusto] = await Promise.all([
+    listColaboradores({ busca, situacao, codEmp, descricaoCargo, codServico, descricaoDpto, descricaoCcusto, page, pageSize }),
     listSituacoes(),
     listValoresDistintosDados("cod_emp"),
     listValoresDistintosDados("descricao_cargo"),
     listTomadores(),
     listValoresDistintosDados("descricao_dpto"),
+    listValoresDistintosDados("descricao_ccusto"),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const filtrosAtivos = busca || situacao || codEmp || descricaoCargo || codServicoStr || descricaoDpto;
+  const filtrosAtivos = busca || situacao || codEmp || descricaoCargo || codServicoStr || descricaoDpto || descricaoCcusto;
 
   // Mesmo nome pode aparecer em mais de um Tomador (ex.: 2 contratos "ITAU UNIBANCO S.A" com FPAS diferentes) —
   // mostra o código junto no rótulo só quando o nome se repete, pra não desambiguar à toa.
@@ -56,6 +59,7 @@ export default async function ColaboradoresPage({ searchParams }: { searchParams
     if (descricaoCargo) params.set("descricaoCargo", descricaoCargo);
     if (codServicoStr) params.set("codServico", codServicoStr);
     if (descricaoDpto) params.set("descricaoDpto", descricaoDpto);
+    if (descricaoCcusto) params.set("descricaoCcusto", descricaoCcusto);
     params.set("page", String(p));
     return `/colaboradores?${params.toString()}`;
   }
@@ -142,6 +146,21 @@ export default async function ColaboradoresPage({ searchParams }: { searchParams
           <select name="descricaoDpto" defaultValue={descricaoDpto} className="min-w-48 rounded-md border border-neutral-300 px-3 py-1.5 text-sm">
             <option value="">Todos</option>
             {descricoesDpto.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-neutral-500">Descrição Ccusto</label>
+          <select
+            name="descricaoCcusto"
+            defaultValue={descricaoCcusto}
+            className="min-w-48 rounded-md border border-neutral-300 px-3 py-1.5 text-sm"
+          >
+            <option value="">Todos</option>
+            {descricoesCcusto.map((v) => (
               <option key={v} value={v}>
                 {v}
               </option>

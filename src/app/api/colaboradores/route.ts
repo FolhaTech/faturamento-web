@@ -13,10 +13,21 @@ export async function GET(request: Request) {
   const codServicoRaw = url.searchParams.get("codServico");
   const codServico = codServicoRaw ? Number(codServicoRaw) : undefined;
   const descricaoDpto = url.searchParams.get("descricaoDpto") ?? undefined;
+  const descricaoCcusto = url.searchParams.get("descricaoCcusto") ?? undefined;
   const page = Number(url.searchParams.get("page") ?? "1");
   const pageSize = Number(url.searchParams.get("pageSize") ?? "25");
 
-  const result = await listColaboradores({ busca, situacao, codEmp, descricaoCargo, codServico, descricaoDpto, page, pageSize });
+  const result = await listColaboradores({
+    busca,
+    situacao,
+    codEmp,
+    descricaoCargo,
+    codServico,
+    descricaoDpto,
+    descricaoCcusto,
+    page,
+    pageSize,
+  });
   return NextResponse.json(result);
 }
 
