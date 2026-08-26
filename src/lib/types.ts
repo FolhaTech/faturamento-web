@@ -44,16 +44,10 @@ export interface Movimento {
   ref: number;
   tipo: TipoEvento;
   forma: string | null;
-  /**
-   * Quanto subtrair de `valor` pra chegar no valor cobrado do tomador nessa linha — pode
-   * passar do próprio `valor` quando o pagamento real excede o saldo disponível, virando um
-   * crédito negativo na fatura. Congelado no upload (ver abatimentoFerias.ts). Ausente = 0.
-   */
+  /** Quanto desse lançamento foi abatido do saldo (férias ou 1/3) do colaborador — congelado no upload (ver abatimentoFerias.ts). Opcional: ausente = 0. */
   abatimentoFerias?: number;
   /** De qual saldo veio o abatimento acima — congelado junto, não deriva da classificação atual do código. Opcional: ausente = nenhum abatimento. */
   abatimentoSaldoTipo?: TipoSaldoFerias | null;
-  /** Quanto isso tirou DE VERDADE do saldo do colaborador (sempre <= valor) — só pra reverter certo num reenvio, não usar pra calcular fatura. Ausente = 0. */
-  saldoConsumido?: number;
 }
 
 /** Valor de cada campo do formulário de Colaborador (ver colaboradorFields.ts). */

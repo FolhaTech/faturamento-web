@@ -71,20 +71,12 @@ CREATE TABLE IF NOT EXISTS movimentos (
 );
 CREATE INDEX IF NOT EXISTS idx_movimentos_competencia ON movimentos(competencia);
 CREATE INDEX IF NOT EXISTS idx_movimentos_matricula ON movimentos(matricula);
--- abatimento_ferias: quanto subtrair de "valor" pra chegar no valor cobrado do tomador
--- nessa linha (ver calculateLine em engine.ts: valorAbatido = valor - abatimento_ferias).
--- Quando o valor real ultrapassa o saldo disponível, o excedente vira um CRÉDITO negativo
--- na fatura — por isso abatimento_ferias pode passar do próprio "valor" (ex.: saldo 1.000,
--- valor 2.000 -> abatimento_ferias 3.000 -> cobrado = 2.000 - 3.000 = -1.000).
--- saldo_consumido: quanto isso tirou DE VERDADE do saldo do colaborador (sempre <= valor
--- e <= saldo disponível na hora) — usado só pra reverter corretamente num reenvio; não usar
--- pra calcular a fatura (isso é abatimento_ferias).
--- Ambos calculados e congelados no momento do upload (ver abatimentoFerias.ts) — não
--- recalculam sozinhos depois, pra não derivar de um saldo já consumido em uploads futuros
--- nem depender da classificação atual do código em Encargos.
+-- Quanto do valor desse lançamento foi abatido do saldo (férias OU 1/3, ver
+-- abatimento_saldo_tipo) do colaborador, calculado e congelado no momento do upload (ver
+-- abatimentoFerias.ts) — não recalcula sozinho depois, pra não derivar do saldo já
+-- consumido em uploads futuros nem depender da classificação atual do código em Encargos.
 ALTER TABLE movimentos ADD COLUMN IF NOT EXISTS abatimento_ferias DOUBLE PRECISION NOT NULL DEFAULT 0;
 ALTER TABLE movimentos ADD COLUMN IF NOT EXISTS abatimento_saldo_tipo TEXT;
-ALTER TABLE movimentos ADD COLUMN IF NOT EXISTS saldo_consumido DOUBLE PRECISION NOT NULL DEFAULT 0;
 `;
 
 export type Sql = ReturnType<typeof postgres>;

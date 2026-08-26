@@ -1,6 +1,6 @@
 import { ajustarSaldos, getSaldos } from "../repo/colaboradores";
 import { listEncargos } from "../repo/encargos";
-import { sumSaldoConsumidoPorMatriculaETipo, type MovimentoInput } from "../repo/movimentos";
+import { sumAbatimentoPorMatriculaETipo, type MovimentoInput } from "../repo/movimentos";
 import type { TipoSaldoFerias } from "../types";
 
 const TIPOS: TipoSaldoFerias[] = ["ferias", "terco"];
@@ -11,16 +11,9 @@ const TIPOS: TipoSaldoFerias[] = ["ferias", "terco"];
  * CORRESPONDENTE do colaborador — em vez de cobrar o valor cheio de novo do tomador
  * (ver calculateLine em engine.ts). Férias e 1/3 são abatidos de saldos separados.
  *
- * Quando o valor real do pagamento ULTRAPASSA o saldo disponível, o excedente vira um
- * CRÉDITO negativo na fatura daquela linha (em vez de cobrar a diferença do tomador) —
- * ex.: saldo R$1.000, pagamento real R$2.000 -> cobrado do tomador = -R$1.000. O saldo do
- * colaborador é consumido até zero (nunca fica negativo); quem "sobra" do pagamento vira
- * o crédito, não uma dívida do colaborador.
- *
  * Reenviar o arquivo da mesma competência primeiro DEVOLVE a cada saldo o que tinha sido
- * REALMENTE consumido pelo upload anterior dessas competências (não o valor "congelado" da
- * fatura, que pode ser maior que o saldo — ver saldo_consumido em db.ts), e só então
- * recalcula o abatimento em cima do arquivo novo.
+ * abatido pelo upload anterior dessas competências (senão reenviar drenaria os saldos de
+ * novo a cada vez), e só então recalcula o abatimento em cima do arquivo novo.
  */
 export async function aplicarAbatimentoFerias(linhas: MovimentoInput[]): Promise<MovimentoInput[]> {
   const encargos = await listEncargos();
@@ -30,10 +23,10 @@ export async function aplicarAbatimentoFerias(linhas: MovimentoInput[]): Promise
   }
 
   const competencias = [...new Set(linhas.map((l) => l.competencia))];
-  const consumoAnterior = await sumSaldoConsumidoPorMatriculaETipo(competencias);
+  const abatimentosAnteriores = await sumAbatimentoPorMatriculaETipo(competencias);
   for (const tipo of TIPOS) {
-    if (consumoAnterior[tipo].size > 0) {
-      await ajustarSaldos(tipo, consumoAnterior[tipo]);
+    if (abatimentosAnteriores[tipo].size > 0) {
+      await ajustarSaldos(tipo, abatimentosAnteriores[tipo]);
     }
   }
 
@@ -47,10 +40,7 @@ export async function aplicarAbatimentoFerias(linhas: MovimentoInput[]): Promise
   }
   if (linhasPorTipo.size === 0) return linhas;
 
-  const ajustesPorLinha = new Map<
-    MovimentoInput,
-    { abatimentoFerias: number; abatimentoSaldoTipo: TipoSaldoFerias; saldoConsumido: number }
-  >();
+  const ajustesPorLinha = new Map<MovimentoInput, { abatimentoFerias: number; abatimentoSaldoTipo: TipoSaldoFerias }>();
 
   for (const tipo of TIPOS) {
     const linhasDoTipo = linhasPorTipo.get(tipo);
@@ -58,24 +48,20 @@ export async function aplicarAbatimentoFerias(linhas: MovimentoInput[]): Promise
 
     const matriculas = [...new Set(linhasDoTipo.map((l) => l.matricula))];
     const saldos = await getSaldos(tipo, matriculas);
-    const consumidoAteAgora = new Map<number, number>();
+    const consumido = new Map<number, number>();
 
     for (const l of linhasDoTipo) {
-      const saldoRestante = (saldos.get(l.matricula) ?? 0) - (consumidoAteAgora.get(l.matricula) ?? 0);
-      const consumo = Math.max(0, Math.min(saldoRestante, l.valor));
-      const excedente = Math.max(0, l.valor - saldoRestante);
-      const cobradoDoTomador = -excedente; // 0 quando o saldo cobre tudo; negativo (crédito) quando não cobre
-      const abatimentoFerias = l.valor - cobradoDoTomador; // engine.ts faz valor - abatimentoFerias = cobradoDoTomador
-
-      if (consumo > 0) consumidoAteAgora.set(l.matricula, (consumidoAteAgora.get(l.matricula) ?? 0) + consumo);
-      if (abatimentoFerias !== 0) {
-        ajustesPorLinha.set(l, { abatimentoFerias, abatimentoSaldoTipo: tipo, saldoConsumido: consumo });
+      const saldoRestante = (saldos.get(l.matricula) ?? 0) - (consumido.get(l.matricula) ?? 0);
+      const abatimento = Math.max(0, Math.min(saldoRestante, l.valor));
+      if (abatimento > 0) {
+        consumido.set(l.matricula, (consumido.get(l.matricula) ?? 0) + abatimento);
+        ajustesPorLinha.set(l, { abatimentoFerias: abatimento, abatimentoSaldoTipo: tipo });
       }
     }
 
-    if (consumidoAteAgora.size > 0) {
+    if (consumido.size > 0) {
       const deltas = new Map<number, number>();
-      for (const [matricula, valor] of consumidoAteAgora) deltas.set(matricula, -valor);
+      for (const [matricula, valor] of consumido) deltas.set(matricula, -valor);
       await ajustarSaldos(tipo, deltas);
     }
   }
