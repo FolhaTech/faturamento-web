@@ -23,8 +23,19 @@ async function seedBase() {
     fgts: 0.08,
     provFerias: 0.11110833333333332,
     prov13: 0.08333333333333333,
+    abateSaldoFerias: false,
   });
-  await upsertEncargo({ codigo: 48, evento: "VALE TRANSPORTE", tipo: "D", inss655: 0, inss515: 0, fgts: 0, provFerias: 0, prov13: 0 });
+  await upsertEncargo({
+    codigo: 48,
+    evento: "VALE TRANSPORTE",
+    tipo: "D",
+    inss655: 0,
+    inss515: 0,
+    fgts: 0,
+    provFerias: 0,
+    prov13: 0,
+    abateSaldoFerias: false,
+  });
   await upsertColaborador({
     matricula: 90103392,
     dados: { cod_epr: 90103392, nome: "ADALBERTO ALVARES JUNIOR", situacao: "Trabalhando", cod_servico: 1, salario: 2000 },
@@ -204,7 +215,17 @@ describe("calculateLine — linhas de restatement (Tipo FGTS / INSS)", () => {
     // Caso real: Movimentos072026.xls traz "F.G.T.S DO MES" (cód. 996) com
     // Tipo="I" na coluna G, mas o código já está cadastrado em Encargos como
     // tipo="FGTS" — tem que prevalecer o cadastro, não a coluna do arquivo.
-    await upsertEncargo({ codigo: 996, evento: "F.G.T.S  DO MES", tipo: "FGTS", inss655: 0, inss515: 0, fgts: 0, provFerias: 0, prov13: 0 });
+    await upsertEncargo({
+      codigo: 996,
+      evento: "F.G.T.S  DO MES",
+      tipo: "FGTS",
+      inss655: 0,
+      inss515: 0,
+      fgts: 0,
+      provFerias: 0,
+      prov13: 0,
+      abateSaldoFerias: false,
+    });
     const mov: Movimento = {
       id: "1",
       codigo: 996,

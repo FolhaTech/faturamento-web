@@ -112,6 +112,12 @@ export interface CalculateResult {
  *  - "FGTS"/"INSS": linhas de restatement (ex. "F.G.T.S DO MÊS", "I.N.S.S.")
  *    que só reafirmam um valor já refletido nas rubricas de provento do
  *    mesmo colaborador; excluídas para não duplicar a cobrança.
+ *
+ * Pagamento real de férias/1/3 (código marcado com "Abate saldo férias" em
+ * Encargos): o cliente já vem pagando isso mês a mês como Prov. Férias
+ * embutida na BASE dos proventos normais — cobrar o valor cheio de novo
+ * cobraria em dobro. `mov.abatimentoFerias` (congelado no upload, ver
+ * abatimentoFerias.ts) é subtraído do valor antes de qualquer outro cálculo.
  */
 export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResult {
   const colaborador = ctx.colaboradoresPorMatricula.get(mov.matricula);
@@ -129,7 +135,8 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
   const encargo = ctx.encargosPorCodigo.get(mov.codigo);
   const tipo: TipoEvento = encargo?.tipo ?? mov.tipo;
 
-  const valorFace = tipo === "D" || tipo === "R" ? -mov.valor : mov.valor;
+  const valorAbatido = mov.valor - (mov.abatimentoFerias ?? 0);
+  const valorFace = tipo === "D" || tipo === "R" ? -valorAbatido : valorAbatido;
 
   if (tipo === "FGTS" || tipo === "INSS" || tipo === "D" || tipo === "R") {
     return { line: zeroLine(mov, tomador, "excluido", valorFace, tipo), warning: null };

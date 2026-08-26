@@ -16,6 +16,8 @@ export interface Encargo {
   fgts: number;
   provFerias: number;
   prov13: number;
+  /** Marca este código como o pagamento real de férias/1/3 (não a provisão mensal) — abate o saldo de férias do colaborador em vez de cobrar o valor cheio. */
+  abateSaldoFerias: boolean;
 }
 
 export interface Informativa {
@@ -39,6 +41,8 @@ export interface Movimento {
   ref: number;
   tipo: TipoEvento;
   forma: string | null;
+  /** Quanto desse lançamento foi abatido do saldo de férias/1/3 do colaborador — congelado no upload (ver abatimentoFerias.ts). Opcional: ausente = 0. */
+  abatimentoFerias?: number;
 }
 
 /** Valor de cada campo do formulário de Colaborador (ver colaboradorFields.ts). */
@@ -54,4 +58,6 @@ export interface Colaborador {
   admissao: string | null;
   dataDemissao: string | null;
   dados: DadosColaborador;
+  /** Saldo de férias e 1/3 já provisionado/cobrado do tomador, editado manualmente — ver saldo_ferias em db.ts. */
+  saldoFerias: number;
 }

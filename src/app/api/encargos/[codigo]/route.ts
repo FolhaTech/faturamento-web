@@ -9,7 +9,7 @@ const TIPOS: TipoEvento[] = ["P", "D", "I", "R", "FGTS", "INSS"];
 export async function PUT(request: Request, { params }: { params: Promise<{ codigo: string }> }) {
   const { codigo } = await params;
   const body = await request.json();
-  const { evento, tipo, inss655, inss515, fgts, provFerias, prov13 } = body ?? {};
+  const { evento, tipo, inss655, inss515, fgts, provFerias, prov13, abateSaldoFerias } = body ?? {};
 
   if (typeof evento !== "string" || !evento.trim()) return NextResponse.json({ error: "Informe o evento." }, { status: 400 });
   if (!TIPOS.includes(tipo)) return NextResponse.json({ error: `Tipo deve ser um de: ${TIPOS.join(", ")}.` }, { status: 400 });
@@ -23,6 +23,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ codi
     fgts: Number(fgts) || 0,
     provFerias: Number(provFerias) || 0,
     prov13: Number(prov13) || 0,
+    abateSaldoFerias: Boolean(abateSaldoFerias),
   });
   return NextResponse.json({ encargo });
 }

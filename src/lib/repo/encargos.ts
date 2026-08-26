@@ -10,6 +10,7 @@ interface Row {
   fgts: number;
   prov_ferias: number;
   prov_13: number;
+  abate_saldo_ferias: boolean;
 }
 
 function toEncargo(row: Row): Encargo {
@@ -22,6 +23,7 @@ function toEncargo(row: Row): Encargo {
     fgts: row.fgts,
     provFerias: row.prov_ferias,
     prov13: row.prov_13,
+    abateSaldoFerias: row.abate_saldo_ferias,
   };
 }
 
@@ -46,16 +48,18 @@ export interface EncargoInput {
   fgts: number;
   provFerias: number;
   prov13: number;
+  abateSaldoFerias: boolean;
 }
 
 export async function upsertEncargo(input: EncargoInput): Promise<Encargo> {
   await ensureSchema();
   await getDb()`
-    INSERT INTO encargos (codigo, evento, tipo, inss_655, inss_515, fgts, prov_ferias, prov_13)
-    VALUES (${input.codigo}, ${input.evento}, ${input.tipo}, ${input.inss655}, ${input.inss515}, ${input.fgts}, ${input.provFerias}, ${input.prov13})
+    INSERT INTO encargos (codigo, evento, tipo, inss_655, inss_515, fgts, prov_ferias, prov_13, abate_saldo_ferias)
+    VALUES (${input.codigo}, ${input.evento}, ${input.tipo}, ${input.inss655}, ${input.inss515}, ${input.fgts}, ${input.provFerias}, ${input.prov13}, ${input.abateSaldoFerias})
     ON CONFLICT (codigo) DO UPDATE SET
       evento = excluded.evento, tipo = excluded.tipo, inss_655 = excluded.inss_655,
-      inss_515 = excluded.inss_515, fgts = excluded.fgts, prov_ferias = excluded.prov_ferias, prov_13 = excluded.prov_13
+      inss_515 = excluded.inss_515, fgts = excluded.fgts, prov_ferias = excluded.prov_ferias, prov_13 = excluded.prov_13,
+      abate_saldo_ferias = excluded.abate_saldo_ferias
   `;
   return (await getEncargo(input.codigo))!;
 }

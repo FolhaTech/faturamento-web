@@ -13,6 +13,7 @@ interface Row {
   ref: number;
   tipo: string;
   forma: string | null;
+  abatimento_ferias: number;
 }
 
 function toMovimento(row: Row): Movimento {
@@ -27,6 +28,7 @@ function toMovimento(row: Row): Movimento {
     ref: row.ref,
     tipo: row.tipo as Movimento["tipo"],
     forma: row.forma,
+    abatimentoFerias: row.abatimento_ferias,
   };
 }
 
@@ -60,6 +62,29 @@ export interface MovimentoInput {
   ref: number;
   tipo: Movimento["tipo"];
   forma: string | null;
+  /** Ver Movimento.abatimentoFerias. Ausente = 0 (linha comum, sem abatimento de férias). */
+  abatimentoFerias?: number;
+}
+
+/**
+ * Soma de `abatimento_ferias` já aplicado, por matrícula, nos lançamentos das
+ * competências dadas — chame ANTES de replaceMovimentosPorCompetencia (que apaga
+ * essas linhas) para poder devolver esse valor ao saldo de férias antes de
+ * recalcular o abatimento do novo arquivo (ver abatimentoFerias.ts).
+ */
+export async function sumAbatimentoFeriasPorMatricula(competencias: string[]): Promise<Map<number, number>> {
+  const map = new Map<number, number>();
+  if (competencias.length === 0) return map;
+
+  await ensureSchema();
+  const sql = getDb();
+  const rows = await sql<{ matricula: number; total: number }[]>`
+    SELECT matricula, SUM(abatimento_ferias)::float as total FROM movimentos
+    WHERE competencia IN ${sql(competencias)} AND abatimento_ferias != 0
+    GROUP BY matricula
+  `;
+  for (const row of rows) map.set(row.matricula, row.total);
+  return map;
 }
 
 /**
@@ -89,6 +114,7 @@ export async function replaceMovimentosPorCompetencia(linhas: MovimentoInput[]):
             ref: l.ref,
             tipo: l.tipo,
             forma: l.forma,
+            abatimento_ferias: l.abatimentoFerias ?? 0,
           })),
           "id",
           "codigo",
@@ -100,6 +126,7 @@ export async function replaceMovimentosPorCompetencia(linhas: MovimentoInput[]):
           "ref",
           "tipo",
           "forma",
+          "abatimento_ferias",
         )}
       `;
     }

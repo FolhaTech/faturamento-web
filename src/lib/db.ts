@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS encargos (
   prov_ferias DOUBLE PRECISION NOT NULL DEFAULT 0,
   prov_13 DOUBLE PRECISION NOT NULL DEFAULT 0
 );
+-- Marca quais códigos representam o pagamento real de férias/1/3 (não a provisão mensal) —
+-- usado para abater o saldo de férias do colaborador em vez de cobrar o valor cheio de novo.
+ALTER TABLE encargos ADD COLUMN IF NOT EXISTS abate_saldo_ferias BOOLEAN NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS informativas (
   id TEXT PRIMARY KEY,
@@ -43,6 +46,10 @@ CREATE TABLE IF NOT EXISTS colaboradores (
 CREATE INDEX IF NOT EXISTS idx_colaboradores_nome ON colaboradores(nome);
 CREATE INDEX IF NOT EXISTS idx_colaboradores_situacao ON colaboradores(situacao);
 CREATE INDEX IF NOT EXISTS idx_colaboradores_cod_servico ON colaboradores(cod_servico);
+-- Saldo de férias e 1/3 já cobrado do tomador (provisão acumulada), editado manualmente.
+-- Fica FORA da coluna dados/upsertColaborador de propósito: um reimport da base de
+-- Colaboradores sobrescreve essa coluna inteira, o que apagaria o saldo se ele morasse lá.
+ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS saldo_ferias DOUBLE PRECISION NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS movimentos (
   id TEXT PRIMARY KEY,
@@ -58,6 +65,10 @@ CREATE TABLE IF NOT EXISTS movimentos (
 );
 CREATE INDEX IF NOT EXISTS idx_movimentos_competencia ON movimentos(competencia);
 CREATE INDEX IF NOT EXISTS idx_movimentos_matricula ON movimentos(matricula);
+-- Quanto do valor desse lançamento foi abatido do saldo de férias/1/3 do colaborador,
+-- calculado e congelado no momento do upload (ver abatimentoFerias.ts) — não recalcula
+-- sozinho depois, pra não derivar do saldo já consumido em uploads futuros.
+ALTER TABLE movimentos ADD COLUMN IF NOT EXISTS abatimento_ferias DOUBLE PRECISION NOT NULL DEFAULT 0;
 `;
 
 export type Sql = ReturnType<typeof postgres>;

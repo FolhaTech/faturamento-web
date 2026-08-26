@@ -1,6 +1,6 @@
 import { CAMPOS_COLABORADOR } from "./colaboradorFields";
 import { upsertColaborador } from "./repo/colaboradores";
-import { upsertEncargo } from "./repo/encargos";
+import { getEncargo, upsertEncargo } from "./repo/encargos";
 import { createInformativa, findInformativaByEvento, updateInformativa } from "./repo/informativas";
 import { upsertTomador } from "./repo/tomadores";
 import type { DadosColaborador, TipoEvento } from "./types";
@@ -76,6 +76,9 @@ export async function importReferenceBase(buffer: Buffer): Promise<ImportResult>
       seen.add(codigo);
       const tipoRaw = (asString(get(h.get("tipo")!)) ?? "P").toUpperCase();
       const tipo = (["P", "D", "I", "R", "FGTS", "INSS"].includes(tipoRaw) ? tipoRaw : "P") as TipoEvento;
+      // A planilha de referência não tem coluna pra "abate saldo de férias" (é uma marcação
+      // manual feita depois em Encargos) — preserva o que já estava salvo em vez de resetar.
+      const existente = await getEncargo(codigo);
       await upsertEncargo({
         codigo,
         evento: asString(get(h.get("EVENTO")!)) ?? "",
@@ -85,6 +88,7 @@ export async function importReferenceBase(buffer: Buffer): Promise<ImportResult>
         fgts: asNumber(get(h.get("FGTS")!)),
         provFerias: asNumber(get(h.get("PROV FÉR")!)),
         prov13: asNumber(get(h.get("PROV 13º")!)),
+        abateSaldoFerias: existente?.abateSaldoFerias ?? false,
       });
       nEncargos++;
     }

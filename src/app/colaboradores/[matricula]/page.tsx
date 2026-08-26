@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getColaborador } from "@/lib/repo/colaboradores";
 import { ColaboradorForm } from "../ColaboradorForm";
+import { SaldoFeriasCard } from "../SaldoFeriasCard";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ export default async function EditarColaboradorPage({ params }: { params: Promis
         <p className="mt-1 text-sm text-neutral-600">Matrícula {colaborador.matricula}</p>
       </header>
 
+      <SaldoFeriasCard matricula={colaborador.matricula} saldoInicial={colaborador.saldoFerias} />
       <ColaboradorForm matricula={colaborador.matricula} initialDados={colaborador.dados} />
     </main>
   );

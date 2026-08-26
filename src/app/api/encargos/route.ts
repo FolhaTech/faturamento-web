@@ -12,7 +12,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const { codigo, evento, tipo, inss655, inss515, fgts, provFerias, prov13 } = body ?? {};
+  const { codigo, evento, tipo, inss655, inss515, fgts, provFerias, prov13, abateSaldoFerias } = body ?? {};
 
   if (!Number.isFinite(codigo) || codigo <= 0) return NextResponse.json({ error: "Código inválido." }, { status: 400 });
   if (typeof evento !== "string" || !evento.trim()) return NextResponse.json({ error: "Informe o evento." }, { status: 400 });
@@ -27,6 +27,7 @@ export async function POST(request: Request) {
     fgts: Number(fgts) || 0,
     provFerias: Number(provFerias) || 0,
     prov13: Number(prov13) || 0,
+    abateSaldoFerias: Boolean(abateSaldoFerias),
   });
   return NextResponse.json({ encargo }, { status: 201 });
 }

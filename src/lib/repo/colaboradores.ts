@@ -11,6 +11,7 @@ interface Row {
   admissao: string | null;
   data_demissao: string | null;
   dados: string;
+  saldo_ferias: number;
 }
 
 function toColaborador(row: Row): Colaborador {
@@ -24,6 +25,7 @@ function toColaborador(row: Row): Colaborador {
     admissao: row.admissao,
     dataDemissao: row.data_demissao,
     dados: JSON.parse(row.dados) as DadosColaborador,
+    saldoFerias: row.saldo_ferias,
   };
 }
 
@@ -151,6 +153,41 @@ export async function upsertColaborador(input: ColaboradorInput): Promise<Colabo
   `;
 
   return (await getColaborador(input.matricula))!;
+}
+
+/** Define o saldo de férias/1/3 do colaborador (edição manual — ver saldo_ferias em db.ts). */
+export async function updateSaldoFerias(matricula: number, saldoFerias: number): Promise<Colaborador> {
+  await ensureSchema();
+  await getDb()`UPDATE colaboradores SET saldo_ferias = ${saldoFerias} WHERE matricula = ${matricula}`;
+  const colaborador = await getColaborador(matricula);
+  if (!colaborador) throw new Error(`Colaborador ${matricula} não encontrado.`);
+  return colaborador;
+}
+
+/** Saldo de férias/1/3 atual de cada matrícula — usado pelo abatimento no upload de Movimentos. */
+export async function getSaldosFerias(matriculas: number[]): Promise<Map<number, number>> {
+  const map = new Map<number, number>();
+  const unicos = [...new Set(matriculas)];
+  if (unicos.length === 0) return map;
+
+  await ensureSchema();
+  const sql = getDb();
+  const rows = await sql<{ matricula: number; saldo_ferias: number }[]>`
+    SELECT matricula, saldo_ferias FROM colaboradores WHERE matricula IN ${sql(unicos)}
+  `;
+  for (const row of rows) map.set(row.matricula, row.saldo_ferias);
+  return map;
+}
+
+/** Soma `delta` (pode ser negativo) ao saldo de férias/1/3 de cada matrícula em `deltas` — usado pra aplicar/reverter abatimentos. */
+export async function ajustarSaldosFerias(deltas: Map<number, number>): Promise<void> {
+  if (deltas.size === 0) return;
+  await ensureSchema();
+  const sql = getDb();
+  for (const [matricula, delta] of deltas) {
+    if (delta === 0) continue;
+    await sql`UPDATE colaboradores SET saldo_ferias = saldo_ferias + ${delta} WHERE matricula = ${matricula}`;
+  }
 }
 
 /** Situação usada para marcar colaboradores criados automaticamente a partir de um upload de Movimentos, quando a matrícula não é encontrada no cadastro. */
