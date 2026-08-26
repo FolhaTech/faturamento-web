@@ -1,5 +1,5 @@
 import { ensureSchema, getDb } from "../db";
-import type { Colaborador, DadosColaborador } from "../types";
+import type { Colaborador, DadosColaborador, TipoSaldoFerias } from "../types";
 
 interface Row {
   matricula: number;
@@ -12,6 +12,7 @@ interface Row {
   data_demissao: string | null;
   dados: string;
   saldo_ferias: number;
+  saldo_um_terco: number;
 }
 
 function toColaborador(row: Row): Colaborador {
@@ -26,8 +27,14 @@ function toColaborador(row: Row): Colaborador {
     dataDemissao: row.data_demissao,
     dados: JSON.parse(row.dados) as DadosColaborador,
     saldoFerias: row.saldo_ferias,
+    saldoUmTerco: row.saldo_um_terco,
   };
 }
+
+const COLUNA_SALDO: Record<TipoSaldoFerias, "saldo_ferias" | "saldo_um_terco"> = {
+  ferias: "saldo_ferias",
+  terco: "saldo_um_terco",
+};
 
 export interface ListColaboradoresOptions {
   busca?: string;
@@ -155,38 +162,47 @@ export async function upsertColaborador(input: ColaboradorInput): Promise<Colabo
   return (await getColaborador(input.matricula))!;
 }
 
-/** Define o saldo de férias/1/3 do colaborador (edição manual — ver saldo_ferias em db.ts). */
-export async function updateSaldoFerias(matricula: number, saldoFerias: number): Promise<Colaborador> {
+/** Define os saldos de férias e de 1/3 do colaborador (edição manual, mantidos separados — ver saldo_ferias/saldo_um_terco em db.ts). */
+export async function updateSaldosFerias(matricula: number, saldoFerias: number, saldoUmTerco: number): Promise<Colaborador> {
   await ensureSchema();
-  await getDb()`UPDATE colaboradores SET saldo_ferias = ${saldoFerias} WHERE matricula = ${matricula}`;
+  await getDb()`
+    UPDATE colaboradores SET saldo_ferias = ${saldoFerias}, saldo_um_terco = ${saldoUmTerco} WHERE matricula = ${matricula}
+  `;
   const colaborador = await getColaborador(matricula);
   if (!colaborador) throw new Error(`Colaborador ${matricula} não encontrado.`);
   return colaborador;
 }
 
-/** Saldo de férias/1/3 atual de cada matrícula — usado pelo abatimento no upload de Movimentos. */
-export async function getSaldosFerias(matriculas: number[]): Promise<Map<number, number>> {
+/** Saldo (férias OU 1/3, conforme `tipo`) atual de cada matrícula — usado pelo abatimento no upload de Movimentos. */
+export async function getSaldos(tipo: TipoSaldoFerias, matriculas: number[]): Promise<Map<number, number>> {
   const map = new Map<number, number>();
   const unicos = [...new Set(matriculas)];
   if (unicos.length === 0) return map;
 
   await ensureSchema();
   const sql = getDb();
-  const rows = await sql<{ matricula: number; saldo_ferias: number }[]>`
-    SELECT matricula, saldo_ferias FROM colaboradores WHERE matricula IN ${sql(unicos)}
-  `;
-  for (const row of rows) map.set(row.matricula, row.saldo_ferias);
+  const coluna = COLUNA_SALDO[tipo];
+  const rows =
+    coluna === "saldo_ferias"
+      ? await sql<{ matricula: number; saldo: number }[]>`SELECT matricula, saldo_ferias as saldo FROM colaboradores WHERE matricula IN ${sql(unicos)}`
+      : await sql<{ matricula: number; saldo: number }[]>`SELECT matricula, saldo_um_terco as saldo FROM colaboradores WHERE matricula IN ${sql(unicos)}`;
+  for (const row of rows) map.set(row.matricula, row.saldo);
   return map;
 }
 
-/** Soma `delta` (pode ser negativo) ao saldo de férias/1/3 de cada matrícula em `deltas` — usado pra aplicar/reverter abatimentos. */
-export async function ajustarSaldosFerias(deltas: Map<number, number>): Promise<void> {
+/** Soma `delta` (pode ser negativo) ao saldo (férias OU 1/3, conforme `tipo`) de cada matrícula em `deltas` — usado pra aplicar/reverter abatimentos. */
+export async function ajustarSaldos(tipo: TipoSaldoFerias, deltas: Map<number, number>): Promise<void> {
   if (deltas.size === 0) return;
   await ensureSchema();
   const sql = getDb();
+  const coluna = COLUNA_SALDO[tipo];
   for (const [matricula, delta] of deltas) {
     if (delta === 0) continue;
-    await sql`UPDATE colaboradores SET saldo_ferias = saldo_ferias + ${delta} WHERE matricula = ${matricula}`;
+    if (coluna === "saldo_ferias") {
+      await sql`UPDATE colaboradores SET saldo_ferias = saldo_ferias + ${delta} WHERE matricula = ${matricula}`;
+    } else {
+      await sql`UPDATE colaboradores SET saldo_um_terco = saldo_um_terco + ${delta} WHERE matricula = ${matricula}`;
+    }
   }
 }
 

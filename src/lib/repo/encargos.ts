@@ -1,5 +1,5 @@
 import { ensureSchema, getDb } from "../db";
-import type { Encargo, TipoEvento } from "../types";
+import type { Encargo, TipoEvento, TipoSaldoFerias } from "../types";
 
 interface Row {
   codigo: number;
@@ -10,7 +10,7 @@ interface Row {
   fgts: number;
   prov_ferias: number;
   prov_13: number;
-  abate_saldo_ferias: boolean;
+  abate_saldo: string | null;
 }
 
 function toEncargo(row: Row): Encargo {
@@ -23,7 +23,7 @@ function toEncargo(row: Row): Encargo {
     fgts: row.fgts,
     provFerias: row.prov_ferias,
     prov13: row.prov_13,
-    abateSaldoFerias: row.abate_saldo_ferias,
+    abateSaldo: (row.abate_saldo as TipoSaldoFerias | null) ?? null,
   };
 }
 
@@ -48,18 +48,18 @@ export interface EncargoInput {
   fgts: number;
   provFerias: number;
   prov13: number;
-  abateSaldoFerias: boolean;
+  abateSaldo: TipoSaldoFerias | null;
 }
 
 export async function upsertEncargo(input: EncargoInput): Promise<Encargo> {
   await ensureSchema();
   await getDb()`
-    INSERT INTO encargos (codigo, evento, tipo, inss_655, inss_515, fgts, prov_ferias, prov_13, abate_saldo_ferias)
-    VALUES (${input.codigo}, ${input.evento}, ${input.tipo}, ${input.inss655}, ${input.inss515}, ${input.fgts}, ${input.provFerias}, ${input.prov13}, ${input.abateSaldoFerias})
+    INSERT INTO encargos (codigo, evento, tipo, inss_655, inss_515, fgts, prov_ferias, prov_13, abate_saldo)
+    VALUES (${input.codigo}, ${input.evento}, ${input.tipo}, ${input.inss655}, ${input.inss515}, ${input.fgts}, ${input.provFerias}, ${input.prov13}, ${input.abateSaldo})
     ON CONFLICT (codigo) DO UPDATE SET
       evento = excluded.evento, tipo = excluded.tipo, inss_655 = excluded.inss_655,
       inss_515 = excluded.inss_515, fgts = excluded.fgts, prov_ferias = excluded.prov_ferias, prov_13 = excluded.prov_13,
-      abate_saldo_ferias = excluded.abate_saldo_ferias
+      abate_saldo = excluded.abate_saldo
   `;
   return (await getEncargo(input.codigo))!;
 }

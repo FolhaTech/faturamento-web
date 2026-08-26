@@ -1,5 +1,8 @@
 export type TipoEvento = "P" | "D" | "I" | "R" | "FGTS" | "INSS";
 
+/** Qual saldo do colaborador um código de férias/1/3 real abate — ver Encargo.abateSaldo. */
+export type TipoSaldoFerias = "ferias" | "terco";
+
 export interface Tomador {
   codigo: number;
   nome: string;
@@ -16,8 +19,8 @@ export interface Encargo {
   fgts: number;
   provFerias: number;
   prov13: number;
-  /** Marca este código como o pagamento real de férias/1/3 (não a provisão mensal) — abate o saldo de férias do colaborador em vez de cobrar o valor cheio. */
-  abateSaldoFerias: boolean;
+  /** Marca este código como o pagamento real de férias OU de 1/3 (não a provisão mensal) — abate o saldo correspondente do colaborador em vez de cobrar o valor cheio. null = não abate nenhum saldo. */
+  abateSaldo: TipoSaldoFerias | null;
 }
 
 export interface Informativa {
@@ -41,8 +44,10 @@ export interface Movimento {
   ref: number;
   tipo: TipoEvento;
   forma: string | null;
-  /** Quanto desse lançamento foi abatido do saldo de férias/1/3 do colaborador — congelado no upload (ver abatimentoFerias.ts). Opcional: ausente = 0. */
+  /** Quanto desse lançamento foi abatido do saldo (férias ou 1/3) do colaborador — congelado no upload (ver abatimentoFerias.ts). Opcional: ausente = 0. */
   abatimentoFerias?: number;
+  /** De qual saldo veio o abatimento acima — congelado junto, não deriva da classificação atual do código. Opcional: ausente = nenhum abatimento. */
+  abatimentoSaldoTipo?: TipoSaldoFerias | null;
 }
 
 /** Valor de cada campo do formulário de Colaborador (ver colaboradorFields.ts). */
@@ -58,6 +63,8 @@ export interface Colaborador {
   admissao: string | null;
   dataDemissao: string | null;
   dados: DadosColaborador;
-  /** Saldo de férias e 1/3 já provisionado/cobrado do tomador, editado manualmente — ver saldo_ferias em db.ts. */
+  /** Saldo de férias já provisionado/cobrado do tomador, editado manualmente — ver saldo_ferias em db.ts. */
   saldoFerias: number;
+  /** Saldo de 1/3 constitucional já provisionado/cobrado do tomador, editado manualmente — separado do saldo de férias. */
+  saldoUmTerco: number;
 }

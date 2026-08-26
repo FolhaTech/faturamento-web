@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { ensureSchema, getDb } from "../db";
-import type { Movimento } from "../types";
+import type { Movimento, TipoSaldoFerias } from "../types";
 
 interface Row {
   id: string;
@@ -14,6 +14,7 @@ interface Row {
   tipo: string;
   forma: string | null;
   abatimento_ferias: number;
+  abatimento_saldo_tipo: string | null;
 }
 
 function toMovimento(row: Row): Movimento {
@@ -29,6 +30,7 @@ function toMovimento(row: Row): Movimento {
     tipo: row.tipo as Movimento["tipo"],
     forma: row.forma,
     abatimentoFerias: row.abatimento_ferias,
+    abatimentoSaldoTipo: row.abatimento_saldo_tipo as TipoSaldoFerias | null,
   };
 }
 
@@ -62,29 +64,37 @@ export interface MovimentoInput {
   ref: number;
   tipo: Movimento["tipo"];
   forma: string | null;
-  /** Ver Movimento.abatimentoFerias. Ausente = 0 (linha comum, sem abatimento de férias). */
+  /** Ver Movimento.abatimentoFerias. Ausente = 0 (linha comum, sem abatimento). */
   abatimentoFerias?: number;
+  /** Ver Movimento.abatimentoSaldoTipo. Ausente/null = nenhum abatimento. */
+  abatimentoSaldoTipo?: TipoSaldoFerias | null;
 }
 
 /**
- * Soma de `abatimento_ferias` já aplicado, por matrícula, nos lançamentos das
- * competências dadas — chame ANTES de replaceMovimentosPorCompetencia (que apaga
- * essas linhas) para poder devolver esse valor ao saldo de férias antes de
- * recalcular o abatimento do novo arquivo (ver abatimentoFerias.ts).
+ * Soma de `abatimento_ferias` já aplicado, por matrícula e por tipo de saldo (férias/1/3),
+ * nos lançamentos das competências dadas — chame ANTES de replaceMovimentosPorCompetencia
+ * (que apaga essas linhas) para poder devolver esse valor ao saldo certo antes de recalcular
+ * o abatimento do novo arquivo (ver abatimentoFerias.ts).
  */
-export async function sumAbatimentoFeriasPorMatricula(competencias: string[]): Promise<Map<number, number>> {
-  const map = new Map<number, number>();
-  if (competencias.length === 0) return map;
+export async function sumAbatimentoPorMatriculaETipo(
+  competencias: string[],
+): Promise<Record<TipoSaldoFerias, Map<number, number>>> {
+  const resultado: Record<TipoSaldoFerias, Map<number, number>> = { ferias: new Map(), terco: new Map() };
+  if (competencias.length === 0) return resultado;
 
   await ensureSchema();
   const sql = getDb();
-  const rows = await sql<{ matricula: number; total: number }[]>`
-    SELECT matricula, SUM(abatimento_ferias)::float as total FROM movimentos
-    WHERE competencia IN ${sql(competencias)} AND abatimento_ferias != 0
-    GROUP BY matricula
+  const rows = await sql<{ matricula: number; abatimento_saldo_tipo: string; total: number }[]>`
+    SELECT matricula, abatimento_saldo_tipo, SUM(abatimento_ferias)::float as total FROM movimentos
+    WHERE competencia IN ${sql(competencias)} AND abatimento_ferias != 0 AND abatimento_saldo_tipo IS NOT NULL
+    GROUP BY matricula, abatimento_saldo_tipo
   `;
-  for (const row of rows) map.set(row.matricula, row.total);
-  return map;
+  for (const row of rows) {
+    if (row.abatimento_saldo_tipo === "ferias" || row.abatimento_saldo_tipo === "terco") {
+      resultado[row.abatimento_saldo_tipo].set(row.matricula, row.total);
+    }
+  }
+  return resultado;
 }
 
 /**
@@ -115,6 +125,7 @@ export async function replaceMovimentosPorCompetencia(linhas: MovimentoInput[]):
             tipo: l.tipo,
             forma: l.forma,
             abatimento_ferias: l.abatimentoFerias ?? 0,
+            abatimento_saldo_tipo: l.abatimentoSaldoTipo ?? null,
           })),
           "id",
           "codigo",
@@ -127,6 +138,7 @@ export async function replaceMovimentosPorCompetencia(linhas: MovimentoInput[]):
           "tipo",
           "forma",
           "abatimento_ferias",
+          "abatimento_saldo_tipo",
         )}
       `;
     }

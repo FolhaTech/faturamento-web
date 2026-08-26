@@ -23,7 +23,7 @@ async function seedBase() {
     fgts: 0.08,
     provFerias: 0.11110833333333332,
     prov13: 0.08333333333333333,
-    abateSaldoFerias: false,
+    abateSaldo: null,
   });
   await upsertEncargo({
     codigo: 48,
@@ -34,7 +34,7 @@ async function seedBase() {
     fgts: 0,
     provFerias: 0,
     prov13: 0,
-    abateSaldoFerias: false,
+    abateSaldo: null,
   });
   await upsertColaborador({
     matricula: 90103392,
@@ -224,7 +224,7 @@ describe("calculateLine — linhas de restatement (Tipo FGTS / INSS)", () => {
       fgts: 0,
       provFerias: 0,
       prov13: 0,
-      abateSaldoFerias: false,
+      abateSaldo: null,
     });
     const mov: Movimento = {
       id: "1",

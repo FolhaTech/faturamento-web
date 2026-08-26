@@ -22,7 +22,11 @@ export default async function EditarColaboradorPage({ params }: { params: Promis
         <p className="mt-1 text-sm text-neutral-600">Matrícula {colaborador.matricula}</p>
       </header>
 
-      <SaldoFeriasCard matricula={colaborador.matricula} saldoInicial={colaborador.saldoFerias} />
+      <SaldoFeriasCard
+        matricula={colaborador.matricula}
+        saldoFeriasInicial={colaborador.saldoFerias}
+        saldoUmTercoInicial={colaborador.saldoUmTerco}
+      />
       <ColaboradorForm matricula={colaborador.matricula} initialDados={colaborador.dados} />
     </main>
   );

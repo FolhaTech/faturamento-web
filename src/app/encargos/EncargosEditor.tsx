@@ -1,9 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Encargo, TipoEvento } from "@/lib/types";
+import type { Encargo, TipoEvento, TipoSaldoFerias } from "@/lib/types";
 
 const TIPOS: TipoEvento[] = ["P", "D", "I", "R", "FGTS", "INSS"];
+
+const ABATE_SALDO_LABEL: Record<"" | TipoSaldoFerias, string> = { "": "—", ferias: "Férias", terco: "1/3" };
 
 interface FormState {
   codigo: string;
@@ -14,7 +16,7 @@ interface FormState {
   fgts: string;
   provFerias: string;
   prov13: string;
-  abateSaldoFerias: boolean;
+  abateSaldo: "" | TipoSaldoFerias;
 }
 
 const EMPTY: FormState = {
@@ -26,7 +28,7 @@ const EMPTY: FormState = {
   fgts: "",
   provFerias: "",
   prov13: "",
-  abateSaldoFerias: false,
+  abateSaldo: "",
 };
 
 function toForm(e: Encargo): FormState {
@@ -39,7 +41,7 @@ function toForm(e: Encargo): FormState {
     fgts: String(e.fgts * 100),
     provFerias: String(e.provFerias * 100),
     prov13: String(e.prov13 * 100),
-    abateSaldoFerias: e.abateSaldoFerias,
+    abateSaldo: e.abateSaldo ?? "",
   };
 }
 
@@ -96,7 +98,7 @@ export function EncargosEditor({ initial }: { initial: Encargo[] }) {
       fgts: pct(form.fgts),
       provFerias: pct(form.provFerias),
       prov13: pct(form.prov13),
-      abateSaldoFerias: form.abateSaldoFerias,
+      abateSaldo: form.abateSaldo || null,
     };
 
     setBusy(true);
@@ -158,8 +160,11 @@ export function EncargosEditor({ initial }: { initial: Encargo[] }) {
               <th className="px-3 py-2 text-right font-medium">FGTS</th>
               <th className="px-3 py-2 text-right font-medium">Prov. Férias</th>
               <th className="px-3 py-2 text-right font-medium">Prov. 13º</th>
-              <th className="px-3 py-2 text-center font-medium" title="Marca o pagamento real de férias/1/3 — abate o saldo do colaborador em vez de cobrar de novo.">
-                Abate saldo férias
+              <th
+                className="px-3 py-2 text-center font-medium"
+                title="Marca o pagamento real de férias ou de 1/3 — abate o saldo correspondente do colaborador em vez de cobrar de novo."
+              >
+                Abate saldo
               </th>
               <th className="px-3 py-2" />
             </tr>
@@ -181,7 +186,7 @@ export function EncargosEditor({ initial }: { initial: Encargo[] }) {
                   <td className="px-3 py-2 text-right font-mono tabular-nums">{(e.fgts * 100).toFixed(2)}%</td>
                   <td className="px-3 py-2 text-right font-mono tabular-nums">{(e.provFerias * 100).toFixed(2)}%</td>
                   <td className="px-3 py-2 text-right font-mono tabular-nums">{(e.prov13 * 100).toFixed(2)}%</td>
-                  <td className="px-3 py-2 text-center">{e.abateSaldoFerias ? "✓" : ""}</td>
+                  <td className="px-3 py-2 text-center">{ABATE_SALDO_LABEL[e.abateSaldo ?? ""]}</td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     <button type="button" onClick={() => startEdit(e)} className="text-emerald-700 hover:underline">
                       editar
@@ -274,11 +279,15 @@ function EditRow({
       <td className="px-3 py-2 text-right">{num("provFerias", "0")}%</td>
       <td className="px-3 py-2 text-right">{num("prov13", "0")}%</td>
       <td className="px-3 py-2 text-center">
-        <input
-          type="checkbox"
-          checked={form.abateSaldoFerias}
-          onChange={(e) => setForm({ ...form, abateSaldoFerias: e.target.checked })}
-        />
+        <select
+          value={form.abateSaldo}
+          onChange={(e) => setForm({ ...form, abateSaldo: e.target.value as FormState["abateSaldo"] })}
+          className="rounded border border-neutral-300 px-1.5 py-1 text-sm"
+        >
+          <option value="">—</option>
+          <option value="ferias">Férias</option>
+          <option value="terco">1/3</option>
+        </select>
       </td>
       <td className="px-3 py-2 text-right whitespace-nowrap">
         <button type="button" onClick={onSave} disabled={busy} className="text-emerald-700 hover:underline">
