@@ -8,12 +8,14 @@ export function UploadMovimentosForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [cadastrosNovos, setCadastrosNovos] = useState<{ matricula: number; nome: string }[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
     setInfo(null);
+    setCadastrosNovos([]);
     const form = event.currentTarget;
     const input = form.elements.namedItem("file") as HTMLInputElement;
     const file = input.files?.[0];
@@ -34,6 +36,7 @@ export function UploadMovimentosForm() {
         return;
       }
       setInfo(`${data.importados} lançamento(s) importado(s) — competência(s): ${data.competencias.join(", ")}.`);
+      setCadastrosNovos(data.cadastrosNovos ?? []);
       form.reset();
       setFileName(null);
       router.refresh();
@@ -67,6 +70,28 @@ export function UploadMovimentosForm() {
 
       {error && <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{error}</div>}
       {info && <div className="rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm text-emerald-800">{info}</div>}
+      {cadastrosNovos.length > 0 && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <p className="font-medium">
+            {cadastrosNovos.length} matrícula(s) do arquivo não tinham cadastro em Colaboradores — criei um cadastro mínimo (situação
+            &quot;Cadastro pendente&quot;) pra cada uma:
+          </p>
+          <ul className="mt-1 list-disc pl-5">
+            {cadastrosNovos.map((c) => (
+              <li key={c.matricula}>
+                {c.matricula} — {c.nome}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1">
+            Sem Cód Serviço (Tomador) elas ainda não entram no faturamento —{" "}
+            <a href="/colaboradores?situacao=Cadastro+pendente" className="underline hover:no-underline">
+              complete o cadastro
+            </a>{" "}
+            pra somarem na próxima vez que a página de Faturamento for calculada.
+          </p>
+        </div>
+      )}
 
       <button
         type="submit"

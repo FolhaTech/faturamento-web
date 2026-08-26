@@ -153,6 +153,34 @@ export async function upsertColaborador(input: ColaboradorInput): Promise<Colabo
   return (await getColaborador(input.matricula))!;
 }
 
+/** Situação usada para marcar colaboradores criados automaticamente a partir de um upload de Movimentos, quando a matrícula não é encontrada no cadastro. */
+export const SITUACAO_CADASTRO_PENDENTE = "Cadastro pendente";
+
+/**
+ * Cria um cadastro mínimo (matrícula + nome, sem Tomador) para cada matrícula de
+ * `entradas` que ainda não existe em Colaboradores — em vez de só descartar o
+ * lançamento com aviso, o colaborador passa a existir e fica fácil de achar
+ * (filtro de Situação = "Cadastro pendente") para completar o Cód Serviço. Sem
+ * Tomador ainda não entra no faturamento — ver calculateLine em engine.ts.
+ */
+export async function upsertColaboradoresPendentes(entradas: { matricula: number; nome: string }[]): Promise<Colaborador[]> {
+  const matriculas = [...new Set(entradas.map((e) => e.matricula))];
+  const existentes = await getColaboradoresPorMatriculas(matriculas);
+
+  const criados: Colaborador[] = [];
+  const jaCriados = new Set<number>();
+  for (const e of entradas) {
+    if (existentes.has(e.matricula) || jaCriados.has(e.matricula)) continue;
+    jaCriados.add(e.matricula);
+    const colaborador = await upsertColaborador({
+      matricula: e.matricula,
+      dados: { cod_epr: String(e.matricula), nome: e.nome, situacao: SITUACAO_CADASTRO_PENDENTE },
+    });
+    criados.push(colaborador);
+  }
+  return criados;
+}
+
 export async function deleteColaborador(matricula: number): Promise<void> {
   await ensureSchema();
   await getDb()`DELETE FROM colaboradores WHERE matricula = ${matricula}`;

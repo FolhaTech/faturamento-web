@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { upsertColaboradoresPendentes } from "@/lib/repo/colaboradores";
 import { countMovimentos, listCompetencias, replaceMovimentosPorCompetencia } from "@/lib/repo/movimentos";
 import { parseMovimentosFile } from "@/lib/xlsx/parseMovimentos";
 
@@ -38,5 +39,13 @@ export async function POST(request: Request) {
   await replaceMovimentosPorCompetencia(linhas);
   const competencias = [...new Set(linhas.map((l) => l.competencia))];
 
-  return NextResponse.json({ importados: linhas.length, competencias });
+  // Matrícula do arquivo sem cadastro em Colaboradores: cria um cadastro mínimo (sem Tomador) em vez de só
+  // descartar o lançamento — fica visível pra completar, e assim que tiver Cód Serviço entra no faturamento.
+  const cadastrosNovos = await upsertColaboradoresPendentes(linhas.map((l) => ({ matricula: l.matricula, nome: l.nome })));
+
+  return NextResponse.json({
+    importados: linhas.length,
+    competencias,
+    cadastrosNovos: cadastrosNovos.map((c) => ({ matricula: c.matricula, nome: c.nome })),
+  });
 }
