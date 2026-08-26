@@ -80,6 +80,65 @@ function isLayoutCru(sheet: SheetGrid): boolean {
   return typeof first === "number";
 }
 
+/**
+ * Layout "relatório impresso": exportação em formato de relatório paginado
+ * (ex.: Movimentos hospitau.xlsx) — cabeçalho Empresa/CNPJ/Competência e a
+ * linha de colunas se repetem a cada página impressa, o colaborador
+ * ("matrícula - nome") aparece numa linha própria acima dos lançamentos
+ * (não repetido em cada linha) e há linhas de subtotal ("Total do
+ * Empregado:", "Total da empresa:") intercaladas. Colunas fixas por posição:
+ * A(0) Código, E(4) Nome do evento, P(15) Referência/Comp, S(18) Valor
+ * calculado, V(21) Valor informado, Y(24) Tipo, AB(27) Unidade.
+ */
+function isLayoutRelatorio(sheet: SheetGrid): boolean {
+  const first = sheet.rows[0]?.[0];
+  return typeof first === "string" && first.trim() === "Empresa:";
+}
+
+function parseRelatorio(sheet: SheetGrid): MovimentoInput[] {
+  const out: MovimentoInput[] = [];
+  let matricula: number | null = null;
+  let nome = "";
+
+  for (const row of sheet.rows) {
+    if (!row || row.length === 0) continue;
+
+    // Linha de identificação do colaborador ("90103398 - CARLOS EDUARDO DE ASSIS"),
+    // vale para todos os lançamentos seguintes até a próxima ocorrência (inclusive
+    // após quebra de página, quando o mesmo colaborador é re-anunciado).
+    const colaboradorRaw = asString(row[2]);
+    if (colaboradorRaw) {
+      const m = colaboradorRaw.match(MATRICULA_NOME_RE);
+      if (m) {
+        matricula = Number(m[1]);
+        nome = m[2];
+        continue;
+      }
+    }
+
+    // Demais linhas (cabeçalho de página, "Empregados", subtotais, rodapé) não
+    // têm código numérico válido na coluna A e são ignoradas por este filtro.
+    const codigo = asNumber(row[0]);
+    if (!codigo || matricula === null) continue;
+    const evento = asString(row[4]);
+    if (!evento) continue;
+
+    out.push({
+      codigo,
+      matricula,
+      nome,
+      evento,
+      competencia: asString(row[15]) ?? "",
+      valor: asNumber(row[18]),
+      ref: asNumber(row[21]),
+      tipo: toTipo(asString(row[24])),
+      forma: asString(row[27]),
+    });
+  }
+
+  return out;
+}
+
 const NOMES_ABA_MOVIMENTOS = ["Movimentos (2)", "Movimentos"];
 
 export async function parseMovimentosFile(buffer: Buffer): Promise<MovimentoInput[]> {
@@ -88,5 +147,7 @@ export async function parseMovimentosFile(buffer: Buffer): Promise<MovimentoInpu
   if (!sheet) {
     throw new Error(`Nenhuma aba de Movimentos encontrada. Abas disponíveis: ${grid.sheetNames.join(", ")}`);
   }
-  return isLayoutCru(sheet) ? parseCru(sheet) : parseRico(sheet);
+  if (isLayoutCru(sheet)) return parseCru(sheet);
+  if (isLayoutRelatorio(sheet)) return parseRelatorio(sheet);
+  return parseRico(sheet);
 }
