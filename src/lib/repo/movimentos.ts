@@ -15,6 +15,7 @@ interface Row {
   forma: string | null;
   abatimento_ferias: number;
   abatimento_saldo_tipo: string | null;
+  saldo_consumido: number;
 }
 
 function toMovimento(row: Row): Movimento {
@@ -31,6 +32,7 @@ function toMovimento(row: Row): Movimento {
     forma: row.forma,
     abatimentoFerias: row.abatimento_ferias,
     abatimentoSaldoTipo: row.abatimento_saldo_tipo as TipoSaldoFerias | null,
+    saldoConsumido: row.saldo_consumido,
   };
 }
 
@@ -68,15 +70,18 @@ export interface MovimentoInput {
   abatimentoFerias?: number;
   /** Ver Movimento.abatimentoSaldoTipo. Ausente/null = nenhum abatimento. */
   abatimentoSaldoTipo?: TipoSaldoFerias | null;
+  /** Ver Movimento.saldoConsumido. Ausente = 0. */
+  saldoConsumido?: number;
 }
 
 /**
- * Soma de `abatimento_ferias` já aplicado, por matrícula e por tipo de saldo (férias/1/3),
- * nos lançamentos das competências dadas — chame ANTES de replaceMovimentosPorCompetencia
- * (que apaga essas linhas) para poder devolver esse valor ao saldo certo antes de recalcular
- * o abatimento do novo arquivo (ver abatimentoFerias.ts).
+ * Soma de `saldo_consumido` já aplicado, por matrícula e por tipo de saldo (férias/1/3), nos
+ * lançamentos das competências dadas — chame ANTES de replaceMovimentosPorCompetencia (que
+ * apaga essas linhas) para poder devolver esse valor ao saldo certo antes de recalcular o
+ * abatimento do novo arquivo (ver abatimentoFerias.ts). Usa saldo_consumido, NÃO
+ * abatimento_ferias — este último pode passar do saldo realmente tirado (crédito na fatura).
  */
-export async function sumAbatimentoPorMatriculaETipo(
+export async function sumSaldoConsumidoPorMatriculaETipo(
   competencias: string[],
 ): Promise<Record<TipoSaldoFerias, Map<number, number>>> {
   const resultado: Record<TipoSaldoFerias, Map<number, number>> = { ferias: new Map(), terco: new Map() };
@@ -85,8 +90,8 @@ export async function sumAbatimentoPorMatriculaETipo(
   await ensureSchema();
   const sql = getDb();
   const rows = await sql<{ matricula: number; abatimento_saldo_tipo: string; total: number }[]>`
-    SELECT matricula, abatimento_saldo_tipo, SUM(abatimento_ferias)::float as total FROM movimentos
-    WHERE competencia IN ${sql(competencias)} AND abatimento_ferias != 0 AND abatimento_saldo_tipo IS NOT NULL
+    SELECT matricula, abatimento_saldo_tipo, SUM(saldo_consumido)::float as total FROM movimentos
+    WHERE competencia IN ${sql(competencias)} AND saldo_consumido != 0 AND abatimento_saldo_tipo IS NOT NULL
     GROUP BY matricula, abatimento_saldo_tipo
   `;
   for (const row of rows) {
@@ -126,6 +131,7 @@ export async function replaceMovimentosPorCompetencia(linhas: MovimentoInput[]):
             forma: l.forma,
             abatimento_ferias: l.abatimentoFerias ?? 0,
             abatimento_saldo_tipo: l.abatimentoSaldoTipo ?? null,
+            saldo_consumido: l.saldoConsumido ?? 0,
           })),
           "id",
           "codigo",
@@ -139,6 +145,7 @@ export async function replaceMovimentosPorCompetencia(linhas: MovimentoInput[]):
           "forma",
           "abatimento_ferias",
           "abatimento_saldo_tipo",
+          "saldo_consumido",
         )}
       `;
     }
