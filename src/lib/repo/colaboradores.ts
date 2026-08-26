@@ -30,6 +30,18 @@ function toColaborador(row: Row): Colaborador {
 export interface ListColaboradoresOptions {
   busca?: string;
   situacao?: string;
+  /** Cód Emp — código da empresa do grupo (dentro de dados, não promovido a coluna). */
+  codEmp?: string;
+  /** Descrição cargo (dentro de dados). */
+  descricaoCargo?: string;
+  /**
+   * Código do Tomador (coluna cod_servico) — não usar o texto de descricao_servico para filtrar:
+   * o mesmo nome (ex. "ITAU UNIBANCO S.A") pode corresponder a mais de um Tomador (contratos/FPAS
+   * diferentes), e só o código separa esses casos corretamente.
+   */
+  codServico?: number;
+  /** Descrição Dpto (dentro de dados). */
+  descricaoDpto?: string;
   page?: number;
   pageSize?: number;
 }
@@ -48,17 +60,29 @@ export async function listColaboradores(opts: ListColaboradoresOptions = {}): Pr
   const pageSize = Math.min(200, Math.max(1, opts.pageSize ?? 25));
   const busca = opts.busca?.trim() || null;
   const situacao = opts.situacao?.trim() || null;
+  const codEmp = opts.codEmp?.trim() || null;
+  const descricaoCargo = opts.descricaoCargo?.trim() || null;
+  const codServico = opts.codServico ?? null;
+  const descricaoDpto = opts.descricaoDpto?.trim() || null;
 
   const [{ n: total }] = await sql<{ n: number }[]>`
     SELECT COUNT(*)::int as n FROM colaboradores
     WHERE (${busca}::text IS NULL OR nome ILIKE '%' || ${busca} || '%' OR CAST(matricula AS TEXT) LIKE '%' || ${busca} || '%')
       AND (${situacao}::text IS NULL OR situacao = ${situacao})
+      AND (${codEmp}::text IS NULL OR dados::jsonb ->> 'cod_emp' = ${codEmp})
+      AND (${descricaoCargo}::text IS NULL OR dados::jsonb ->> 'descricao_cargo' = ${descricaoCargo})
+      AND (${codServico}::int IS NULL OR cod_servico = ${codServico})
+      AND (${descricaoDpto}::text IS NULL OR dados::jsonb ->> 'descricao_dpto' = ${descricaoDpto})
   `;
 
   const rows = await sql<Row[]>`
     SELECT * FROM colaboradores
     WHERE (${busca}::text IS NULL OR nome ILIKE '%' || ${busca} || '%' OR CAST(matricula AS TEXT) LIKE '%' || ${busca} || '%')
       AND (${situacao}::text IS NULL OR situacao = ${situacao})
+      AND (${codEmp}::text IS NULL OR dados::jsonb ->> 'cod_emp' = ${codEmp})
+      AND (${descricaoCargo}::text IS NULL OR dados::jsonb ->> 'descricao_cargo' = ${descricaoCargo})
+      AND (${codServico}::int IS NULL OR cod_servico = ${codServico})
+      AND (${descricaoDpto}::text IS NULL OR dados::jsonb ->> 'descricao_dpto' = ${descricaoDpto})
     ORDER BY nome
     LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
   `;
@@ -142,3 +166,15 @@ export async function listSituacoes(): Promise<string[]> {
   `;
   return rows.map((r) => r.situacao);
 }
+
+/** Valores distintos e não vazios de um campo de `dados` (JSON) — usado para popular os dropdowns de filtro. */
+export async function listValoresDistintosDados(campo: string): Promise<string[]> {
+  await ensureSchema();
+  const rows = await getDb()<{ v: string }[]>`
+    SELECT DISTINCT dados::jsonb ->> ${campo} as v FROM colaboradores
+    WHERE dados::jsonb ->> ${campo} IS NOT NULL AND dados::jsonb ->> ${campo} != ''
+    ORDER BY v
+  `;
+  return rows.map((r) => r.v);
+}
+

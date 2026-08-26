@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { listColaboradores, listSituacoes } from "@/lib/repo/colaboradores";
+import { listColaboradores, listSituacoes, listValoresDistintosDados } from "@/lib/repo/colaboradores";
+import { listTomadores } from "@/lib/repo/tomadores";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +9,10 @@ const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "
 interface SearchParams {
   busca?: string;
   situacao?: string;
+  codEmp?: string;
+  descricaoCargo?: string;
+  codServico?: string;
+  descricaoDpto?: string;
   page?: string;
 }
 
@@ -15,20 +20,42 @@ export default async function ColaboradoresPage({ searchParams }: { searchParams
   const sp = await searchParams;
   const busca = sp.busca ?? "";
   const situacao = sp.situacao ?? "";
+  const codEmp = sp.codEmp ?? "";
+  const descricaoCargo = sp.descricaoCargo ?? "";
+  const codServicoStr = sp.codServico ?? "";
+  const codServico = codServicoStr ? Number(codServicoStr) : undefined;
+  const descricaoDpto = sp.descricaoDpto ?? "";
   const page = Number(sp.page ?? "1") || 1;
   const pageSize = 25;
 
-  const [{ items, total }, situacoes] = await Promise.all([
-    listColaboradores({ busca, situacao, page, pageSize }),
+  const [{ items, total }, situacoes, codEmps, descricoesCargo, tomadores, descricoesDpto] = await Promise.all([
+    listColaboradores({ busca, situacao, codEmp, descricaoCargo, codServico, descricaoDpto, page, pageSize }),
     listSituacoes(),
+    listValoresDistintosDados("cod_emp"),
+    listValoresDistintosDados("descricao_cargo"),
+    listTomadores(),
+    listValoresDistintosDados("descricao_dpto"),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const filtrosAtivos = busca || situacao || codEmp || descricaoCargo || codServicoStr || descricaoDpto;
+
+  // Mesmo nome pode aparecer em mais de um Tomador (ex.: 2 contratos "ITAU UNIBANCO S.A" com FPAS diferentes) —
+  // mostra o código junto no rótulo só quando o nome se repete, pra não desambiguar à toa.
+  const contagemPorNome = new Map<string, number>();
+  for (const t of tomadores) contagemPorNome.set(t.nome, (contagemPorNome.get(t.nome) ?? 0) + 1);
+  function labelTomador(t: { codigo: number; nome: string }): string {
+    return (contagemPorNome.get(t.nome) ?? 0) > 1 ? `${t.nome} (cód. ${t.codigo})` : t.nome;
+  }
 
   function pageHref(p: number): string {
     const params = new URLSearchParams();
     if (busca) params.set("busca", busca);
     if (situacao) params.set("situacao", situacao);
+    if (codEmp) params.set("codEmp", codEmp);
+    if (descricaoCargo) params.set("descricaoCargo", descricaoCargo);
+    if (codServicoStr) params.set("codServico", codServicoStr);
+    if (descricaoDpto) params.set("descricaoDpto", descricaoDpto);
     params.set("page", String(p));
     return `/colaboradores?${params.toString()}`;
   }
@@ -73,10 +100,58 @@ export default async function ColaboradoresPage({ searchParams }: { searchParams
             ))}
           </select>
         </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-neutral-500">Cód Emp</label>
+          <select name="codEmp" defaultValue={codEmp} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm">
+            <option value="">Todos</option>
+            {codEmps.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-neutral-500">Descrição cargo</label>
+          <select name="descricaoCargo" defaultValue={descricaoCargo} className="min-w-48 rounded-md border border-neutral-300 px-3 py-1.5 text-sm">
+            <option value="">Todos</option>
+            {descricoesCargo.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-neutral-500">Descrição Serviço (Tomador)</label>
+          <select
+            name="codServico"
+            defaultValue={codServicoStr}
+            className="min-w-56 rounded-md border border-neutral-300 px-3 py-1.5 text-sm"
+          >
+            <option value="">Todos</option>
+            {tomadores.map((t) => (
+              <option key={t.codigo} value={t.codigo}>
+                {labelTomador(t)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-neutral-500">Descrição Dpto</label>
+          <select name="descricaoDpto" defaultValue={descricaoDpto} className="min-w-48 rounded-md border border-neutral-300 px-3 py-1.5 text-sm">
+            <option value="">Todos</option>
+            {descricoesDpto.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
+        </div>
         <button type="submit" className="rounded-md border border-neutral-300 bg-white px-4 py-1.5 text-sm font-medium hover:bg-neutral-50">
           Filtrar
         </button>
-        {(busca || situacao) && (
+        {filtrosAtivos && (
           <Link href="/colaboradores" className="text-sm text-neutral-500 hover:underline">
             limpar
           </Link>
@@ -116,7 +191,9 @@ export default async function ColaboradoresPage({ searchParams }: { searchParams
                     {c.situacao ?? "—"}
                   </span>
                 </td>
-                <td className="px-3 py-2 text-neutral-600">{c.descricaoServico ?? "—"}</td>
+                <td className="px-3 py-2 text-neutral-600">
+                  {c.descricaoServico ? labelTomador({ codigo: c.codServico ?? 0, nome: c.descricaoServico }) : "—"}
+                </td>
                 <td className="px-3 py-2 text-right font-mono tabular-nums">{currency.format(c.salario)}</td>
               </tr>
             ))}
