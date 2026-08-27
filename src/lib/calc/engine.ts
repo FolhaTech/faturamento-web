@@ -4,6 +4,7 @@ import { listInformativas } from "../repo/informativas";
 import { listTomadores } from "../repo/tomadores";
 import { normalizaTexto } from "../text";
 import type { Colaborador, Encargo, Movimento, TipoEvento, Tomador } from "../types";
+import { CODIGO_DESCONTO_SALDO_FERIAS, CODIGO_DESCONTO_SALDO_UM_TERCO } from "./descontoSaldoFerias";
 
 /**
  * Fator de gross-up da nota fiscal: 1 - (PIS 1,65% + COFINS 7,6% + ISS 2% +
@@ -119,6 +120,12 @@ export interface CalculateResult {
  * cheio de novo cobraria em dobro. `mov.abatimentoFerias` (congelado no
  * upload contra o saldo certo — férias ou 1/3, são saldos separados — ver
  * abatimentoFerias.ts) é subtraído do valor antes de qualquer outro cálculo.
+ *
+ * Desconto de saldo de férias/1/3 lançado manualmente na tela do colaborador
+ * (códigos reservados CODIGO_DESCONTO_SALDO_*, ver descontoSaldoFerias.ts):
+ * entra no total INTEGRALMENTE pelo valor exato digitado, sem taxa
+ * administrativa nem gross-up de NF — não é um provento normal, é um
+ * abatimento direto do que já foi cobrado do tomador.
  */
 export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResult {
   const colaborador = ctx.colaboradoresPorMatricula.get(mov.matricula);
@@ -131,6 +138,14 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
   const tomador = ctx.tomadoresPorCodigo.get(colaborador.codServico);
   if (!tomador) {
     return { line: null, warning: `Tomador cód. ${colaborador.codServico} (colaborador ${mov.matricula}) não encontrado em Tomadores — lançamento "${mov.evento}" ignorado.` };
+  }
+
+  if (mov.codigo === CODIGO_DESCONTO_SALDO_FERIAS || mov.codigo === CODIGO_DESCONTO_SALDO_UM_TERCO) {
+    const valor = mov.valor;
+    return {
+      line: { ...zeroLine(mov, tomador, "encargos", valor, mov.tipo), base: valor, fatura: valor, nf: valor },
+      warning: null,
+    };
   }
 
   const encargo = ctx.encargosPorCodigo.get(mov.codigo);
