@@ -151,3 +151,20 @@ export async function deleteCompetencia(competencia: string): Promise<void> {
   await ensureSchema();
   await getDb()`DELETE FROM movimentos WHERE competencia = ${competencia}`;
 }
+
+/**
+ * Insere UM lançamento avulso, sem apagar o resto da competência (diferente de
+ * replaceMovimentosPorCompetencia, que substitui tudo) — usado pelo desconto de saldo de
+ * férias/1/3 lançado manualmente na tela do colaborador. Atenção: reenviar o arquivo da
+ * folha daquela competência mais tarde APAGA esse lançamento avulso junto com os demais.
+ */
+export async function insertMovimentoAvulso(input: MovimentoInput): Promise<void> {
+  await ensureSchema();
+  await getDb()`
+    INSERT INTO movimentos (id, codigo, matricula, nome, evento, competencia, valor, ref, tipo, forma, abatimento_ferias, abatimento_saldo_tipo)
+    VALUES (
+      ${randomUUID()}, ${input.codigo}, ${input.matricula}, ${input.nome}, ${input.evento}, ${input.competencia},
+      ${input.valor}, ${input.ref}, ${input.tipo}, ${input.forma}, ${input.abatimentoFerias ?? 0}, ${input.abatimentoSaldoTipo ?? null}
+    )
+  `;
+}
