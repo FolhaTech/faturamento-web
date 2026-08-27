@@ -389,7 +389,7 @@ const CODIGO_FGTS_MULTA = 900014;
  *   Aviso Prévio                              = Salário × 8,33%
  *   13º s/Aviso Prévio                        = Aviso Prévio / 12
  *   Férias s/Aviso Prévio + 1/3 s/Férias      = (13º s/Aviso Prévio / 3) + 13º s/Aviso Prévio
- *   FGTS s/13º e Férias s/Aviso Prévio         = (13º s/Aviso Prévio + Férias s/Aviso Prévio) × 8%
+ *   FGTS s/13º e Férias s/Aviso Prévio         = (Aviso Prévio + 13º s/Aviso Prévio) × 8%
  *   FGTS - Multa                               = (Aviso Prévio + 13º s/Aviso Prévio + Férias s/Aviso Prévio) × 5,18%
  *
  * Cobradas pelo valor cheio + taxa administrativa + gross-up, sem INSS/FGTS/provisões do
@@ -428,7 +428,7 @@ function generateProvisaoRescisaoCharges(movimentos: Movimento[], ctx: EngineCon
       const avisoPrevio = colaborador.salario * 0.0833;
       const dec13SobreAviso = avisoPrevio / 12;
       const feriasSobreAviso = dec13SobreAviso / 3 + dec13SobreAviso;
-      const fgtsSobre13EFerias = (dec13SobreAviso + feriasSobreAviso) * 0.08;
+      const fgtsSobre13EFerias = (avisoPrevio + dec13SobreAviso) * 0.08;
       const fgtsMulta = (avisoPrevio + dec13SobreAviso + feriasSobreAviso) * 0.0518;
 
       const itens: { codigo: number; evento: string; valor: number }[] = [
