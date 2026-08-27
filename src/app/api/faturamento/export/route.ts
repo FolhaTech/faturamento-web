@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { NextResponse } from "next/server";
-import { aggregateByTomador } from "@/lib/calc/aggregate";
+import { aggregateByCcusto } from "@/lib/calc/aggregate";
 import { runEngine } from "@/lib/calc/engine";
 import { filtrarLinesPorColaborador } from "@/lib/calc/filtroColaboradores";
 import { FaturamentoPdf } from "@/lib/pdf/FaturamentoPdf";
@@ -12,11 +12,10 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const competencia = url.searchParams.get("competencia");
-  const tomadorCodigo = Number(url.searchParams.get("tomador"));
+  const ccustoCodigo = url.searchParams.get("ccusto") ?? "";
   const codEmp = url.searchParams.get("codEmp") ?? undefined;
   const descricaoCargo = url.searchParams.get("descricaoCargo") ?? undefined;
   const descricaoDpto = url.searchParams.get("descricaoDpto") ?? undefined;
-  const descricaoCcusto = url.searchParams.get("descricaoCcusto") ?? undefined;
 
   if (!competencia) {
     return NextResponse.json({ error: "Informe a competência (?competencia=MM/AAAA)." }, { status: 400 });
@@ -28,12 +27,12 @@ export async function GET(request: Request) {
   }
 
   const { lines: allLines, warnings } = await runEngine(movimentos);
-  const lines = await filtrarLinesPorColaborador(allLines, { codEmp, descricaoCargo, descricaoDpto, descricaoCcusto });
-  const resumos = aggregateByTomador(lines, competencia);
-  const resumo = resumos.find((r) => r.tomadorCodigo === tomadorCodigo);
+  const lines = await filtrarLinesPorColaborador(allLines, { codEmp, descricaoCargo, descricaoDpto });
+  const resumos = aggregateByCcusto(lines, competencia);
+  const resumo = resumos.find((r) => r.ccustoCodigo === ccustoCodigo);
 
   if (!resumo) {
-    return NextResponse.json({ error: "Tomador não encontrado nessa competência." }, { status: 404 });
+    return NextResponse.json({ error: "Centro de custo não encontrado nessa competência." }, { status: 404 });
   }
 
   // @react-pdf/renderer tipa renderToBuffer esperando um <Document> literal; FaturamentoPdf
@@ -41,7 +40,7 @@ export async function GET(request: Request) {
   const pdfElement = createElement(FaturamentoPdf, { resumo, warnings }) as Parameters<typeof renderToBuffer>[0];
   const buffer = await renderToBuffer(pdfElement);
 
-  const filename = `Faturamento-${resumo.tomadorNome}-${competencia.replace("/", "-")}.pdf`.replace(/[^a-zA-Z0-9._-]+/g, "_");
+  const filename = `Faturamento-${resumo.ccustoNome}-${competencia.replace("/", "-")}.pdf`.replace(/[^a-zA-Z0-9._-]+/g, "_");
 
   return new NextResponse(buffer as unknown as BodyInit, {
     headers: {

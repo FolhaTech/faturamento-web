@@ -1,5 +1,5 @@
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
-import type { ColaboradorResumo, RubricaSomada, TomadorResumo } from "../calc/aggregate";
+import type { ColaboradorResumo, RubricaSomada, CcustoResumo } from "../calc/aggregate";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 function fmt(n: number): string {
@@ -93,19 +93,19 @@ const styles = StyleSheet.create({
   footnote: { fontSize: 7, color: INK_SOFT, marginTop: 6 },
 });
 
-function Footer({ resumo }: { resumo: TomadorResumo }) {
+function Footer({ resumo }: { resumo: CcustoResumo }) {
   return (
     <Text
       style={styles.footer}
       render={({ pageNumber, totalPages }) =>
-        `${resumo.tomadorNome} · ${resumo.competencia}     •     página ${pageNumber} de ${totalPages}`
+        `${resumo.ccustoNome} (${resumo.tomadorNome}) · ${resumo.competencia}     •     página ${pageNumber} de ${totalPages}`
       }
       fixed
     />
   );
 }
 
-function SummarySection({ resumo }: { resumo: TomadorResumo }) {
+function SummarySection({ resumo }: { resumo: CcustoResumo }) {
   return (
     <View>
       <Text style={styles.sectionTitle}>Resumo</Text>
@@ -183,7 +183,7 @@ const RUBRICA_COLS: { key: keyof RubricaSomada; label: string; width: string; st
   { key: "nf", label: "NF", width: "7%" },
 ];
 
-function RubricasSection({ resumo }: { resumo: TomadorResumo }) {
+function RubricasSection({ resumo }: { resumo: CcustoResumo }) {
   const comImpacto = resumo.rubricas.filter((r) => r.trilha !== "excluido");
   const ocultas = resumo.rubricas.length - comImpacto.length;
 
@@ -244,7 +244,7 @@ function tipoLabel(tipo: RubricaSomada["tipo"]): string {
   return tipo;
 }
 
-function DescontosSection({ resumo }: { resumo: TomadorResumo }) {
+function DescontosSection({ resumo }: { resumo: CcustoResumo }) {
   const descontos = resumo.rubricas.filter((r) => r.trilha === "excluido");
   if (descontos.length === 0) return null;
 
@@ -284,7 +284,7 @@ const COLAB_COLS: { key: keyof ColaboradorResumo; label: string; width: string }
   { key: "nf", label: "NF", width: "11%" },
 ];
 
-function ColaboradoresSection({ resumo }: { resumo: TomadorResumo }) {
+function ColaboradoresSection({ resumo }: { resumo: CcustoResumo }) {
   return (
     <View break>
       <Text style={styles.sectionTitle}>Detalhamento por colaborador ({resumo.qtdColaboradores})</Text>
@@ -318,17 +318,17 @@ function ColaboradoresSection({ resumo }: { resumo: TomadorResumo }) {
   );
 }
 
-export function FaturamentoPdf({ resumo, warnings }: { resumo: TomadorResumo; warnings: string[] }) {
+export function FaturamentoPdf({ resumo, warnings }: { resumo: CcustoResumo; warnings: string[] }) {
   const geradoEm = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date());
 
   return (
-    <Document title={`Faturamento - ${resumo.tomadorNome} - ${resumo.competencia}`}>
+    <Document title={`Faturamento - ${resumo.ccustoNome} - ${resumo.competencia}`}>
       <Page size="A4" orientation="landscape" style={styles.page}>
         <View style={styles.header}>
           <View>
             <Text style={styles.eyebrow}>Relatório de Faturamento</Text>
-            <Text style={styles.title}>{resumo.tomadorNome}</Text>
-            <Text style={styles.subtitle}>Competência {resumo.competencia}</Text>
+            <Text style={styles.title}>{resumo.ccustoNome}</Text>
+            <Text style={styles.subtitle}>Tomador: {resumo.tomadorNome} · Competência {resumo.competencia}</Text>
           </View>
           <View style={styles.metaBlock}>
             <Text style={styles.metaLabel}>Gerado em</Text>

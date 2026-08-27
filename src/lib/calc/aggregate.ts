@@ -121,7 +121,11 @@ export interface ColaboradorResumo {
   rubricas: RubricaSomada[];
 }
 
-export interface TomadorResumo {
+export interface CcustoResumo {
+  /** Eixo de agrupamento da fatura (ver aggregateByCcusto) — vem de dados.cod_ccusto/descricao_ccusto do colaborador. */
+  ccustoCodigo: string;
+  ccustoNome: string;
+  /** Tomador do colaborador (cod_servico) — fonte de FPAS/taxa admin usada no cálculo; só referência aqui, não é mais o eixo de agrupamento. */
   tomadorCodigo: number;
   tomadorNome: string;
   competencia: string;
@@ -142,25 +146,27 @@ function sum<T>(items: T[], pick: (item: T) => number): number {
   return items.reduce((acc, item) => acc + pick(item), 0);
 }
 
-/** Agrega as linhas calculadas (já filtradas por competência) em um RESUMO por Tomador, com detalhamento por colaborador. */
-export function aggregateByTomador(lines: CalculatedLine[], competencia: string): TomadorResumo[] {
+/** Agrega as linhas calculadas (já filtradas por competência) em um RESUMO por Centro de Custo, com detalhamento por colaborador. */
+export function aggregateByCcusto(lines: CalculatedLine[], competencia: string): CcustoResumo[] {
   const doMes = lines.filter((l) => l.competencia === competencia);
 
-  const porTomador = new Map<number, CalculatedLine[]>();
+  const porCcusto = new Map<string, CalculatedLine[]>();
   for (const l of doMes) {
-    const arr = porTomador.get(l.tomadorCodigo) ?? [];
+    const arr = porCcusto.get(l.ccustoCodigo) ?? [];
     arr.push(l);
-    porTomador.set(l.tomadorCodigo, arr);
+    porCcusto.set(l.ccustoCodigo, arr);
   }
 
-  const out: TomadorResumo[] = [];
-  for (const [tomadorCodigo, tomadorLines] of porTomador) {
-    const tomadorNome = tomadorLines[0].tomadorNome;
+  const out: CcustoResumo[] = [];
+  for (const [ccustoCodigo, ccustoLines] of porCcusto) {
+    const ccustoNome = ccustoLines[0].ccustoNome;
+    const tomadorCodigo = ccustoLines[0].tomadorCodigo;
+    const tomadorNome = ccustoLines[0].tomadorNome;
 
-    const totalDespesas = sum(tomadorLines, (l) => l.base);
-    const taxaAdministrativa = sum(tomadorLines, (l) => l.taxaAdmValor);
+    const totalDespesas = sum(ccustoLines, (l) => l.base);
+    const taxaAdministrativa = sum(ccustoLines, (l) => l.taxaAdmValor);
     const totalFaturaSemEncargos = totalDespesas + taxaAdministrativa;
-    const totalFatura = sum(tomadorLines, (l) => l.nf);
+    const totalFatura = sum(ccustoLines, (l) => l.nf);
 
     const encargosFatura: EncargosFatura = {
       pis: totalFatura * 0.0165,
@@ -173,7 +179,7 @@ export function aggregateByTomador(lines: CalculatedLine[], competencia: string)
     encargosFatura.total = encargosFatura.pis + encargosFatura.cofins + encargosFatura.iss + encargosFatura.csll + encargosFatura.irrf;
 
     const faturaExcluidaInss = sum(
-      tomadorLines.filter((l) => l.trilha === "beneficio" && ehBeneficioExcluidoDaBaseInss(l.evento)),
+      ccustoLines.filter((l) => l.trilha === "beneficio" && ehBeneficioExcluidoDaBaseInss(l.evento)),
       (l) => l.nf,
     );
     const baseRetencaoInss = totalFatura - faturaExcluidaInss;
@@ -192,7 +198,7 @@ export function aggregateByTomador(lines: CalculatedLine[], competencia: string)
     const valorLiquido = totalFatura - retencoes.total;
 
     const porColaborador = new Map<number, CalculatedLine[]>();
-    for (const l of tomadorLines) {
+    for (const l of ccustoLines) {
       const arr = porColaborador.get(l.matricula) ?? [];
       arr.push(l);
       porColaborador.set(l.matricula, arr);
@@ -211,11 +217,13 @@ export function aggregateByTomador(lines: CalculatedLine[], competencia: string)
       .sort((a, b) => a.nome.localeCompare(b.nome));
 
     out.push({
+      ccustoCodigo,
+      ccustoNome,
       tomadorCodigo,
       tomadorNome,
       competencia,
       qtdColaboradores: colaboradores.length,
-      rubricas: agruparPorEvento(tomadorLines),
+      rubricas: agruparPorEvento(ccustoLines),
       totalDespesas,
       taxaAdministrativa,
       totalFaturaSemEncargos,
@@ -228,5 +236,5 @@ export function aggregateByTomador(lines: CalculatedLine[], competencia: string)
     });
   }
 
-  return out.sort((a, b) => a.tomadorNome.localeCompare(b.tomadorNome));
+  return out.sort((a, b) => a.ccustoNome.localeCompare(b.ccustoNome));
 }

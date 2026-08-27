@@ -13,6 +13,9 @@ import { CODIGO_DESCONTO_SALDO_FERIAS, CODIGO_DESCONTO_SALDO_UM_TERCO } from "./
  */
 export const GROSS_UP_FACTOR = 0.8675;
 
+/** Sentinela pra colaborador sem Ccusto cadastrado — mantém a linha visível em vez de sumir do faturamento. */
+export const CCUSTO_SEM_CADASTRO = { codigo: "0", nome: "Sem centro de custo" };
+
 export interface CalculatedLine {
   matricula: number;
   nome: string;
@@ -20,8 +23,12 @@ export interface CalculatedLine {
   evento: string;
   competencia: string;
   tipo: TipoEvento;
+  /** Tomador do colaborador (cod_servico) — fonte de FPAS/taxa admin; não é mais o eixo de agrupamento da fatura, ver ccustoCodigo. */
   tomadorCodigo: number;
   tomadorNome: string;
+  /** Centro de custo do colaborador (dados.cod_ccusto/descricao_ccusto) — eixo de agrupamento da fatura (ver aggregateByCcusto). */
+  ccustoCodigo: string;
+  ccustoNome: string;
   trilha: "encargos" | "beneficio" | "excluido";
   dre: number;
   inss: number;
@@ -56,7 +63,22 @@ export async function buildContext(movimentos: Movimento[]): Promise<EngineConte
   return { encargosPorCodigo, colaboradoresPorMatricula, tomadoresPorCodigo };
 }
 
-function zeroLine(mov: Movimento, tomador: Tomador, trilha: CalculatedLine["trilha"], dre: number, tipo: TipoEvento): CalculatedLine {
+/** Lê o centro de custo do colaborador (dados.cod_ccusto/descricao_ccusto); cai no sentinela "Sem centro de custo" quando não cadastrado. */
+function getCcusto(colaborador: Colaborador): { codigo: string; nome: string } {
+  const codigo = colaborador.dados.cod_ccusto;
+  const nome = colaborador.dados.descricao_ccusto;
+  if (codigo === null || codigo === undefined || String(codigo).trim() === "") return CCUSTO_SEM_CADASTRO;
+  return { codigo: String(codigo), nome: nome ? String(nome) : String(codigo) };
+}
+
+function zeroLine(
+  mov: Movimento,
+  tomador: Tomador,
+  ccusto: { codigo: string; nome: string },
+  trilha: CalculatedLine["trilha"],
+  dre: number,
+  tipo: TipoEvento,
+): CalculatedLine {
   return {
     matricula: mov.matricula,
     nome: mov.nome,
@@ -66,6 +88,8 @@ function zeroLine(mov: Movimento, tomador: Tomador, trilha: CalculatedLine["tril
     tipo,
     tomadorCodigo: tomador.codigo,
     tomadorNome: tomador.nome,
+    ccustoCodigo: ccusto.codigo,
+    ccustoNome: ccusto.nome,
     trilha,
     dre,
     inss: 0,
@@ -139,11 +163,12 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
   if (!tomador) {
     return { line: null, warning: `Tomador cód. ${colaborador.codServico} (colaborador ${mov.matricula}) não encontrado em Tomadores — lançamento "${mov.evento}" ignorado.` };
   }
+  const ccusto = getCcusto(colaborador);
 
   if (mov.codigo === CODIGO_DESCONTO_SALDO_FERIAS || mov.codigo === CODIGO_DESCONTO_SALDO_UM_TERCO) {
     const valor = mov.valor;
     return {
-      line: { ...zeroLine(mov, tomador, "encargos", valor, mov.tipo), base: valor, fatura: valor, nf: valor },
+      line: { ...zeroLine(mov, tomador, ccusto, "encargos", valor, mov.tipo), base: valor, fatura: valor, nf: valor },
       warning: null,
     };
   }
@@ -155,7 +180,7 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
   const valorFace = tipo === "D" || tipo === "R" ? -valorAbatido : valorAbatido;
 
   if (tipo === "FGTS" || tipo === "INSS" || tipo === "D" || tipo === "R") {
-    return { line: zeroLine(mov, tomador, "excluido", valorFace, tipo), warning: null };
+    return { line: zeroLine(mov, tomador, ccusto, "excluido", valorFace, tipo), warning: null };
   }
 
   if (tipo === "I") {
@@ -164,7 +189,7 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
     const fatura = base + taxaAdmValor;
     const nf = fatura / GROSS_UP_FACTOR;
     return {
-      line: { ...zeroLine(mov, tomador, "beneficio", valorFace, tipo), base, taxaAdmValor, fatura, impostos: nf - fatura, nf },
+      line: { ...zeroLine(mov, tomador, ccusto, "beneficio", valorFace, tipo), base, taxaAdmValor, fatura, impostos: nf - fatura, nf },
       warning: null,
     };
   }
@@ -209,6 +234,8 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
       tipo,
       tomadorCodigo: tomador.codigo,
       tomadorNome: tomador.nome,
+      ccustoCodigo: ccusto.codigo,
+      ccustoNome: ccusto.nome,
       trilha: "encargos",
       dre: valorFace,
       inss,
@@ -291,6 +318,7 @@ async function generateComplementaryCharges(movimentos: Movimento[], ctx: Engine
       if (colaborador.codServico == null) continue;
       const tomador = ctx.tomadoresPorCodigo.get(colaborador.codServico);
       if (!tomador) continue;
+      const ccusto = getCcusto(colaborador);
       const jaLancado = jaLancadoPorColaborador.get(colaborador.matricula) ?? new Set<string>();
 
       for (const item of fixas) {
@@ -314,6 +342,8 @@ async function generateComplementaryCharges(movimentos: Movimento[], ctx: Engine
           tipo: "I",
           tomadorCodigo: tomador.codigo,
           tomadorNome: tomador.nome,
+          ccustoCodigo: ccusto.codigo,
+          ccustoNome: ccusto.nome,
           trilha: "beneficio",
           dre: base,
           inss: 0,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { RubricaSomada, TomadorResumo } from "@/lib/calc/aggregate";
+import type { CcustoResumo, RubricaSomada } from "@/lib/calc/aggregate";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 function fmt(n: number): string {
@@ -13,31 +13,31 @@ export function FaturamentoViewer({
   warnings,
   filtrosQuery,
 }: {
-  resumos: TomadorResumo[];
+  resumos: CcustoResumo[];
   warnings: string[];
   /** Filtros de colaborador (Cód Emp/Cargo/Dpto) ativos na tela, já como querystring — repassados ao export de PDF pra não divergir do que está sendo mostrado. */
   filtrosQuery?: URLSearchParams;
 }) {
-  const [tomadorCodigo, setTomadorCodigo] = useState<number | null>(resumos[0]?.tomadorCodigo ?? null);
-  const resumo = useMemo(() => resumos.find((r) => r.tomadorCodigo === tomadorCodigo) ?? resumos[0] ?? null, [resumos, tomadorCodigo]);
+  const [ccustoCodigo, setCcustoCodigo] = useState<string | null>(resumos[0]?.ccustoCodigo ?? null);
+  const resumo = useMemo(() => resumos.find((r) => r.ccustoCodigo === ccustoCodigo) ?? resumos[0] ?? null, [resumos, ccustoCodigo]);
 
   if (resumos.length === 0) {
-    return <p className="text-sm text-neutral-500">Nenhum tomador com lançamentos nessa competência.</p>;
+    return <p className="text-sm text-neutral-500">Nenhum centro de custo com lançamentos nessa competência.</p>;
   }
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end gap-4 rounded-lg border border-neutral-200 bg-white p-4">
         <label className="flex flex-col gap-1 text-xs font-medium text-neutral-500">
-          Tomador
+          Centro de custo
           <select
-            value={tomadorCodigo ?? ""}
-            onChange={(e) => setTomadorCodigo(Number(e.target.value))}
+            value={ccustoCodigo ?? ""}
+            onChange={(e) => setCcustoCodigo(e.target.value)}
             className="min-w-72 rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-900"
           >
             {resumos.map((r) => (
-              <option key={r.tomadorCodigo} value={r.tomadorCodigo}>
-                {r.tomadorNome} ({r.qtdColaboradores} colab.)
+              <option key={r.ccustoCodigo} value={r.ccustoCodigo}>
+                {r.ccustoNome} ({r.qtdColaboradores} colab.)
               </option>
             ))}
           </select>
@@ -45,7 +45,7 @@ export function FaturamentoViewer({
 
         {resumo && (
           <a
-            href={`/api/faturamento/export?competencia=${encodeURIComponent(resumo.competencia)}&tomador=${resumo.tomadorCodigo}${
+            href={`/api/faturamento/export?competencia=${encodeURIComponent(resumo.competencia)}&ccusto=${encodeURIComponent(resumo.ccustoCodigo)}${
               filtrosQuery && filtrosQuery.size > 0 ? `&${filtrosQuery.toString()}` : ""
             }`}
             className="ml-auto flex items-center gap-2 rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
@@ -90,7 +90,7 @@ function WarningsPanel({ warnings }: { warnings: string[] }) {
   );
 }
 
-function TotalsCard({ resumo }: { resumo: TomadorResumo }) {
+function TotalsCard({ resumo }: { resumo: CcustoResumo }) {
   const rows: [string, number, boolean?][] = [
     ["Total de despesas", resumo.totalDespesas],
     ["Taxa administrativa", resumo.taxaAdministrativa],
@@ -103,8 +103,9 @@ function TotalsCard({ resumo }: { resumo: TomadorResumo }) {
   return (
     <div className="rounded-lg border border-neutral-200 bg-white p-5">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
-        {resumo.tomadorNome} — {resumo.competencia}
+        {resumo.ccustoNome} — {resumo.competencia}
       </h2>
+      <p className="text-xs text-neutral-400">Tomador: {resumo.tomadorNome}</p>
       <dl className="mt-3 grid grid-cols-1 gap-x-8 gap-y-2 sm:grid-cols-2">
         {rows.map(([label, value, strong]) => (
           <div key={label} className="flex items-baseline justify-between border-b border-dashed border-neutral-200 py-1">
@@ -117,7 +118,7 @@ function TotalsCard({ resumo }: { resumo: TomadorResumo }) {
   );
 }
 
-function RubricasTable({ resumo }: { resumo: TomadorResumo }) {
+function RubricasTable({ resumo }: { resumo: CcustoResumo }) {
   const rubricasComImpacto = resumo.rubricas.filter((r) => r.trilha !== "excluido");
   const ocultas = resumo.rubricas.length - rubricasComImpacto.length;
 
@@ -203,7 +204,7 @@ function tipoLabel(tipo: RubricaSomada["tipo"]): string {
 }
 
 /** Rubricas Tipo D/R (desconto real do holerite) e FGTS/INSS (restatement informativo) — não somam faturamento, mas o colaborador precisa ver o que foi retido/reafirmado. */
-function DescontosTable({ resumo }: { resumo: TomadorResumo }) {
+function DescontosTable({ resumo }: { resumo: CcustoResumo }) {
   const descontos = resumo.rubricas.filter((r) => r.trilha === "excluido");
   if (descontos.length === 0) return null;
 
@@ -252,7 +253,7 @@ function DescontosTable({ resumo }: { resumo: TomadorResumo }) {
   );
 }
 
-function ColaboradoresTable({ resumo }: { resumo: TomadorResumo }) {
+function ColaboradoresTable({ resumo }: { resumo: CcustoResumo }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
       <table className="w-full min-w-[640px] text-sm">

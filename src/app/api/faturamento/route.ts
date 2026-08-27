@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { aggregateByTomador } from "@/lib/calc/aggregate";
+import { aggregateByCcusto } from "@/lib/calc/aggregate";
 import { runEngine } from "@/lib/calc/engine";
 import { listMovimentosByCompetencia } from "@/lib/repo/movimentos";
 
@@ -18,7 +18,7 @@ export async function GET(request: Request) {
   }
 
   const { lines, warnings } = await runEngine(movimentos);
-  const resumos = aggregateByTomador(lines, competencia);
+  const resumos = aggregateByCcusto(lines, competencia);
 
   return NextResponse.json({ competencia, resumos, warnings });
 }

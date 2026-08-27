@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { aggregateByTomador } from "@/lib/calc/aggregate";
+import { aggregateByCcusto } from "@/lib/calc/aggregate";
 import { runEngine } from "@/lib/calc/engine";
 import { filtrarLinesPorColaborador } from "@/lib/calc/filtroColaboradores";
 import { listCompetencias, listMovimentosByCompetencia } from "@/lib/repo/movimentos";
@@ -14,7 +14,6 @@ interface SearchParams {
   codEmp?: string;
   descricaoCargo?: string;
   descricaoDpto?: string;
-  descricaoCcusto?: string;
 }
 
 export default async function FaturamentoPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -24,41 +23,37 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   const codEmp = sp.codEmp ?? "";
   const descricaoCargo = sp.descricaoCargo ?? "";
   const descricaoDpto = sp.descricaoDpto ?? "";
-  const descricaoCcusto = sp.descricaoCcusto ?? "";
-  const filtrosAtivos = Boolean(codEmp || descricaoCargo || descricaoDpto || descricaoCcusto);
+  const filtrosAtivos = Boolean(codEmp || descricaoCargo || descricaoDpto);
 
-  const [codEmps, descricoesCargo, descricoesDpto, descricoesCcusto] = await Promise.all([
+  const [codEmps, descricoesCargo, descricoesDpto] = await Promise.all([
     listValoresDistintosDados("cod_emp"),
     listValoresDistintosDados("descricao_cargo"),
     listValoresDistintosDados("descricao_dpto"),
-    listValoresDistintosDados("descricao_ccusto"),
   ]);
 
-  let resumos: ReturnType<typeof aggregateByTomador> = [];
+  let resumos: ReturnType<typeof aggregateByCcusto> = [];
   let warnings: string[] = [];
   if (competenciaAtual) {
     const movimentos = await listMovimentosByCompetencia(competenciaAtual);
     const engineResult = await runEngine(movimentos);
     warnings = engineResult.warnings;
 
-    const lines = await filtrarLinesPorColaborador(engineResult.lines, { codEmp, descricaoCargo, descricaoDpto, descricaoCcusto });
-    resumos = aggregateByTomador(lines, competenciaAtual);
+    const lines = await filtrarLinesPorColaborador(engineResult.lines, { codEmp, descricaoCargo, descricaoDpto });
+    resumos = aggregateByCcusto(lines, competenciaAtual);
   }
 
   const filtrosQuery = new URLSearchParams();
   if (codEmp) filtrosQuery.set("codEmp", codEmp);
   if (descricaoCargo) filtrosQuery.set("descricaoCargo", descricaoCargo);
   if (descricaoDpto) filtrosQuery.set("descricaoDpto", descricaoDpto);
-  if (descricaoCcusto) filtrosQuery.set("descricaoCcusto", descricaoCcusto);
 
   function filterHref(overrides: Partial<SearchParams>): string {
     const params = new URLSearchParams();
-    const merged = { competencia: competenciaAtual ?? undefined, codEmp, descricaoCargo, descricaoDpto, descricaoCcusto, ...overrides };
+    const merged = { competencia: competenciaAtual ?? undefined, codEmp, descricaoCargo, descricaoDpto, ...overrides };
     if (merged.competencia) params.set("competencia", merged.competencia);
     if (merged.codEmp) params.set("codEmp", merged.codEmp);
     if (merged.descricaoCargo) params.set("descricaoCargo", merged.descricaoCargo);
     if (merged.descricaoDpto) params.set("descricaoDpto", merged.descricaoDpto);
-    if (merged.descricaoCcusto) params.set("descricaoCcusto", merged.descricaoCcusto);
     return `/faturamento?${params.toString()}`;
   }
 
@@ -69,10 +64,11 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
           ← Voltar
         </Link>
         <p className="mt-3 text-sm font-medium uppercase tracking-wide text-emerald-700">Faturamento</p>
-        <h1 className="mt-1 text-2xl font-semibold text-neutral-900">Cálculo mensal por tomador</h1>
+        <h1 className="mt-1 text-2xl font-semibold text-neutral-900">Cálculo mensal por centro de custo</h1>
         <p className="mt-2 text-sm text-neutral-600">
-          Sobe o arquivo de Movimentos do mês e calcula INSS, FGTS, provisões e faturamento por tomador, usando as
-          taxas cadastradas em Encargos e o vínculo de cada colaborador com seu Tomador.
+          Sobe o arquivo de Movimentos do mês e calcula INSS, FGTS, provisões e faturamento por centro de custo
+          (Ccusto), usando FPAS e taxa administrativa do Tomador de cada colaborador e as taxas cadastradas em
+          Encargos.
         </p>
       </header>
 
@@ -140,27 +136,12 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
                 ))}
               </select>
             </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-neutral-500">Descrição Ccusto</label>
-              <select
-                name="descricaoCcusto"
-                defaultValue={descricaoCcusto}
-                className="min-w-48 rounded-md border border-neutral-300 px-3 py-1.5 text-sm"
-              >
-                <option value="">Todos</option>
-                {descricoesCcusto.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-            </div>
             <button type="submit" className="rounded-md border border-neutral-300 bg-white px-4 py-1.5 text-sm font-medium hover:bg-neutral-50">
               Filtrar
             </button>
             {filtrosAtivos && (
               <Link
-                href={filterHref({ codEmp: undefined, descricaoCargo: undefined, descricaoDpto: undefined, descricaoCcusto: undefined })}
+                href={filterHref({ codEmp: undefined, descricaoCargo: undefined, descricaoDpto: undefined })}
                 className="text-sm text-neutral-500 hover:underline"
               >
                 limpar
@@ -169,7 +150,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
           </form>
           {filtrosAtivos && (
             <p className="-mt-3 px-1 text-xs text-neutral-500">
-              Faturamento recalculado só com os colaboradores que atendem aos filtros acima — os totais por tomador refletem essa seleção, não a folha inteira.
+              Faturamento recalculado só com os colaboradores que atendem aos filtros acima — os totais por centro de custo refletem essa seleção, não a folha inteira.
             </p>
           )}
 
