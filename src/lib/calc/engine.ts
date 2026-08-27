@@ -271,6 +271,7 @@ export async function runEngine(movimentos: Movimento[]): Promise<RunResult> {
   }
 
   lines.push(...(await generateComplementaryCharges(movimentos, ctx, warnings)));
+  lines.push(...generateProvisaoRescisaoCharges(movimentos, ctx));
 
   return { lines, warnings };
 }
@@ -365,6 +366,113 @@ async function generateComplementaryCharges(movimentos: Movimento[], ctx: Engine
   for (const item of fixas) {
     if (item.valor <= 0 && semValorAtingiuAlguem.has(item.evento)) {
       warnings.push(`Benefício "${item.evento}" (Informativas) está com recorrência fixa mas sem valor cadastrado — não foi cobrado de nenhum colaborador.`);
+    }
+  }
+
+  return out;
+}
+
+/** Códigos reservados (fora da faixa da folha real) pras 5 linhas de provisão de rescisão. */
+const CODIGO_AVISO_PREVIO = 900010;
+const CODIGO_13_SOBRE_AVISO_PREVIO = 900011;
+const CODIGO_FERIAS_SOBRE_AVISO_PREVIO = 900012;
+const CODIGO_FGTS_SOBRE_13_E_FERIAS_AVISO_PREVIO = 900013;
+const CODIGO_FGTS_MULTA = 900014;
+
+/**
+ * Para cada competência presente em Movimentos, gera a provisão mensal de rescisão (aviso
+ * prévio indenizado e reflexos) de todo colaborador CELETISTA (dados.tipo_empregado ===
+ * "Empregado" — os demais valores encontrados no cadastro real, "Estágiario" e
+ * "Contribuinte", não seguem esse regime) ativo *presente no arquivo daquela competência*.
+ * Fórmulas fornecidas pelo usuário, encadeadas a partir do salário cadastrado:
+ *
+ *   Aviso Prévio                              = Salário × 8,33%
+ *   13º s/Aviso Prévio                        = Aviso Prévio / 12
+ *   Férias s/Aviso Prévio + 1/3 s/Férias      = (13º s/Aviso Prévio / 3) + 13º s/Aviso Prévio
+ *   FGTS s/13º e Férias s/Aviso Prévio         = (13º s/Aviso Prévio + Férias s/Aviso Prévio) × 8%
+ *   FGTS - Multa                               = (Aviso Prévio + 13º s/Aviso Prévio + Férias s/Aviso Prévio) × 5,18%
+ *
+ * Cobradas pelo valor cheio + taxa administrativa + gross-up, sem INSS/FGTS/provisões do
+ * motor (essas 5 linhas JÁ SÃO os reflexos/FGTS — aplicar a cadeia padrão em cima duplicaria).
+ * Mesmo escopo "quem está no arquivo do mês" de generateComplementaryCharges, pelo mesmo
+ * motivo: um upload parcial não deve provisionar rescisão pro resto do quadro.
+ */
+function generateProvisaoRescisaoCharges(movimentos: Movimento[], ctx: EngineContext): CalculatedLine[] {
+  const competencias = [...new Set(movimentos.map((m) => m.competencia))];
+  if (competencias.length === 0) return [];
+
+  const out: CalculatedLine[] = [];
+
+  for (const competencia of competencias) {
+    const jaLancadoPorColaborador = new Map<number, Set<string>>();
+    const matriculasDoMes = new Set<number>();
+    for (const m of movimentos) {
+      if (m.competencia !== competencia) continue;
+      matriculasDoMes.add(m.matricula);
+      const set = jaLancadoPorColaborador.get(m.matricula) ?? new Set<string>();
+      set.add(normalizaTexto(m.evento));
+      jaLancadoPorColaborador.set(m.matricula, set);
+    }
+
+    const celetistasDoMes = [...matriculasDoMes]
+      .map((m) => ctx.colaboradoresPorMatricula.get(m))
+      .filter((c): c is NonNullable<typeof c> => c != null && c.situacao === "Trabalhando" && String(c.dados.tipo_empregado ?? "") === "Empregado");
+
+    for (const colaborador of celetistasDoMes) {
+      if (colaborador.codServico == null) continue;
+      const tomador = ctx.tomadoresPorCodigo.get(colaborador.codServico);
+      if (!tomador) continue;
+      const ccusto = getCcusto(colaborador);
+      const jaLancado = jaLancadoPorColaborador.get(colaborador.matricula) ?? new Set<string>();
+
+      const avisoPrevio = colaborador.salario * 0.0833;
+      const dec13SobreAviso = avisoPrevio / 12;
+      const feriasSobreAviso = dec13SobreAviso / 3 + dec13SobreAviso;
+      const fgtsSobre13EFerias = (dec13SobreAviso + feriasSobreAviso) * 0.08;
+      const fgtsMulta = (avisoPrevio + dec13SobreAviso + feriasSobreAviso) * 0.0518;
+
+      const itens: { codigo: number; evento: string; valor: number }[] = [
+        { codigo: CODIGO_AVISO_PREVIO, evento: "AVISO PRÉVIO", valor: avisoPrevio },
+        { codigo: CODIGO_13_SOBRE_AVISO_PREVIO, evento: "13º S/AVISO PRÉVIO", valor: dec13SobreAviso },
+        { codigo: CODIGO_FERIAS_SOBRE_AVISO_PREVIO, evento: "FÉRIAS S/AVISO PRÉVIO + 1/3 S/FÉRIAS", valor: feriasSobreAviso },
+        { codigo: CODIGO_FGTS_SOBRE_13_E_FERIAS_AVISO_PREVIO, evento: "FGTS S/13º E FÉRIAS S/AVISO PRÉVIO", valor: fgtsSobre13EFerias },
+        { codigo: CODIGO_FGTS_MULTA, evento: "FGTS - MULTA", valor: fgtsMulta },
+      ];
+
+      for (const item of itens) {
+        if (jaLancado.has(normalizaTexto(item.evento))) continue; // já veio como lançamento real este mês (ex.: rescisão de fato)
+        if (item.valor <= 0) continue;
+
+        const base = item.valor;
+        const taxaAdmValor = base * tomador.taxaAdm;
+        const fatura = base + taxaAdmValor;
+        const nf = fatura / GROSS_UP_FACTOR;
+        out.push({
+          matricula: colaborador.matricula,
+          nome: colaborador.nome,
+          codigo: item.codigo,
+          evento: item.evento,
+          competencia,
+          tipo: "P",
+          tomadorCodigo: tomador.codigo,
+          tomadorNome: tomador.nome,
+          ccustoCodigo: ccusto.codigo,
+          ccustoNome: ccusto.nome,
+          trilha: "encargos",
+          dre: base,
+          inss: 0,
+          fgts: 0,
+          provFerias: 0,
+          prov13: 0,
+          encInss: 0,
+          encFgts: 0,
+          base,
+          taxaAdmValor,
+          fatura,
+          impostos: nf - fatura,
+          nf,
+        });
+      }
     }
   }
 
