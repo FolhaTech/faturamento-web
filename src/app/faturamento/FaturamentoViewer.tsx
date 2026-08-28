@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { CcustoResumo, RubricaSomada } from "@/lib/calc/aggregate";
+import { normalizaTexto } from "@/lib/text";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 function fmt(n: number): string {
@@ -197,7 +198,8 @@ function RubricasTable({ resumo }: { resumo: CcustoResumo }) {
   );
 }
 
-function tipoLabel(tipo: RubricaSomada["tipo"]): string {
+function tipoLabel(tipo: RubricaSomada["tipo"], evento: string): string {
+  if (normalizaTexto(evento).includes("REEMBOLSO")) return "Reembolso";
   if (tipo === "D" || tipo === "R") return "Desconto";
   if (tipo === "FGTS" || tipo === "INSS") return "Informativo";
   return tipo;
@@ -231,7 +233,7 @@ function DescontosTable({ resumo }: { resumo: CcustoResumo }) {
                       r.tipo === "D" || r.tipo === "R" ? "bg-red-50 text-red-700" : "bg-neutral-100 text-neutral-600"
                     }`}
                   >
-                    {tipoLabel(r.tipo)}
+                    {tipoLabel(r.tipo, r.evento)}
                   </span>
                 </Td>
                 <Td right mono>

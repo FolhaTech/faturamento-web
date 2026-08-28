@@ -1,5 +1,6 @@
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import type { ColaboradorResumo, RubricaSomada, CcustoResumo } from "../calc/aggregate";
+import { normalizaTexto } from "../text";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 function fmt(n: number): string {
@@ -238,7 +239,8 @@ function RubricasSection({ resumo }: { resumo: CcustoResumo }) {
   );
 }
 
-function tipoLabel(tipo: RubricaSomada["tipo"]): string {
+function tipoLabel(tipo: RubricaSomada["tipo"], evento: string): string {
+  if (normalizaTexto(evento).includes("REEMBOLSO")) return "Reembolso";
   if (tipo === "D" || tipo === "R") return "Desconto";
   if (tipo === "FGTS" || tipo === "INSS") return "Informativo";
   return tipo;
@@ -261,7 +263,7 @@ function DescontosSection({ resumo }: { resumo: CcustoResumo }) {
         {descontos.map((r, i) => (
           <View key={r.evento} style={i % 2 === 1 ? styles.tRowAlt : styles.tRow} wrap={false}>
             <Text style={[styles.tCell, { width: "50%" }]}>{r.evento}</Text>
-            <Text style={[styles.tCell, { width: "20%" }]}>{tipoLabel(r.tipo)}</Text>
+            <Text style={[styles.tCell, { width: "20%" }]}>{tipoLabel(r.tipo, r.evento)}</Text>
             <Text style={[styles.tCellRight, { width: "15%" }]}>{r.qtdLancamentos}</Text>
             <Text style={[styles.tCellRight, { width: "15%" }]}>{fmt(r.valorBruto)}</Text>
           </View>

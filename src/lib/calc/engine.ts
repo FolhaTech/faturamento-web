@@ -154,6 +154,11 @@ export interface CalculateResult {
  * entra no total INTEGRALMENTE pelo valor exato digitado, sem taxa
  * administrativa nem gross-up de NF — não é um provento normal, é um
  * abatimento direto do que já foi cobrado do tomador.
+ *
+ * Qualquer evento cujo NOME contenha "reembolso" (case/acento-insensitive) nunca entra no
+ * faturamento, seja qual for o Tipo cadastrado (ex.: "REEMBOLSO VALE REFEICAO" hoje vem como
+ * "P") — é dinheiro devolvido ao colaborador por algo que ele já pagou, não um custo a repassar
+ * ao tomador.
  */
 export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResult {
   const colaborador = ctx.colaboradoresPorMatricula.get(mov.matricula);
@@ -182,6 +187,12 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
 
   const valorAbatido = mov.valor - (mov.abatimentoFerias ?? 0);
   const valorFace = tipo === "D" || tipo === "R" ? -valorAbatido : valorAbatido;
+
+  // "Reembolso" nunca entra no faturamento, seja qual for o Tipo — regra vale pelo NOME do
+  // evento, não pelo código/tipo cadastrado (ex.: "REEMBOLSO VALE REFEICAO", tipo P hoje).
+  if (normalizaTexto(mov.evento).includes("REEMBOLSO")) {
+    return { line: zeroLine(mov, tomador, ccusto, "excluido", valorFace, tipo), warning: null };
+  }
 
   if (tipo === "FGTS" || tipo === "INSS" || tipo === "D" || tipo === "R") {
     return { line: zeroLine(mov, tomador, ccusto, "excluido", valorFace, tipo), warning: null };
