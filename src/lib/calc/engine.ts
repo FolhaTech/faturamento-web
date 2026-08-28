@@ -1,4 +1,5 @@
 import { getColaboradoresPorMatriculas } from "../repo/colaboradores";
+import { CHAVE_PLR_CELETISTA, getConfigNumero } from "../repo/configuracoes";
 import { listEncargos } from "../repo/encargos";
 import { listInformativas } from "../repo/informativas";
 import { listTomadores } from "../repo/tomadores";
@@ -50,17 +51,20 @@ export interface EngineContext {
   encargosPorCodigo: Map<number, Encargo>;
   colaboradoresPorMatricula: Map<number, Colaborador>;
   tomadoresPorCodigo: Map<number, Tomador>;
+  /** Valor de PLR aplicado a todo colaborador celetista — editável na tela de Faturamento (ver generatePlrCharges). */
+  plrCeletista: number;
 }
 
 export async function buildContext(movimentos: Movimento[]): Promise<EngineContext> {
-  const [encargos, tomadores, colaboradoresPorMatricula] = await Promise.all([
+  const [encargos, tomadores, colaboradoresPorMatricula, plrCeletista] = await Promise.all([
     listEncargos(),
     listTomadores(),
     getColaboradoresPorMatriculas(movimentos.map((m) => m.matricula)),
+    getConfigNumero(CHAVE_PLR_CELETISTA, 29.32),
   ]);
   const encargosPorCodigo = new Map(encargos.map((e) => [e.codigo, e]));
   const tomadoresPorCodigo = new Map(tomadores.map((t) => [t.codigo, t]));
-  return { encargosPorCodigo, colaboradoresPorMatricula, tomadoresPorCodigo };
+  return { encargosPorCodigo, colaboradoresPorMatricula, tomadoresPorCodigo, plrCeletista };
 }
 
 /** Lê o centro de custo do colaborador (dados.cod_ccusto/descricao_ccusto); cai no sentinela "Sem centro de custo" quando não cadastrado. */
@@ -272,6 +276,7 @@ export async function runEngine(movimentos: Movimento[]): Promise<RunResult> {
 
   lines.push(...(await generateComplementaryCharges(movimentos, ctx, warnings)));
   lines.push(...generateProvisaoRescisaoCharges(movimentos, ctx));
+  lines.push(...generatePlrCharges(movimentos, ctx));
 
   return { lines, warnings };
 }
@@ -473,6 +478,83 @@ function generateProvisaoRescisaoCharges(movimentos: Movimento[], ctx: EngineCon
           nf,
         });
       }
+    }
+  }
+
+  return out;
+}
+
+/** Código reservado (fora da faixa da folha real) pra linha de PLR. */
+const CODIGO_PLR_CELETISTA = 900020;
+
+/**
+ * Para cada competência presente em Movimentos, gera uma linha de PLR (ctx.plrCeletista,
+ * editável na tela de Faturamento — ver repo/configuracoes.ts) pra todo colaborador CELETISTA
+ * (mesmo critério de generateProvisaoRescisaoCharges: dados.tipo_empregado === "Empregado")
+ * ativo presente no arquivo daquela competência. Cobrada pelo valor cheio + taxa
+ * administrativa + gross-up, sem INSS/FGTS/provisões. Mesmo escopo "quem está no arquivo do
+ * mês" das outras gerações complementares.
+ */
+function generatePlrCharges(movimentos: Movimento[], ctx: EngineContext): CalculatedLine[] {
+  if (ctx.plrCeletista <= 0) return [];
+
+  const competencias = [...new Set(movimentos.map((m) => m.competencia))];
+  if (competencias.length === 0) return [];
+
+  const out: CalculatedLine[] = [];
+
+  for (const competencia of competencias) {
+    const jaLancadoPorColaborador = new Map<number, Set<string>>();
+    const matriculasDoMes = new Set<number>();
+    for (const m of movimentos) {
+      if (m.competencia !== competencia) continue;
+      matriculasDoMes.add(m.matricula);
+      const set = jaLancadoPorColaborador.get(m.matricula) ?? new Set<string>();
+      set.add(normalizaTexto(m.evento));
+      jaLancadoPorColaborador.set(m.matricula, set);
+    }
+
+    const celetistasDoMes = [...matriculasDoMes]
+      .map((m) => ctx.colaboradoresPorMatricula.get(m))
+      .filter((c): c is NonNullable<typeof c> => c != null && c.situacao === "Trabalhando" && String(c.dados.tipo_empregado ?? "") === "Empregado");
+
+    for (const colaborador of celetistasDoMes) {
+      if (colaborador.codServico == null) continue;
+      const tomador = ctx.tomadoresPorCodigo.get(colaborador.codServico);
+      if (!tomador) continue;
+      const jaLancado = jaLancadoPorColaborador.get(colaborador.matricula) ?? new Set<string>();
+      if (jaLancado.has(normalizaTexto("PLR"))) continue; // já veio como lançamento real este mês
+
+      const ccusto = getCcusto(colaborador);
+      const base = ctx.plrCeletista;
+      const taxaAdmValor = base * tomador.taxaAdm;
+      const fatura = base + taxaAdmValor;
+      const nf = fatura / GROSS_UP_FACTOR;
+      out.push({
+        matricula: colaborador.matricula,
+        nome: colaborador.nome,
+        codigo: CODIGO_PLR_CELETISTA,
+        evento: "PLR",
+        competencia,
+        tipo: "P",
+        tomadorCodigo: tomador.codigo,
+        tomadorNome: tomador.nome,
+        ccustoCodigo: ccusto.codigo,
+        ccustoNome: ccusto.nome,
+        trilha: "encargos",
+        dre: base,
+        inss: 0,
+        fgts: 0,
+        provFerias: 0,
+        prov13: 0,
+        encInss: 0,
+        encFgts: 0,
+        base,
+        taxaAdmValor,
+        fatura,
+        impostos: nf - fatura,
+        nf,
+      });
     }
   }
 

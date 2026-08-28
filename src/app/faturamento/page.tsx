@@ -4,7 +4,9 @@ import { runEngine } from "@/lib/calc/engine";
 import { filtrarLinesPorColaborador } from "@/lib/calc/filtroColaboradores";
 import { listCompetencias, listMovimentosByCompetencia } from "@/lib/repo/movimentos";
 import { listValoresDistintosDados } from "@/lib/repo/colaboradores";
+import { CHAVE_PLR_CELETISTA, getConfigNumero } from "@/lib/repo/configuracoes";
 import { FaturamentoViewer } from "./FaturamentoViewer";
+import { PlrConfigForm } from "./PlrConfigForm";
 import { UploadMovimentosForm } from "./UploadMovimentosForm";
 
 export const dynamic = "force-dynamic";
@@ -25,10 +27,11 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   const descricaoDpto = sp.descricaoDpto ?? "";
   const filtrosAtivos = Boolean(codEmp || descricaoCargo || descricaoDpto);
 
-  const [codEmps, descricoesCargo, descricoesDpto] = await Promise.all([
+  const [codEmps, descricoesCargo, descricoesDpto, plrCeletista] = await Promise.all([
     listValoresDistintosDados("cod_emp"),
     listValoresDistintosDados("descricao_cargo"),
     listValoresDistintosDados("descricao_dpto"),
+    getConfigNumero(CHAVE_PLR_CELETISTA, 29.32),
   ]);
 
   let resumos: ReturnType<typeof aggregateByCcusto> = [];
@@ -73,6 +76,8 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
       </header>
 
       <UploadMovimentosForm />
+
+      <PlrConfigForm valorInicial={plrCeletista} />
 
       {competencias.length === 0 ? (
         <p className="text-sm text-neutral-500">Nenhum arquivo de Movimentos importado ainda.</p>

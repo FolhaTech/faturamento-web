@@ -77,6 +77,15 @@ CREATE INDEX IF NOT EXISTS idx_movimentos_matricula ON movimentos(matricula);
 -- consumido em uploads futuros nem depender da classificação atual do código em Encargos.
 ALTER TABLE movimentos ADD COLUMN IF NOT EXISTS abatimento_ferias DOUBLE PRECISION NOT NULL DEFAULT 0;
 ALTER TABLE movimentos ADD COLUMN IF NOT EXISTS abatimento_saldo_tipo TEXT;
+
+-- Configurações globais simples (chave/valor), editáveis na tela de Faturamento — ex.:
+-- valor de PLR por colaborador celetista, aplicado automaticamente todo mês (ver
+-- generatePlrCharges em engine.ts) até alguém mudar o valor aqui.
+CREATE TABLE IF NOT EXISTS configuracoes (
+  chave TEXT PRIMARY KEY,
+  valor DOUBLE PRECISION NOT NULL
+);
+INSERT INTO configuracoes (chave, valor) VALUES ('plr_celetista', 29.32) ON CONFLICT (chave) DO NOTHING;
 `;
 
 export type Sql = ReturnType<typeof postgres>;
@@ -130,4 +139,5 @@ export async function resetDbForTests(): Promise<void> {
   await ensureSchema();
   const sql = getDb();
   await sql`TRUNCATE tomadores, encargos, informativas, colaboradores, movimentos`;
+  await sql`UPDATE configuracoes SET valor = 29.32 WHERE chave = 'plr_celetista'`;
 }
