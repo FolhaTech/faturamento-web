@@ -388,8 +388,12 @@ const CODIGO_FGTS_MULTA = 900014;
  * Para cada competência presente em Movimentos, gera a provisão mensal de rescisão (aviso
  * prévio indenizado e reflexos) de todo colaborador CELETISTA (dados.tipo_empregado ===
  * "Empregado" — os demais valores encontrados no cadastro real, "Estágiario" e
- * "Contribuinte", não seguem esse regime) ativo *presente no arquivo daquela competência*.
- * Fórmulas fornecidas pelo usuário, encadeadas a partir do salário cadastrado:
+ * "Contribuinte", não seguem esse regime) do regime TERCEIRO (Tomador FPAS 515) ativo
+ * *presente no arquivo daquela competência*. Colaborador do regime TEMPORÁRIO (Tomador FPAS
+ * 655) não recebe essas linhas mesmo com tipo_empregado = "Empregado" — os dois regimes
+ * coexistem no cadastro (~1.049 dos 1.202 "Empregado" reais são FPAS 655), e só o Terceiro
+ * entra nessa provisão. Fórmulas fornecidas pelo usuário, encadeadas a partir do salário
+ * cadastrado:
  *
  *   Aviso Prévio                              = Salário × 8,33%
  *   13º s/Aviso Prévio                        = Aviso Prévio / 12
@@ -427,6 +431,7 @@ function generateProvisaoRescisaoCharges(movimentos: Movimento[], ctx: EngineCon
       if (colaborador.codServico == null) continue;
       const tomador = ctx.tomadoresPorCodigo.get(colaborador.codServico);
       if (!tomador) continue;
+      if (tomador.fpas === 655) continue; // Temporário — só o regime Terceiro (FPAS 515) recebe essa provisão
       const ccusto = getCcusto(colaborador);
       const jaLancado = jaLancadoPorColaborador.get(colaborador.matricula) ?? new Set<string>();
 
@@ -491,7 +496,9 @@ const CODIGO_PLR_CELETISTA = 900020;
  * Para cada competência presente em Movimentos, gera uma linha de PLR (ctx.plrCeletista,
  * editável na tela de Faturamento — ver repo/configuracoes.ts) pra todo colaborador CELETISTA
  * (mesmo critério de generateProvisaoRescisaoCharges: dados.tipo_empregado === "Empregado")
- * ativo presente no arquivo daquela competência. Cobrada pelo valor cheio + taxa
+ * do regime TERCEIRO (Tomador FPAS 515) ativo presente no arquivo daquela competência.
+ * Colaborador do regime TEMPORÁRIO (Tomador FPAS 655) não recebe PLR mesmo sendo "Empregado"
+ * — mesma exceção de generateProvisaoRescisaoCharges. Cobrada pelo valor cheio + taxa
  * administrativa + gross-up, sem INSS/FGTS/provisões. Mesmo escopo "quem está no arquivo do
  * mês" das outras gerações complementares.
  */
@@ -522,6 +529,7 @@ function generatePlrCharges(movimentos: Movimento[], ctx: EngineContext): Calcul
       if (colaborador.codServico == null) continue;
       const tomador = ctx.tomadoresPorCodigo.get(colaborador.codServico);
       if (!tomador) continue;
+      if (tomador.fpas === 655) continue; // Temporário — só o regime Terceiro (FPAS 515) recebe PLR
       const jaLancado = jaLancadoPorColaborador.get(colaborador.matricula) ?? new Set<string>();
       if (jaLancado.has(normalizaTexto("PLR"))) continue; // já veio como lançamento real este mês
 
