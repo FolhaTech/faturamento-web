@@ -151,9 +151,10 @@ export interface CalculateResult {
  *
  * Desconto de saldo de férias/1/3 lançado manualmente na tela do colaborador
  * (códigos reservados CODIGO_DESCONTO_SALDO_*, ver descontoSaldoFerias.ts):
- * entra no total INTEGRALMENTE pelo valor exato digitado, sem taxa
- * administrativa nem gross-up de NF — não é um provento normal, é um
- * abatimento direto do que já foi cobrado do tomador.
+ * o valor digitado (negativo) passa pela mesma cadeia base -> taxa
+ * administrativa -> fatura -> gross-up de NF de um provento normal — o
+ * crédito reduz também a taxa adm e os impostos cobrados sobre ele, não só
+ * o valor de face.
  *
  * Qualquer evento cujo NOME contenha "reembolso" (case/acento-insensitive) nunca entra no
  * faturamento, seja qual for o Tipo cadastrado (ex.: "REEMBOLSO VALE REFEICAO" hoje vem como
@@ -175,9 +176,12 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
   const ccusto = getCcusto(colaborador);
 
   if (mov.codigo === CODIGO_DESCONTO_SALDO_FERIAS || mov.codigo === CODIGO_DESCONTO_SALDO_UM_TERCO) {
-    const valor = mov.valor;
+    const base = mov.valor;
+    const taxaAdmValor = base * tomador.taxaAdm;
+    const fatura = base + taxaAdmValor;
+    const nf = fatura / GROSS_UP_FACTOR;
     return {
-      line: { ...zeroLine(mov, tomador, ccusto, "encargos", valor, mov.tipo), base: valor, fatura: valor, nf: valor },
+      line: { ...zeroLine(mov, tomador, ccusto, "encargos", base, mov.tipo), base, taxaAdmValor, fatura, impostos: nf - fatura, nf },
       warning: null,
     };
   }
