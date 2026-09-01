@@ -89,34 +89,48 @@ export async function POST(request: Request) {
   }
 
   // Quando o arquivo não traz "Local de trabalho" preenchido por colaborador (comum na
-  // prática — a coluna existe mas costuma vir vazia), usa como sinal o Centro de Custo que os
-  // OUTROS colaboradores desse mesmo arquivo já têm cadastrado: se todo mundo que já tem Ccusto
-  // concorda no mesmo valor, um colaborador novo desse arquivo deve entrar junto no mesmo
-  // grupo, não separado sozinho em "Sem centro de custo". Só age quando há consenso — um
-  // arquivo com colaboradores em mais de um Centro de Custo não tenta adivinhar qual serve pra
-  // quem.
-  const ccustosExistentesNoArquivo = new Map<string, { codigo: string; nome: string }>();
-  for (const c of colaboradoresDoArquivo.values()) {
-    const codigo = c.dados.cod_ccusto;
-    if (codigo === null || codigo === undefined || String(codigo).trim() === "") continue;
-    const chave = String(codigo);
-    if (!ccustosExistentesNoArquivo.has(chave)) {
-      ccustosExistentesNoArquivo.set(chave, { codigo: chave, nome: c.dados.descricao_ccusto ? String(c.dados.descricao_ccusto) : chave });
+  // prática — a coluna existe mas costuma vir vazia), herda o Centro de Custo do colaborador
+  // ANTERIOR no arquivo (na ordem em que aparecem nos Movimentos) em vez de olhar o cadastro
+  // inteiro do Tomador: um relatório de folha normalmente vem agrupado por local de trabalho, e
+  // o colaborador logo acima de quem está sem Ccusto é o sinal mais confiável de com quem ele
+  // deve ficar junto na fatura — bem mais preciso que um "Centro de Custo mais comum" que pode
+  // vir de outro site do mesmo Tomador. Só propaga um valor que já existe (do próprio cadastro
+  // ou de "Local de trabalho"); o primeiro colaborador do arquivo sem nenhum dos dois fica sem
+  // herdar nada, não tem de quem puxar.
+  const matriculasEmOrdem: number[] = [];
+  const matriculasVistas = new Set<number>();
+  for (const l of linhas) {
+    if (!matriculasVistas.has(l.matricula)) {
+      matriculasVistas.add(l.matricula);
+      matriculasEmOrdem.push(l.matricula);
     }
   }
-  const ccustoComumDoArquivo = ccustosExistentesNoArquivo.size === 1 ? [...ccustosExistentesNoArquivo.values()][0] : null;
 
   const vinculadosAoArquivo: { matricula: number; nome: string }[] = [];
   const ccustoCompletado: { matricula: number; nome: string; ccusto: string }[] = [];
-  for (const c of colaboradoresDoArquivo.values()) {
+  let ultimoCcusto: { codigo: string; nome: string } | null = null;
+  for (const matricula of matriculasEmOrdem) {
+    const c = colaboradoresDoArquivo.get(matricula);
+    if (!c) continue;
+
     const patch: Record<string, string | number> = {};
     if (c.codServico == null && tomadorDoArquivo) {
       patch.cod_servico = tomadorDoArquivo.codigo;
       patch.descricao_servico = tomadorDoArquivo.nome;
     }
+
     const ccustoVazio = c.dados.cod_ccusto === null || c.dados.cod_ccusto === undefined || String(c.dados.cod_ccusto).trim() === "";
     const localTrabalho = localTrabalhoPorMatricula.get(c.matricula);
-    const ccustoResolvido = localTrabalho ? { codigo: localTrabalho, nome: localTrabalho } : ccustoComumDoArquivo;
+    let ccustoResolvido: { codigo: string; nome: string } | null = null;
+    if (!ccustoVazio) {
+      // já tinha Ccusto próprio — vira a referência pro próximo colaborador sem Ccusto no arquivo.
+      ultimoCcusto = { codigo: String(c.dados.cod_ccusto), nome: c.dados.descricao_ccusto ? String(c.dados.descricao_ccusto) : String(c.dados.cod_ccusto) };
+    } else if (localTrabalho) {
+      ccustoResolvido = { codigo: localTrabalho, nome: localTrabalho };
+      ultimoCcusto = ccustoResolvido;
+    } else if (ultimoCcusto) {
+      ccustoResolvido = ultimoCcusto;
+    }
     if (ccustoVazio && ccustoResolvido) {
       patch.cod_ccusto = ccustoResolvido.codigo;
       patch.descricao_ccusto = ccustoResolvido.nome;
