@@ -88,6 +88,24 @@ export async function POST(request: Request) {
     }
   }
 
+  // Quando o arquivo não traz "Local de trabalho" preenchido por colaborador (comum na
+  // prática — a coluna existe mas costuma vir vazia), usa como sinal o Centro de Custo que os
+  // OUTROS colaboradores desse mesmo arquivo já têm cadastrado: se todo mundo que já tem Ccusto
+  // concorda no mesmo valor, um colaborador novo desse arquivo deve entrar junto no mesmo
+  // grupo, não separado sozinho em "Sem centro de custo". Só age quando há consenso — um
+  // arquivo com colaboradores em mais de um Centro de Custo não tenta adivinhar qual serve pra
+  // quem.
+  const ccustosExistentesNoArquivo = new Map<string, { codigo: string; nome: string }>();
+  for (const c of colaboradoresDoArquivo.values()) {
+    const codigo = c.dados.cod_ccusto;
+    if (codigo === null || codigo === undefined || String(codigo).trim() === "") continue;
+    const chave = String(codigo);
+    if (!ccustosExistentesNoArquivo.has(chave)) {
+      ccustosExistentesNoArquivo.set(chave, { codigo: chave, nome: c.dados.descricao_ccusto ? String(c.dados.descricao_ccusto) : chave });
+    }
+  }
+  const ccustoComumDoArquivo = ccustosExistentesNoArquivo.size === 1 ? [...ccustosExistentesNoArquivo.values()][0] : null;
+
   const vinculadosAoArquivo: { matricula: number; nome: string }[] = [];
   const ccustoCompletado: { matricula: number; nome: string; ccusto: string }[] = [];
   for (const c of colaboradoresDoArquivo.values()) {
@@ -98,15 +116,16 @@ export async function POST(request: Request) {
     }
     const ccustoVazio = c.dados.cod_ccusto === null || c.dados.cod_ccusto === undefined || String(c.dados.cod_ccusto).trim() === "";
     const localTrabalho = localTrabalhoPorMatricula.get(c.matricula);
-    if (ccustoVazio && localTrabalho) {
-      patch.cod_ccusto = localTrabalho;
-      patch.descricao_ccusto = localTrabalho;
+    const ccustoResolvido = localTrabalho ? { codigo: localTrabalho, nome: localTrabalho } : ccustoComumDoArquivo;
+    if (ccustoVazio && ccustoResolvido) {
+      patch.cod_ccusto = ccustoResolvido.codigo;
+      patch.descricao_ccusto = ccustoResolvido.nome;
     }
     if (Object.keys(patch).length === 0) continue;
 
     await upsertColaborador({ matricula: c.matricula, dados: { ...c.dados, ...patch } });
     if (patch.cod_servico) vinculadosAoArquivo.push({ matricula: c.matricula, nome: c.nome });
-    if (patch.cod_ccusto) ccustoCompletado.push({ matricula: c.matricula, nome: c.nome, ccusto: localTrabalho! });
+    if (patch.cod_ccusto) ccustoCompletado.push({ matricula: c.matricula, nome: c.nome, ccusto: ccustoResolvido!.nome });
   }
   if (vinculadosAoArquivo.length > 0 || ccustoCompletado.length > 0) {
     colaboradoresDoArquivo = await getColaboradoresPorMatriculas(matriculasDoArquivo);
