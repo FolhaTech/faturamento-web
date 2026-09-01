@@ -105,6 +105,13 @@ function createClient(): Sql {
     // O pooler do Supabase em modo "transaction" (porta 6543, usado em serverless)
     // não sustenta prepared statements entre conexões diferentes do PgBouncer.
     prepare: false,
+    // Cada invocação serverless da Vercel é um processo próprio — sem isso, o pool padrão
+    // (10 conexões) de cada instância concorrente esgota rápido o limite de conexões do
+    // pooler do Supabase, travando novas conexões em "statement timeout" até para queries
+    // triviais (visto em produção em 2026-08-31/09-01). Recomendação oficial do Supabase
+    // para postgres.js em serverless: 1 conexão por instância, liberada rápido quando ociosa.
+    max: 1,
+    idle_timeout: 20,
   });
 }
 
