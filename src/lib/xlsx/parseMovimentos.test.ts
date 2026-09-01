@@ -24,6 +24,27 @@ describe("parseMovimentosFile — layout 'relatório' (exportação paginada)", 
     expect(linhas).toHaveLength(1);
     expect(linhas[0]).toMatchObject({ matricula: 90103507, nome: "EDUARDA CAROLINE OKAMURA", evento: "DIAS NORMAIS" });
   });
+
+  it("extrai o Centro de Custo ('Local de trabalho') por matrícula, achando a coluna pelo cabeçalho", async () => {
+    const buffer = bufferFromRows("Movimentos", [
+      ["Empresa:", null, null, null, null, null, "4 - GENTER SERVICOS EM RECURSOS HUMANOS LTDA"],
+      ["CNPJ:", null, null, null, null, null, "13.173.017/0001-92"],
+      ["Competência:", null, null, null, null, null, "08/2026"],
+      // cabeçalho de colunas real (repete a cada página) — "Local de trabalho" na coluna AD(29).
+      [
+        "Código", null, null, null, "Nome", null, null, null, null, null, null, null, null, "Referência", null, null, null,
+        "Valor calculado", null, null, "Valor informado", null, null, null, "Tipo", null, null, "Unidade", null, "Local de trabalho",
+      ],
+      [null, null, "90103398 - CARLOS EDUARDO DE ASSIS"],
+      [
+        8781, null, null, null, "DIAS NORMAIS", null, null, null, null, null, null, null, null, null, null, "08/2026", null, null,
+        1000, null, null, 30, null, null, "P", null, null, "Dias", null, "HOSPITAL SAO LUCAS",
+      ],
+    ]);
+
+    const { localTrabalhoPorMatricula } = await parseMovimentosFile(buffer);
+    expect(localTrabalhoPorMatricula.get(90103398)).toBe("HOSPITAL SAO LUCAS");
+  });
 });
 
 describe("parseMovimentosFile — layout 'rico' (planilha-modelo com cabeçalho textual)", () => {

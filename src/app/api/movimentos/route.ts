@@ -31,9 +31,9 @@ export async function POST(request: Request) {
 
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  let linhas, tomadorNomeArquivo;
+  let linhas, tomadorNomeArquivo, localTrabalhoPorMatricula;
   try {
-    ({ linhas, tomadorNomeArquivo } = await parseMovimentosFile(buffer));
+    ({ linhas, tomadorNomeArquivo, localTrabalhoPorMatricula } = await parseMovimentosFile(buffer));
   } catch (err) {
     const message = err instanceof Error ? err.message : "Falha ao ler o arquivo.";
     return NextResponse.json({ error: `Não foi possível ler o arquivo: ${message}` }, { status: 422 });
@@ -67,33 +67,49 @@ export async function POST(request: Request) {
   let colaboradoresDoArquivo = await getColaboradoresPorMatriculas(matriculasDoArquivo);
 
   // O layout "relatório" (ver parseMovimentos.ts) declara a Empresa/Tomador no cabeçalho do
-  // próprio arquivo — vincula automaticamente todo colaborador do arquivo que ainda está sem
-  // Cód Serviço a esse Tomador, em vez de deixar "Cadastro pendente" esperando alguém completar
-  // manualmente uma informação que o arquivo já trazia. Só vincula quando o nome bate com
-  // exatamente um Tomador cadastrado — nunca escolhe entre nomes duplicados (ver
-  // getTomadorPorNome) nem inventa um Tomador novo a partir do código de Empresa do sistema de
-  // origem, que usa uma numeração própria e não corresponde ao código do Tomador aqui.
-  const vinculadosAoArquivo: { matricula: number; nome: string }[] = [];
+  // arquivo e o Centro de Custo ("Local de trabalho") por colaborador — completa
+  // automaticamente quem ainda estiver sem Cód Serviço e/ou sem Centro de Custo com o que o
+  // próprio arquivo já traz, em vez de deixar "Cadastro pendente" esperando alguém preencher
+  // manualmente uma informação que já veio no upload. Nunca sobrescreve um cadastro já
+  // preenchido (só completa o que estiver vazio). O Tomador só é vinculado quando o nome bate
+  // com exatamente um cadastrado — nunca escolhe entre nomes duplicados (ver getTomadorPorNome)
+  // nem inventa um Tomador novo a partir do código de Empresa do sistema de origem, que usa uma
+  // numeração própria e não corresponde ao código do Tomador aqui.
+  let tomadorDoArquivo = null;
   let avisoTomadorArquivo: string | null = null;
   if (tomadorNomeArquivo) {
-    const { tomador: tomadorDoArquivo, ambiguo } = await getTomadorPorNome(tomadorNomeArquivo);
-    if (tomadorDoArquivo) {
-      const semCodServico = [...colaboradoresDoArquivo.values()].filter((c) => c.codServico == null);
-      for (const c of semCodServico) {
-        await upsertColaborador({
-          matricula: c.matricula,
-          dados: { ...c.dados, cod_servico: tomadorDoArquivo.codigo, descricao_servico: tomadorDoArquivo.nome },
-        });
-        vinculadosAoArquivo.push({ matricula: c.matricula, nome: c.nome });
-      }
-      if (vinculadosAoArquivo.length > 0) {
-        colaboradoresDoArquivo = await getColaboradoresPorMatriculas(matriculasDoArquivo);
-      }
+    const { tomador, ambiguo } = await getTomadorPorNome(tomadorNomeArquivo);
+    if (tomador) {
+      tomadorDoArquivo = tomador;
     } else {
       avisoTomadorArquivo = ambiguo
         ? `O arquivo indica a Empresa "${tomadorNomeArquivo}", mas há mais de um Tomador cadastrado com esse nome — vínculo automático não realizado, complete o Cód Serviço manualmente.`
         : `O arquivo indica a Empresa "${tomadorNomeArquivo}", mas não encontrei nenhum Tomador cadastrado com esse nome — vínculo automático não realizado.`;
     }
+  }
+
+  const vinculadosAoArquivo: { matricula: number; nome: string }[] = [];
+  const ccustoCompletado: { matricula: number; nome: string; ccusto: string }[] = [];
+  for (const c of colaboradoresDoArquivo.values()) {
+    const patch: Record<string, string | number> = {};
+    if (c.codServico == null && tomadorDoArquivo) {
+      patch.cod_servico = tomadorDoArquivo.codigo;
+      patch.descricao_servico = tomadorDoArquivo.nome;
+    }
+    const ccustoVazio = c.dados.cod_ccusto === null || c.dados.cod_ccusto === undefined || String(c.dados.cod_ccusto).trim() === "";
+    const localTrabalho = localTrabalhoPorMatricula.get(c.matricula);
+    if (ccustoVazio && localTrabalho) {
+      patch.cod_ccusto = localTrabalho;
+      patch.descricao_ccusto = localTrabalho;
+    }
+    if (Object.keys(patch).length === 0) continue;
+
+    await upsertColaborador({ matricula: c.matricula, dados: { ...c.dados, ...patch } });
+    if (patch.cod_servico) vinculadosAoArquivo.push({ matricula: c.matricula, nome: c.nome });
+    if (patch.cod_ccusto) ccustoCompletado.push({ matricula: c.matricula, nome: c.nome, ccusto: localTrabalho! });
+  }
+  if (vinculadosAoArquivo.length > 0 || ccustoCompletado.length > 0) {
+    colaboradoresDoArquivo = await getColaboradoresPorMatriculas(matriculasDoArquivo);
   }
 
   // Colaborador (novo ou já cadastrado) com Cód Serviço apontando pra um Tomador que ainda não
@@ -120,6 +136,7 @@ export async function POST(request: Request) {
       .map((c) => ({ matricula: c.matricula, nome: c.nome })),
     vinculadosAoArquivo,
     avisoTomadorArquivo,
+    ccustoCompletado,
     tomadoresNovos: tomadoresNovos.map((t) => ({ codigo: t.codigo, nome: t.nome })),
   });
 }

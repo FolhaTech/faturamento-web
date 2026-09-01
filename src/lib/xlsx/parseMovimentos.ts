@@ -88,7 +88,9 @@ function isLayoutCru(sheet: SheetGrid): boolean {
  * (não repetido em cada linha) e há linhas de subtotal ("Total do
  * Empregado:", "Total da empresa:") intercaladas. Colunas fixas por posição:
  * A(0) Código, E(4) Nome do evento, P(15) Referência/Comp, S(18) Valor
- * calculado, V(21) Valor informado, Y(24) Tipo, AB(27) Unidade.
+ * calculado, V(21) Valor informado, Y(24) Tipo, AB(27) Unidade. Uma coluna
+ * "Local de trabalho" (achada pelo texto do cabeçalho, não por posição fixa —
+ * ver acharColunaLocalTrabalho) carrega o Centro de Custo do colaborador.
  */
 function isLayoutRelatorio(sheet: SheetGrid): boolean {
   const first = sheet.rows[0]?.[0];
@@ -119,8 +121,30 @@ function extractEmpresaNome(sheet: SheetGrid): string | null {
   return null;
 }
 
-function parseRelatorio(sheet: SheetGrid): MovimentoInput[] {
+const LOCAL_TRABALHO_LABEL_RE = /^LOCAL DE TRABALHO$/i;
+/** Coluna observada no layout real quando o cabeçalho de título ("Local de trabalho") não é encontrado no arquivo. */
+const COLUNA_LOCAL_TRABALHO_PADRAO = 29;
+
+/** Acha a coluna "Local de trabalho" pelo texto do cabeçalho (repete a cada página) em vez de fixar a posição — mais resiliente a variações de layout entre exportações. */
+function acharColunaLocalTrabalho(sheet: SheetGrid): number {
+  for (const row of sheet.rows) {
+    if (!row) continue;
+    const idx = row.findIndex((v) => typeof v === "string" && LOCAL_TRABALHO_LABEL_RE.test(v.trim()));
+    if (idx !== -1) return idx;
+  }
+  return COLUNA_LOCAL_TRABALHO_PADRAO;
+}
+
+interface ParseRelatorioResult {
+  linhas: MovimentoInput[];
+  /** "Local de trabalho" (Centro de Custo) por matrícula, quando o arquivo traz essa coluna preenchida — usado pra completar automaticamente o cadastro de colaboradores sem Centro de Custo (ver /api/movimentos). Pega o primeiro valor não vazio encontrado por matrícula. */
+  localTrabalhoPorMatricula: Map<number, string>;
+}
+
+function parseRelatorio(sheet: SheetGrid): ParseRelatorioResult {
+  const colLocalTrabalho = acharColunaLocalTrabalho(sheet);
   const out: MovimentoInput[] = [];
+  const localTrabalhoPorMatricula = new Map<number, string>();
   let matricula: number | null = null;
   let nome = "";
 
@@ -147,6 +171,11 @@ function parseRelatorio(sheet: SheetGrid): MovimentoInput[] {
     const evento = asString(row[4]);
     if (!evento) continue;
 
+    const localTrabalho = asString(row[colLocalTrabalho]);
+    if (localTrabalho && !localTrabalhoPorMatricula.has(matricula)) {
+      localTrabalhoPorMatricula.set(matricula, localTrabalho);
+    }
+
     out.push({
       codigo,
       matricula,
@@ -160,7 +189,7 @@ function parseRelatorio(sheet: SheetGrid): MovimentoInput[] {
     });
   }
 
-  return out;
+  return { linhas: out, localTrabalhoPorMatricula };
 }
 
 const NOMES_ABA_MOVIMENTOS = ["Movimentos (2)", "Movimentos"];
@@ -173,6 +202,8 @@ export interface ParseMovimentosResult {
    * têm esse cabeçalho — não dá pra vincular automaticamente nesses casos.
    */
   tomadorNomeArquivo: string | null;
+  /** Ver ParseRelatorioResult.localTrabalhoPorMatricula. Mapa vazio nos demais layouts. */
+  localTrabalhoPorMatricula: Map<number, string>;
 }
 
 export async function parseMovimentosFile(buffer: Buffer): Promise<ParseMovimentosResult> {
@@ -181,7 +212,10 @@ export async function parseMovimentosFile(buffer: Buffer): Promise<ParseMoviment
   if (!sheet) {
     throw new Error(`Nenhuma aba de Movimentos encontrada. Abas disponíveis: ${grid.sheetNames.join(", ")}`);
   }
-  if (isLayoutCru(sheet)) return { linhas: parseCru(sheet), tomadorNomeArquivo: null };
-  if (isLayoutRelatorio(sheet)) return { linhas: parseRelatorio(sheet), tomadorNomeArquivo: extractEmpresaNome(sheet) };
-  return { linhas: parseRico(sheet), tomadorNomeArquivo: null };
+  if (isLayoutCru(sheet)) return { linhas: parseCru(sheet), tomadorNomeArquivo: null, localTrabalhoPorMatricula: new Map() };
+  if (isLayoutRelatorio(sheet)) {
+    const { linhas, localTrabalhoPorMatricula } = parseRelatorio(sheet);
+    return { linhas, tomadorNomeArquivo: extractEmpresaNome(sheet), localTrabalhoPorMatricula };
+  }
+  return { linhas: parseRico(sheet), tomadorNomeArquivo: null, localTrabalhoPorMatricula: new Map() };
 }

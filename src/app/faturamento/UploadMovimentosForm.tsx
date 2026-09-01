@@ -25,6 +25,7 @@ export function UploadMovimentosForm() {
   const [tomadoresNovos, setTomadoresNovos] = useState<{ codigo: number; nome: string }[]>([]);
   const [vinculadosAoArquivo, setVinculadosAoArquivo] = useState<{ matricula: number; nome: string }[]>([]);
   const [avisoTomadorArquivo, setAvisoTomadorArquivo] = useState<string | null>(null);
+  const [ccustoCompletado, setCcustoCompletado] = useState<{ matricula: number; nome: string; ccusto: string }[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
 
@@ -55,6 +56,7 @@ export function UploadMovimentosForm() {
       setTomadoresNovos(data.tomadoresNovos ?? []);
       setVinculadosAoArquivo(data.vinculadosAoArquivo ?? []);
       setAvisoTomadorArquivo(data.avisoTomadorArquivo ?? null);
+      setCcustoCompletado(data.ccustoCompletado ?? []);
       setFileName(null);
       router.refresh();
       return true;
@@ -74,6 +76,7 @@ export function UploadMovimentosForm() {
     setTomadoresNovos([]);
     setVinculadosAoArquivo([]);
     setAvisoTomadorArquivo(null);
+    setCcustoCompletado([]);
     setPendingConfirm(null);
     const form = event.currentTarget;
     const input = form.elements.namedItem("file") as HTMLInputElement;
@@ -163,6 +166,19 @@ export function UploadMovimentosForm() {
       )}
 
       {avisoTomadorArquivo && <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{avisoTomadorArquivo}</div>}
+
+      {ccustoCompletado.length > 0 && (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          <p className="font-medium">{ccustoCompletado.length} colaborador(es) completado(s) com o Centro de Custo (&quot;Local de trabalho&quot;) do arquivo:</p>
+          <ul className="mt-1 list-disc pl-5">
+            {ccustoCompletado.map((c) => (
+              <li key={c.matricula}>
+                {c.matricula} — {c.nome} → {c.ccusto}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {cadastrosNovos.length > 0 && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
