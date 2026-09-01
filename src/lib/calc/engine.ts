@@ -173,6 +173,12 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
   if (!tomador) {
     return { line: null, warning: `Tomador cód. ${colaborador.codServico} (colaborador ${mov.matricula}) não encontrado em Tomadores — lançamento "${mov.evento}" ignorado.` };
   }
+  if (tomador.pendente) {
+    return {
+      line: null,
+      warning: `Tomador cód. ${colaborador.codServico} (${tomador.nome}) está com cadastro pendente — falta completar FPAS e Taxa Adm em Tomadores. Lançamento "${mov.evento}" do colaborador ${mov.matricula} ignorado até lá.`,
+    };
+  }
   const ccusto = getCcusto(colaborador);
 
   if (mov.codigo === CODIGO_DESCONTO_SALDO_FERIAS || mov.codigo === CODIGO_DESCONTO_SALDO_UM_TERCO) {
@@ -338,7 +344,7 @@ async function generateComplementaryCharges(movimentos: Movimento[], ctx: Engine
     for (const colaborador of ativosDoMes) {
       if (colaborador.codServico == null) continue;
       const tomador = ctx.tomadoresPorCodigo.get(colaborador.codServico);
-      if (!tomador) continue;
+      if (!tomador || tomador.pendente) continue;
       const ccusto = getCcusto(colaborador);
       const jaLancado = jaLancadoPorColaborador.get(colaborador.matricula) ?? new Set<string>();
 
@@ -445,7 +451,7 @@ function generateProvisaoRescisaoCharges(movimentos: Movimento[], ctx: EngineCon
     for (const colaborador of celetistasDoMes) {
       if (colaborador.codServico == null) continue;
       const tomador = ctx.tomadoresPorCodigo.get(colaborador.codServico);
-      if (!tomador) continue;
+      if (!tomador || tomador.pendente) continue;
       if (tomador.fpas === 655) continue; // Temporário — só o regime Terceiro (FPAS 515) recebe essa provisão
       const ccusto = getCcusto(colaborador);
       const jaLancado = jaLancadoPorColaborador.get(colaborador.matricula) ?? new Set<string>();
@@ -543,7 +549,7 @@ function generatePlrCharges(movimentos: Movimento[], ctx: EngineContext): Calcul
     for (const colaborador of celetistasDoMes) {
       if (colaborador.codServico == null) continue;
       const tomador = ctx.tomadoresPorCodigo.get(colaborador.codServico);
-      if (!tomador) continue;
+      if (!tomador || tomador.pendente) continue;
       if (tomador.fpas === 655) continue; // Temporário — só o regime Terceiro (FPAS 515) recebe PLR
       const jaLancado = jaLancadoPorColaborador.get(colaborador.matricula) ?? new Set<string>();
       if (jaLancado.has(normalizaTexto("PLR"))) continue; // já veio como lançamento real este mês

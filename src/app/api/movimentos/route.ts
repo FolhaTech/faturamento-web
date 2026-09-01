@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { aplicarAbatimentoFerias } from "@/lib/calc/abatimentoFerias";
-import { upsertColaboradoresPendentes } from "@/lib/repo/colaboradores";
+import { getColaboradoresPorMatriculas, upsertColaboradoresPendentes } from "@/lib/repo/colaboradores";
 import {
   countMovimentos,
   countMovimentosPorCompetencia,
   listCompetencias,
   replaceMovimentosPorCompetencia,
 } from "@/lib/repo/movimentos";
+import { upsertTomadoresPendentes } from "@/lib/repo/tomadores";
 import { parseMovimentosFile } from "@/lib/xlsx/parseMovimentos";
 
 export const runtime = "nodejs";
@@ -62,6 +63,17 @@ export async function POST(request: Request) {
   // descartar o lançamento — fica visível pra completar, e assim que tiver Cód Serviço entra no faturamento.
   const cadastrosNovos = await upsertColaboradoresPendentes(linhas.map((l) => ({ matricula: l.matricula, nome: l.nome })));
 
+  // Colaborador (novo ou já cadastrado) com Cód Serviço apontando pra um Tomador que ainda não
+  // existe: mesma lógica acima, mas pro lado do Tomador — cria um cadastro mínimo em vez de só
+  // descartar o faturamento desse colaborador com aviso.
+  const matriculasDoArquivo = [...new Set(linhas.map((l) => l.matricula))];
+  const colaboradoresDoArquivo = await getColaboradoresPorMatriculas(matriculasDoArquivo);
+  const tomadoresNovos = await upsertTomadoresPendentes(
+    [...colaboradoresDoArquivo.values()]
+      .filter((c) => c.codServico != null)
+      .map((c) => ({ codigo: c.codServico!, nomeSugerido: c.descricaoServico })),
+  );
+
   // Precisa rodar ANTES de substituir os lançamentos: devolve ao saldo o que um upload anterior
   // dessa(s) competência(s) já tinha abatido, antes de calcular o abatimento em cima do arquivo novo.
   const linhasComAbatimento = await aplicarAbatimentoFerias(linhas);
@@ -72,5 +84,6 @@ export async function POST(request: Request) {
     importados: linhas.length,
     competencias,
     cadastrosNovos: cadastrosNovos.map((c) => ({ matricula: c.matricula, nome: c.nome })),
+    tomadoresNovos: tomadoresNovos.map((t) => ({ codigo: t.codigo, nome: t.nome })),
   });
 }

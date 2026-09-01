@@ -8,6 +8,8 @@ export interface Tomador {
   nome: string;
   fpas: 515 | 655;
   taxaAdm: number;
+  /** true = criado automaticamente a partir de um Cód Serviço sem cadastro em Tomadores (ver upsertTomadoresPendentes) — ainda não entra no faturamento até alguém completar FPAS/Taxa Adm pela tela. */
+  pendente: boolean;
 }
 
 export interface Encargo {

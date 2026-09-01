@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
@@ -21,6 +22,7 @@ export function UploadMovimentosForm() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [cadastrosNovos, setCadastrosNovos] = useState<{ matricula: number; nome: string }[]>([]);
+  const [tomadoresNovos, setTomadoresNovos] = useState<{ codigo: number; nome: string }[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
 
@@ -48,6 +50,7 @@ export function UploadMovimentosForm() {
       setPendingConfirm(null);
       setInfo(`${data.importados} lançamento(s) importado(s) — competência(s): ${data.competencias.join(", ")}.`);
       setCadastrosNovos(data.cadastrosNovos ?? []);
+      setTomadoresNovos(data.tomadoresNovos ?? []);
       setFileName(null);
       router.refresh();
       return true;
@@ -64,6 +67,7 @@ export function UploadMovimentosForm() {
     setError(null);
     setInfo(null);
     setCadastrosNovos([]);
+    setTomadoresNovos([]);
     setPendingConfirm(null);
     const form = event.currentTarget;
     const input = form.elements.namedItem("file") as HTMLInputElement;
@@ -151,9 +155,32 @@ export function UploadMovimentosForm() {
           </ul>
           <p className="mt-1">
             Sem Cód Serviço (Tomador) elas ainda não entram no faturamento —{" "}
-            <a href="/colaboradores?situacao=Cadastro+pendente" className="underline hover:no-underline">
+            <Link href="/colaboradores?situacao=Cadastro+pendente" className="underline hover:no-underline">
               complete o cadastro
-            </a>{" "}
+            </Link>{" "}
+            pra somarem na próxima vez que a página de Faturamento for calculada.
+          </p>
+        </div>
+      )}
+
+      {tomadoresNovos.length > 0 && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <p className="font-medium">
+            {tomadoresNovos.length} Cód Serviço (Tomador) referenciado(s) no arquivo não tinham cadastro em Tomadores — criei um cadastro
+            mínimo (pendente) pra cada um:
+          </p>
+          <ul className="mt-1 list-disc pl-5">
+            {tomadoresNovos.map((t) => (
+              <li key={t.codigo}>
+                {t.codigo} — {t.nome}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1">
+            Sem FPAS e Taxa Adm eles ainda não entram no faturamento —{" "}
+            <Link href="/tomadores" className="underline hover:no-underline">
+              complete o cadastro
+            </Link>{" "}
             pra somarem na próxima vez que a página de Faturamento for calculada.
           </p>
         </div>

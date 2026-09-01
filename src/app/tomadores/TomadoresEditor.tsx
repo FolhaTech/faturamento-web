@@ -101,7 +101,12 @@ export function TomadoresEditor({ initial }: { initial: Tomador[] }) {
               ) : (
                 <tr key={t.codigo} className="hover:bg-neutral-50">
                   <td className="px-4 py-2 font-mono tabular-nums">{t.codigo}</td>
-                  <td className="px-4 py-2">{t.nome}</td>
+                  <td className="px-4 py-2">
+                    {t.nome}
+                    {t.pendente && (
+                      <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">Cadastro pendente</span>
+                    )}
+                  </td>
                   <td className="px-4 py-2">
                     {t.fpas} <span className="text-neutral-400">({t.fpas === 515 ? "Terceiro" : "Temporário"})</span>
                   </td>

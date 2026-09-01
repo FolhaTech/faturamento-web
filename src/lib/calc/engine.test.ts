@@ -3,7 +3,7 @@ import { resetDbForTests } from "../db";
 import { upsertColaborador } from "../repo/colaboradores";
 import { upsertEncargo } from "../repo/encargos";
 import { createInformativa } from "../repo/informativas";
-import { upsertTomador } from "../repo/tomadores";
+import { upsertTomador, upsertTomadoresPendentes } from "../repo/tomadores";
 import type { Movimento } from "../types";
 import { buildContext, calculateLine, runEngine } from "./engine";
 
@@ -267,6 +267,31 @@ describe("calculateLine — dados ausentes geram avisos em vez de derrubar o cá
     const { line, warning } = calculateLine(mov, ctx);
     expect(line).toBeNull();
     expect(warning).toMatch(/999999/);
+  });
+
+  it("tomador com cadastro pendente (criado automaticamente a partir de um Cód Serviço novo) gera aviso e a linha é ignorada", async () => {
+    await upsertTomadoresPendentes([{ codigo: 999, nomeSugerido: "EMPRESA NOVA LTDA" }]);
+    await upsertColaborador({
+      matricula: 5,
+      dados: { cod_epr: 5, nome: "FULANO PENDENTE", situacao: "Trabalhando", cod_servico: 999 },
+    });
+    const mov: Movimento = {
+      id: "1",
+      codigo: 8781,
+      matricula: 5,
+      nome: "FULANO PENDENTE",
+      evento: "DIAS NORMAIS",
+      competencia: "01/2026",
+      valor: 100,
+      ref: 1,
+      tipo: "P",
+      forma: "Dias",
+    };
+    const ctx = await buildContext([mov]);
+    const { line, warning } = calculateLine(mov, ctx);
+    expect(line).toBeNull();
+    expect(warning).toMatch(/pendente/i);
+    expect(warning).toMatch(/999/);
   });
 
   it("evento sem alíquota em Encargos ainda gera BASE = valor (sem encargo), com aviso", async () => {

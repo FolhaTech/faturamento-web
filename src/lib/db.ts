@@ -7,6 +7,11 @@ CREATE TABLE IF NOT EXISTS tomadores (
   fpas INTEGER NOT NULL DEFAULT 655,
   taxa_adm DOUBLE PRECISION NOT NULL DEFAULT 0
 );
+-- Marca tomadores criados automaticamente a partir de um Cód Serviço sem cadastro (ver
+-- upsertTomadoresPendentes em repo/tomadores.ts) — mesmo padrão da situação "Cadastro
+-- pendente" de colaboradores. Ficam de fora do faturamento (calculateLine em engine.ts) até
+-- alguém completar FPAS/Taxa Adm pela tela de Tomadores, o que já zera esta coluna de volta.
+ALTER TABLE tomadores ADD COLUMN IF NOT EXISTS pendente BOOLEAN NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS encargos (
   codigo INTEGER PRIMARY KEY,
