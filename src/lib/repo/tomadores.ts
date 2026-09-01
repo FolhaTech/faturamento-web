@@ -1,4 +1,5 @@
 import { ensureSchema, getDb } from "../db";
+import { normalizaTexto } from "../text";
 import type { Tomador } from "../types";
 
 interface Row {
@@ -83,6 +84,28 @@ export async function upsertTomadoresPendentes(entradas: TomadorPendenteInput[])
     if (tomador) criados.push(tomador);
   }
   return criados;
+}
+
+export interface BuscaTomadorPorNome {
+  tomador: Tomador | null;
+  /** true = mais de um Tomador cadastrado com esse nome (ex.: 2 contratos do mesmo cliente com FPAS diferentes) — não dá pra escolher automaticamente. */
+  ambiguo: boolean;
+}
+
+/**
+ * Busca um Tomador por nome exato (ignorando maiúsculas/acentos) — usado pra vincular
+ * automaticamente colaboradores ao Tomador declarado no cabeçalho "Empresa:" de um arquivo de
+ * Movimentos (layout "relatório", ver parseMovimentos.ts). Nunca escolhe entre nomes duplicados
+ * (ver labelTomador em colaboradores/page.tsx sobre o mesmo cliente ter mais de um contrato) —
+ * `ambiguo: true` sinaliza esse caso pro chamador decidir o que fazer (não vincular, avisar).
+ */
+export async function getTomadorPorNome(nome: string): Promise<BuscaTomadorPorNome> {
+  const alvo = normalizaTexto(nome);
+  const todos = await listTomadores();
+  const encontrados = todos.filter((t) => normalizaTexto(t.nome) === alvo);
+  if (encontrados.length === 1) return { tomador: encontrados[0], ambiguo: false };
+  if (encontrados.length > 1) return { tomador: null, ambiguo: true };
+  return { tomador: null, ambiguo: false };
 }
 
 export async function countTomadores(): Promise<number> {

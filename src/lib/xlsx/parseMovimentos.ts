@@ -95,6 +95,30 @@ function isLayoutRelatorio(sheet: SheetGrid): boolean {
   return typeof first === "string" && first.trim() === "Empresa:";
 }
 
+const CODIGO_NOME_RE = /^\s*\d+\s*-\s*(.+?)\s*$/;
+
+/**
+ * Nome do Tomador a partir do cabeçalho "Empresa:" do layout "relatório" (linha repetida a
+ * cada página impressa, ex.: "4 - GENTER SERVICOS EM RECURSOS HUMANOS LTDA") — usado pra
+ * vincular automaticamente colaboradores sem Cód Serviço ao Tomador certo (ver
+ * /api/movimentos). O código numérico antes do "-" é do sistema de folha de origem, não bate
+ * com o `codigo` do Tomador cadastrado aqui — só o nome depois do "-" é usado.
+ */
+function extractEmpresaNome(sheet: SheetGrid): string | null {
+  for (const row of sheet.rows) {
+    if (!row || row.length === 0) continue;
+    const label = asString(row[0]);
+    if (!label || label.trim().toUpperCase() !== "EMPRESA:") continue;
+    for (let i = 1; i < row.length; i++) {
+      const v = asString(row[i]);
+      if (!v) continue;
+      const m = v.match(CODIGO_NOME_RE);
+      if (m) return m[1];
+    }
+  }
+  return null;
+}
+
 function parseRelatorio(sheet: SheetGrid): MovimentoInput[] {
   const out: MovimentoInput[] = [];
   let matricula: number | null = null;
@@ -141,13 +165,23 @@ function parseRelatorio(sheet: SheetGrid): MovimentoInput[] {
 
 const NOMES_ABA_MOVIMENTOS = ["Movimentos (2)", "Movimentos"];
 
-export async function parseMovimentosFile(buffer: Buffer): Promise<MovimentoInput[]> {
+export interface ParseMovimentosResult {
+  linhas: MovimentoInput[];
+  /**
+   * Nome do Tomador declarado no cabeçalho "Empresa:" do arquivo (só existe no layout
+   * "relatório" — ver isLayoutRelatorio/extractEmpresaNome). null nos demais layouts, que não
+   * têm esse cabeçalho — não dá pra vincular automaticamente nesses casos.
+   */
+  tomadorNomeArquivo: string | null;
+}
+
+export async function parseMovimentosFile(buffer: Buffer): Promise<ParseMovimentosResult> {
   const grid = await readWorkbookGrid(buffer);
   const sheet = grid.getSheet(NOMES_ABA_MOVIMENTOS) ?? (grid.sheetNames.length === 1 ? grid.requireSheet([grid.sheetNames[0]]) : null);
   if (!sheet) {
     throw new Error(`Nenhuma aba de Movimentos encontrada. Abas disponíveis: ${grid.sheetNames.join(", ")}`);
   }
-  if (isLayoutCru(sheet)) return parseCru(sheet);
-  if (isLayoutRelatorio(sheet)) return parseRelatorio(sheet);
-  return parseRico(sheet);
+  if (isLayoutCru(sheet)) return { linhas: parseCru(sheet), tomadorNomeArquivo: null };
+  if (isLayoutRelatorio(sheet)) return { linhas: parseRelatorio(sheet), tomadorNomeArquivo: extractEmpresaNome(sheet) };
+  return { linhas: parseRico(sheet), tomadorNomeArquivo: null };
 }

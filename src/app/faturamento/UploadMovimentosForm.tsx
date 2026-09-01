@@ -23,6 +23,8 @@ export function UploadMovimentosForm() {
   const [info, setInfo] = useState<string | null>(null);
   const [cadastrosNovos, setCadastrosNovos] = useState<{ matricula: number; nome: string }[]>([]);
   const [tomadoresNovos, setTomadoresNovos] = useState<{ codigo: number; nome: string }[]>([]);
+  const [vinculadosAoArquivo, setVinculadosAoArquivo] = useState<{ matricula: number; nome: string }[]>([]);
+  const [avisoTomadorArquivo, setAvisoTomadorArquivo] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
 
@@ -51,6 +53,8 @@ export function UploadMovimentosForm() {
       setInfo(`${data.importados} lançamento(s) importado(s) — competência(s): ${data.competencias.join(", ")}.`);
       setCadastrosNovos(data.cadastrosNovos ?? []);
       setTomadoresNovos(data.tomadoresNovos ?? []);
+      setVinculadosAoArquivo(data.vinculadosAoArquivo ?? []);
+      setAvisoTomadorArquivo(data.avisoTomadorArquivo ?? null);
       setFileName(null);
       router.refresh();
       return true;
@@ -68,6 +72,8 @@ export function UploadMovimentosForm() {
     setInfo(null);
     setCadastrosNovos([]);
     setTomadoresNovos([]);
+    setVinculadosAoArquivo([]);
+    setAvisoTomadorArquivo(null);
     setPendingConfirm(null);
     const form = event.currentTarget;
     const input = form.elements.namedItem("file") as HTMLInputElement;
@@ -139,6 +145,24 @@ export function UploadMovimentosForm() {
           </div>
         </div>
       )}
+
+      {vinculadosAoArquivo.length > 0 && (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          <p className="font-medium">
+            {vinculadosAoArquivo.length} colaborador(es) vinculado(s) automaticamente ao Tomador declarado no cabeçalho do arquivo — já entram
+            na fatura:
+          </p>
+          <ul className="mt-1 list-disc pl-5">
+            {vinculadosAoArquivo.map((c) => (
+              <li key={c.matricula}>
+                {c.matricula} — {c.nome}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {avisoTomadorArquivo && <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{avisoTomadorArquivo}</div>}
 
       {cadastrosNovos.length > 0 && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
