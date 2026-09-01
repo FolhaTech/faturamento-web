@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { aplicarAbatimentoFerias } from "@/lib/calc/abatimentoFerias";
 import { upsertColaboradoresPendentes } from "@/lib/repo/colaboradores";
-import { countMovimentos, listCompetencias, replaceMovimentosPorCompetencia } from "@/lib/repo/movimentos";
+import {
+  countMovimentos,
+  countMovimentosPorCompetencia,
+  listCompetencias,
+  replaceMovimentosPorCompetencia,
+} from "@/lib/repo/movimentos";
 import { parseMovimentosFile } from "@/lib/xlsx/parseMovimentos";
 
 export const runtime = "nodejs";
@@ -37,6 +42,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Nenhum lançamento reconhecido no arquivo." }, { status: 422 });
   }
 
+  const competencias = [...new Set(linhas.map((l) => l.competencia))];
+
+  // Subir um arquivo para uma competência que já tem lançamentos salvos SUBSTITUI esses lançamentos
+  // (ver replaceMovimentosPorCompetencia) — avisa e pede confirmação explícita antes de apagar dados
+  // existentes, em vez de substituir silenciosamente.
+  const confirmar = formData.get("confirmar") === "true";
+  if (!confirmar) {
+    const existentesPorCompetencia = await countMovimentosPorCompetencia(competencias);
+    const competenciasComDados = competencias
+      .filter((c) => (existentesPorCompetencia.get(c) ?? 0) > 0)
+      .map((c) => ({ competencia: c, existentes: existentesPorCompetencia.get(c) ?? 0 }));
+    if (competenciasComDados.length > 0) {
+      return NextResponse.json({ requerConfirmacao: true, competencias: competenciasComDados, novosLancamentos: linhas.length }, { status: 409 });
+    }
+  }
+
   // Matrícula do arquivo sem cadastro em Colaboradores: cria um cadastro mínimo (sem Tomador) em vez de só
   // descartar o lançamento — fica visível pra completar, e assim que tiver Cód Serviço entra no faturamento.
   const cadastrosNovos = await upsertColaboradoresPendentes(linhas.map((l) => ({ matricula: l.matricula, nome: l.nome })));
@@ -46,7 +67,6 @@ export async function POST(request: Request) {
   const linhasComAbatimento = await aplicarAbatimentoFerias(linhas);
 
   await replaceMovimentosPorCompetencia(linhasComAbatimento);
-  const competencias = [...new Set(linhas.map((l) => l.competencia))];
 
   return NextResponse.json({
     importados: linhas.length,

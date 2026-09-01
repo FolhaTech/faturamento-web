@@ -54,6 +54,16 @@ export async function countMovimentos(): Promise<number> {
   return n;
 }
 
+/** Quantos lançamentos já existem hoje para cada competência — usado para avisar antes de substituir (ver replaceMovimentosPorCompetencia). */
+export async function countMovimentosPorCompetencia(competencias: string[]): Promise<Map<string, number>> {
+  await ensureSchema();
+  if (competencias.length === 0) return new Map();
+  const rows = await getDb()<{ competencia: string; n: number }[]>`
+    SELECT competencia, COUNT(*)::int as n FROM movimentos WHERE competencia = ANY(${competencias}) GROUP BY competencia
+  `;
+  return new Map(rows.map((r) => [r.competencia, r.n]));
+}
+
 export interface MovimentoInput {
   codigo: number;
   matricula: number;
