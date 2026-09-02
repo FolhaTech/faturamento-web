@@ -17,8 +17,14 @@ export function FaturamentoViewer({
 }: {
   resumos: CcustoResumo[];
   warnings: string[];
-  /** Filtros de colaborador (Cód Emp/Cargo/Dpto/Regime) ativos na tela, já como querystring — repassados ao export de PDF pra não divergir do que está sendo mostrado. */
-  filtrosQuery?: URLSearchParams;
+  /**
+   * Filtros de colaborador (Cód Emp/Cargo/Dpto/Regime) ativos na tela, já como querystring —
+   * repassados ao export de PDF pra não divergir do que está sendo mostrado. Precisa ser
+   * string (não URLSearchParams): esse componente é Client e o valor cruza a fronteira
+   * Server->Client como prop — um objeto URLSearchParams não sobrevive a essa serialização
+   * (chega vazio no cliente), então os filtros somem silenciosamente do link do PDF.
+   */
+  filtrosQuery?: string;
   /** "Terceiro (CLT)" ou "Temporário" quando o filtro de Regime está ativo — mostrado junto do Tomador pra não confundir com a fatura sem esse filtro. */
   regimeLabel?: string | null;
 }) {
@@ -50,7 +56,7 @@ export function FaturamentoViewer({
         {resumo && (
           <a
             href={`/api/faturamento/export?competencia=${encodeURIComponent(resumo.competencia)}&ccusto=${encodeURIComponent(resumo.ccustoCodigo)}${
-              filtrosQuery && filtrosQuery.size > 0 ? `&${filtrosQuery.toString()}` : ""
+              filtrosQuery ? `&${filtrosQuery}` : ""
             }`}
             className="ml-auto flex items-center gap-2 rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
           >

@@ -176,7 +176,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
           <FaturamentoViewer
             resumos={resumos}
             warnings={warnings}
-            filtrosQuery={filtrosQuery}
+            filtrosQuery={filtrosQuery.toString()}
             regimeLabel={fpas === 515 ? "Terceiro (CLT)" : fpas === 655 ? "Temporário" : null}
           />
         </>
