@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { CcustoResumo, RubricaSomada } from "@/lib/calc/aggregate";
+import { Fragment, useMemo, useState } from "react";
+import type { CcustoResumo, ColaboradorResumo, RubricaSomada } from "@/lib/calc/aggregate";
 import { normalizaTexto } from "@/lib/text";
 import { GrossUpConfigForm } from "./GrossUpConfigForm";
 
@@ -71,9 +71,9 @@ export function FaturamentoViewer({
       {resumo && (
         <>
           <TotalsCard resumo={resumo} regimeLabel={regimeLabel} />
-          <RubricasTable resumo={resumo} />
-          <DescontosTable resumo={resumo} />
-          <ColaboradoresTable resumo={resumo} />
+          <RubricasTable rubricas={resumo.rubricas} />
+          <DescontosTable rubricas={resumo.rubricas} />
+          <ColaboradoresTable colaboradores={resumo.colaboradores} />
         </>
       )}
     </div>
@@ -142,9 +142,9 @@ function TotalsCard({ resumo, regimeLabel }: { resumo: CcustoResumo; regimeLabel
   );
 }
 
-function RubricasTable({ resumo }: { resumo: CcustoResumo }) {
-  const rubricasComImpacto = resumo.rubricas.filter((r) => r.trilha !== "excluido");
-  const ocultas = resumo.rubricas.length - rubricasComImpacto.length;
+function RubricasTable({ rubricas }: { rubricas: RubricaSomada[] }) {
+  const rubricasComImpacto = rubricas.filter((r) => r.trilha !== "excluido");
+  const ocultas = rubricas.length - rubricasComImpacto.length;
 
   return (
     <div className="flex flex-col gap-2">
@@ -229,8 +229,8 @@ function tipoLabel(tipo: RubricaSomada["tipo"], evento: string): string {
 }
 
 /** Rubricas Tipo D/R (desconto real do holerite) e FGTS/INSS (restatement informativo) — não somam faturamento, mas o colaborador precisa ver o que foi retido/reafirmado. */
-function DescontosTable({ resumo }: { resumo: CcustoResumo }) {
-  const descontos = resumo.rubricas.filter((r) => r.trilha === "excluido");
+function DescontosTable({ rubricas }: { rubricas: RubricaSomada[] }) {
+  const descontos = rubricas.filter((r) => r.trilha === "excluido");
   if (descontos.length === 0) return null;
 
   return (
@@ -278,41 +278,69 @@ function DescontosTable({ resumo }: { resumo: CcustoResumo }) {
   );
 }
 
-function ColaboradoresTable({ resumo }: { resumo: CcustoResumo }) {
+/** Cada linha abre o detalhamento por evento (rubricas) daquele colaborador — mesmas colunas da tabela de rubricas do centro de custo inteiro, só que restrita a ele. */
+function ColaboradoresTable({ colaboradores }: { colaboradores: ColaboradorResumo[] }) {
+  const [expandida, setExpandida] = useState<number | null>(null);
+
   return (
-    <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-      <table className="w-full min-w-[640px] text-sm">
-        <thead className="bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
-          <tr>
-            <Th>Matrícula</Th>
-            <Th>Nome</Th>
-            <Th right>Despesa</Th>
-            <Th right>Taxa Adm</Th>
-            <Th right>Fatura</Th>
-            <Th right>NF</Th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-neutral-100">
-          {resumo.colaboradores.map((c) => (
-            <tr key={c.matricula} className="hover:bg-neutral-50">
-              <Td mono>{c.matricula}</Td>
-              <Td>{c.nome}</Td>
-              <Td right mono>
-                {fmt(c.despesa)}
-              </Td>
-              <Td right mono>
-                {fmt(c.taxaAdm)}
-              </Td>
-              <Td right mono>
-                {fmt(c.fatura)}
-              </Td>
-              <Td right mono>
-                {fmt(c.nf)}
-              </Td>
+    <div className="flex flex-col gap-2">
+      <h3 className="px-1 text-sm font-semibold text-neutral-700">Detalhamento por colaborador — clique numa linha pra ver o detalhamento por evento dele</h3>
+      <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
+        <table className="w-full min-w-[640px] text-sm">
+          <thead className="bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
+            <tr>
+              <Th>Matrícula</Th>
+              <Th>Nome</Th>
+              <Th right>Despesa</Th>
+              <Th right>Taxa Adm</Th>
+              <Th right>Fatura</Th>
+              <Th right>NF</Th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-neutral-100">
+            {colaboradores.map((c) => {
+              const aberta = expandida === c.matricula;
+              return (
+                <Fragment key={c.matricula}>
+                  <tr
+                    onClick={() => setExpandida(aberta ? null : c.matricula)}
+                    className="cursor-pointer hover:bg-neutral-50"
+                    aria-expanded={aberta}
+                  >
+                    <Td mono>{c.matricula}</Td>
+                    <Td>
+                      <span className="mr-1 inline-block w-3 text-neutral-400">{aberta ? "▾" : "▸"}</span>
+                      {c.nome}
+                    </Td>
+                    <Td right mono>
+                      {fmt(c.despesa)}
+                    </Td>
+                    <Td right mono>
+                      {fmt(c.taxaAdm)}
+                    </Td>
+                    <Td right mono>
+                      {fmt(c.fatura)}
+                    </Td>
+                    <Td right mono>
+                      {fmt(c.nf)}
+                    </Td>
+                  </tr>
+                  {aberta && (
+                    <tr>
+                      <td colSpan={6} className="bg-neutral-50 p-3">
+                        <div className="flex flex-col gap-3">
+                          <RubricasTable rubricas={c.rubricas} />
+                          <DescontosTable rubricas={c.rubricas} />
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
