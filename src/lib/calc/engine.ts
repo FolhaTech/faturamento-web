@@ -19,6 +19,11 @@ export const GROSS_UP_FACTOR = 0.8675;
 /** Sentinela pra colaborador sem Ccusto cadastrado — mantém a linha visível em vez de sumir do faturamento. */
 export const CCUSTO_SEM_CADASTRO = { codigo: "0", nome: "Sem centro de custo" };
 
+/** NF = fatura / grossUp — Gross Up 0 é o valor usado pra "desligar" o gross-up desse Tomador (NF = fatura, sem inflar), não uma divisão por zero. */
+function calcularNf(fatura: number, grossUp: number): number {
+  return grossUp > 0 ? fatura / grossUp : fatura;
+}
+
 export interface CalculatedLine {
   matricula: number;
   nome: string;
@@ -193,7 +198,7 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
     const base = mov.valor;
     const taxaAdmValor = base * tomador.taxaAdm;
     const fatura = base + taxaAdmValor;
-    const nf = fatura / tomador.grossUp;
+    const nf = calcularNf(fatura, tomador.grossUp);
     return {
       line: { ...zeroLine(mov, tomador, ccusto, "encargos", base, mov.tipo), base, taxaAdmValor, fatura, impostos: nf - fatura, nf },
       warning: null,
@@ -220,7 +225,7 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
     const base = valorFace;
     const taxaAdmValor = base * tomador.taxaAdm;
     const fatura = base + taxaAdmValor;
-    const nf = fatura / tomador.grossUp;
+    const nf = calcularNf(fatura, tomador.grossUp);
     return {
       line: { ...zeroLine(mov, tomador, ccusto, "beneficio", valorFace, tipo), base, taxaAdmValor, fatura, impostos: nf - fatura, nf },
       warning: null,
@@ -255,7 +260,7 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
   const base = valorFace + inss + fgts + provFerias + prov13 + encInss + encFgts;
   const taxaAdmValor = base * tomador.taxaAdm;
   const fatura = base + taxaAdmValor;
-  const nf = fatura / tomador.grossUp;
+  const nf = calcularNf(fatura, tomador.grossUp);
 
   return {
     line: {
@@ -369,7 +374,7 @@ async function generateComplementaryCharges(movimentos: Movimento[], ctx: Engine
         const base = item.valor;
         const taxaAdmValor = base * tomador.taxaAdm;
         const fatura = base + taxaAdmValor;
-        const nf = fatura / tomador.grossUp;
+        const nf = calcularNf(fatura, tomador.grossUp);
         out.push({
           matricula: colaborador.matricula,
           nome: colaborador.nome,
@@ -489,7 +494,7 @@ function generateProvisaoRescisaoCharges(movimentos: Movimento[], ctx: EngineCon
         const base = item.valor;
         const taxaAdmValor = base * tomador.taxaAdm;
         const fatura = base + taxaAdmValor;
-        const nf = fatura / tomador.grossUp;
+        const nf = calcularNf(fatura, tomador.grossUp);
         out.push({
           matricula: colaborador.matricula,
           nome: colaborador.nome,
@@ -572,7 +577,7 @@ function generatePlrCharges(movimentos: Movimento[], ctx: EngineContext): Calcul
       const base = ctx.plrCeletista;
       const taxaAdmValor = base * tomador.taxaAdm;
       const fatura = base + taxaAdmValor;
-      const nf = fatura / tomador.grossUp;
+      const nf = calcularNf(fatura, tomador.grossUp);
       out.push({
         matricula: colaborador.matricula,
         nome: colaborador.nome,

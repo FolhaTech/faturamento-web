@@ -54,6 +54,12 @@ describe("tomadores repo — Gross Up", () => {
     expect(t.grossUp).toBeCloseTo(0.9, 6);
   });
 
+  it("aceita e preserva 0 (não cai no padrão 0,8675) — 0 significa gross-up desligado", async () => {
+    await upsertTomador({ codigo: 999, nome: "EMPRESA LTDA", fpas: 515, taxaAdm: 0.1, grossUp: 0 });
+    const t = (await getTomador(999))!;
+    expect(t.grossUp).toBe(0);
+  });
+
   it("updateGrossUp atualiza só o Gross Up, sem mexer nos demais campos", async () => {
     await upsertTomador({ codigo: 999, nome: "EMPRESA LTDA", fpas: 515, taxaAdm: 0.1 });
     await updateGrossUp(999, 0.9);

@@ -106,6 +106,29 @@ describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
     expect(l.nf).not.toBeCloseTo(l.fatura / 0.8675, 6);
   });
 
+  it("Gross Up 0 desliga o gross-up — NF = fatura, sem divisão por zero", async () => {
+    await upsertTomador({ ...TOMADOR_TERCEIRO, grossUp: 0 });
+    const mov: Movimento = {
+      id: "1",
+      codigo: 8781,
+      matricula: 90103392,
+      nome: "ADALBERTO ALVARES JUNIOR",
+      evento: "DIAS NORMAIS",
+      competencia: "01/2026",
+      valor: 999.86,
+      ref: 12,
+      tipo: "P",
+      forma: "Dias",
+    };
+    const ctx = await buildContext([mov]);
+    const { line } = calculateLine(mov, ctx);
+    const l = line!;
+
+    expect(l.tomadorGrossUp).toBe(0);
+    expect(Number.isFinite(l.nf)).toBe(true);
+    expect(l.nf).toBeCloseTo(l.fatura, 6);
+  });
+
   it("usa INSS 655 e encargo sobre provisão baseado só na Prov. 13º quando o tomador é FPAS 655 (Temporario)", async () => {
     await upsertColaborador({
       matricula: 1,
