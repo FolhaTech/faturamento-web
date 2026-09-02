@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { CcustoResumo, RubricaSomada } from "@/lib/calc/aggregate";
 import { normalizaTexto } from "@/lib/text";
+import { GrossUpConfigForm } from "./GrossUpConfigForm";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 function fmt(n: number): string {
@@ -112,13 +113,23 @@ function TotalsCard({ resumo, regimeLabel }: { resumo: CcustoResumo; regimeLabel
   ];
   return (
     <div className="rounded-lg border border-neutral-200 bg-white p-5">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
-        {resumo.ccustoNome} — {resumo.competencia}
-      </h2>
-      <p className="text-xs text-neutral-400">
-        Tomador: {resumo.tomadorNome}
-        {regimeLabel && ` · Regime: ${regimeLabel}`}
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+            {resumo.ccustoNome} — {resumo.competencia}
+          </h2>
+          <p className="text-xs text-neutral-400">
+            Tomador: {resumo.tomadorNome}
+            {regimeLabel && ` · Regime: ${regimeLabel}`}
+          </p>
+        </div>
+        <GrossUpConfigForm
+          key={resumo.tomadorCodigo}
+          tomadorCodigo={resumo.tomadorCodigo}
+          tomadorNome={resumo.tomadorNome}
+          grossUpInicial={resumo.tomadorGrossUp}
+        />
+      </div>
       <dl className="mt-3 grid grid-cols-1 gap-x-8 gap-y-2 sm:grid-cols-2">
         {rows.map(([label, value, strong]) => (
           <div key={label} className="flex items-baseline justify-between border-b border-dashed border-neutral-200 py-1">

@@ -8,6 +8,8 @@ export interface Tomador {
   nome: string;
   fpas: 515 | 655;
   taxaAdm: number;
+  /** Fator de gross-up da Nota Fiscal desse Tomador — NF = fatura / grossUp (ver GROSS_UP_FACTOR em engine.ts). Padrão 0,8675. */
+  grossUp: number;
   /** true = criado automaticamente a partir de um Cód Serviço sem cadastro em Tomadores (ver upsertTomadoresPendentes) — ainda não entra no faturamento até alguém completar FPAS/Taxa Adm pela tela. */
   pendente: boolean;
 }

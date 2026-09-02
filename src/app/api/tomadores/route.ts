@@ -9,13 +9,16 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const { codigo, nome, fpas, taxaAdm } = body ?? {};
+  const { codigo, nome, fpas, taxaAdm, grossUp } = body ?? {};
 
   if (!Number.isFinite(codigo) || codigo <= 0) return NextResponse.json({ error: "Código inválido." }, { status: 400 });
   if (typeof nome !== "string" || !nome.trim()) return NextResponse.json({ error: "Informe o nome." }, { status: 400 });
   if (fpas !== 515 && fpas !== 655) return NextResponse.json({ error: "FPAS deve ser 515 ou 655." }, { status: 400 });
   if (!Number.isFinite(taxaAdm) || taxaAdm < 0) return NextResponse.json({ error: "Taxa administrativa inválida." }, { status: 400 });
+  if (grossUp !== undefined && (!Number.isFinite(grossUp) || grossUp <= 0 || grossUp > 1)) {
+    return NextResponse.json({ error: "Gross Up inválido — deve ser maior que 0 e até 1 (ex.: 0,8675)." }, { status: 400 });
+  }
 
-  const tomador = await upsertTomador({ codigo, nome: nome.trim(), fpas, taxaAdm });
+  const tomador = await upsertTomador({ codigo, nome: nome.trim(), fpas, taxaAdm, grossUp });
   return NextResponse.json({ tomador }, { status: 201 });
 }

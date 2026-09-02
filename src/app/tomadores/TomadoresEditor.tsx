@@ -8,9 +8,10 @@ interface FormState {
   nome: string;
   fpas: "515" | "655";
   taxaAdm: string;
+  grossUp: string;
 }
 
-const EMPTY: FormState = { codigo: "", nome: "", fpas: "655", taxaAdm: "" };
+const EMPTY: FormState = { codigo: "", nome: "", fpas: "655", taxaAdm: "", grossUp: "86,75" };
 
 export function TomadoresEditor({ initial }: { initial: Tomador[] }) {
   const [items, setItems] = useState(initial);
@@ -23,7 +24,13 @@ export function TomadoresEditor({ initial }: { initial: Tomador[] }) {
   function startEdit(t: Tomador) {
     setEditingCodigo(t.codigo);
     setCreating(false);
-    setForm({ codigo: String(t.codigo), nome: t.nome, fpas: String(t.fpas) as "515" | "655", taxaAdm: String(t.taxaAdm * 100) });
+    setForm({
+      codigo: String(t.codigo),
+      nome: t.nome,
+      fpas: String(t.fpas) as "515" | "655",
+      taxaAdm: String(t.taxaAdm * 100),
+      grossUp: String(t.grossUp * 100),
+    });
   }
 
   function startCreate() {
@@ -42,11 +49,13 @@ export function TomadoresEditor({ initial }: { initial: Tomador[] }) {
     setError(null);
     const codigo = Number(form.codigo);
     const taxaAdm = Number(form.taxaAdm.replace(",", ".")) / 100;
+    const grossUp = Number(form.grossUp.replace(",", ".")) / 100;
     if (!codigo || codigo <= 0) return setError("Código inválido.");
     if (!form.nome.trim()) return setError("Informe o nome.");
     if (!Number.isFinite(taxaAdm) || taxaAdm < 0) return setError("Taxa administrativa inválida.");
+    if (!Number.isFinite(grossUp) || grossUp <= 0 || grossUp > 1) return setError("Gross Up inválido — deve ser maior que 0% e até 100%.");
 
-    const payload = { codigo, nome: form.nome.trim(), fpas: Number(form.fpas) as 515 | 655, taxaAdm };
+    const payload = { codigo, nome: form.nome.trim(), fpas: Number(form.fpas) as 515 | 655, taxaAdm, grossUp };
 
     setBusy(true);
     try {
@@ -91,6 +100,7 @@ export function TomadoresEditor({ initial }: { initial: Tomador[] }) {
               <th className="px-4 py-2 text-left font-medium">Tomador</th>
               <th className="px-4 py-2 text-left font-medium">FPAS</th>
               <th className="px-4 py-2 text-left font-medium">Taxa Adm</th>
+              <th className="px-4 py-2 text-left font-medium">Gross Up</th>
               <th className="px-4 py-2" />
             </tr>
           </thead>
@@ -111,6 +121,7 @@ export function TomadoresEditor({ initial }: { initial: Tomador[] }) {
                     {t.fpas} <span className="text-neutral-400">({t.fpas === 515 ? "Terceiro" : "Temporário"})</span>
                   </td>
                   <td className="px-4 py-2 font-mono tabular-nums">{(t.taxaAdm * 100).toLocaleString("pt-BR")}%</td>
+                  <td className="px-4 py-2 font-mono tabular-nums">{(t.grossUp * 100).toLocaleString("pt-BR")}%</td>
                   <td className="px-4 py-2 text-right">
                     <button type="button" onClick={() => startEdit(t)} className="text-emerald-700 hover:underline">
                       editar
@@ -191,6 +202,15 @@ function EditRow({
           value={form.taxaAdm}
           onChange={(e) => setForm({ ...form, taxaAdm: e.target.value })}
           placeholder="ex.: 12"
+          className="w-20 rounded border border-neutral-300 px-2 py-1 text-sm"
+        />
+        %
+      </td>
+      <td className="px-4 py-2">
+        <input
+          value={form.grossUp}
+          onChange={(e) => setForm({ ...form, grossUp: e.target.value })}
+          placeholder="ex.: 86,75"
           className="w-20 rounded border border-neutral-300 px-2 py-1 text-sm"
         />
         %

@@ -128,6 +128,8 @@ export interface CcustoResumo {
   /** Tomador do colaborador (cod_servico) — fonte de FPAS/taxa admin usada no cálculo; só referência aqui, não é mais o eixo de agrupamento. */
   tomadorCodigo: number;
   tomadorNome: string;
+  /** Gross Up vigente desse Tomador (ver Tomador.grossUp) — exposto pra tela de Faturamento editar sem round-trip extra. */
+  tomadorGrossUp: number;
   competencia: string;
   qtdColaboradores: number;
   rubricas: RubricaSomada[];
@@ -162,6 +164,7 @@ export function aggregateByCcusto(lines: CalculatedLine[], competencia: string):
     const ccustoNome = ccustoLines[0].ccustoNome;
     const tomadorCodigo = ccustoLines[0].tomadorCodigo;
     const tomadorNome = ccustoLines[0].tomadorNome;
+    const tomadorGrossUp = ccustoLines[0].tomadorGrossUp;
 
     const totalDespesas = sum(ccustoLines, (l) => l.base);
     const taxaAdministrativa = sum(ccustoLines, (l) => l.taxaAdmValor);
@@ -221,6 +224,7 @@ export function aggregateByCcusto(lines: CalculatedLine[], competencia: string):
       ccustoNome,
       tomadorCodigo,
       tomadorNome,
+      tomadorGrossUp,
       competencia,
       qtdColaboradores: colaboradores.length,
       rubricas: agruparPorEvento(ccustoLines),

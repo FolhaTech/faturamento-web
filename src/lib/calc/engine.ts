@@ -8,9 +8,11 @@ import type { Colaborador, Encargo, Movimento, TipoEvento, Tomador } from "../ty
 import { CODIGO_DESCONTO_SALDO_FERIAS, CODIGO_DESCONTO_SALDO_UM_TERCO } from "./descontoSaldoFerias";
 
 /**
- * Fator de gross-up da nota fiscal: 1 - (PIS 1,65% + COFINS 7,6% + ISS 2% +
- * CSLL 1% + IRRF 1%) = 0,8675. Confirmado batendo com a aba RESUMO do
- * arquivo FATURAMENTO CHAMA (B41 = B40/0,8675 - B40).
+ * Fator de gross-up padrão da nota fiscal: 1 - (PIS 1,65% + COFINS 7,6% + ISS 2% + CSLL 1% +
+ * IRRF 1%) = 0,8675. Confirmado batendo com a aba RESUMO do arquivo FATURAMENTO CHAMA (B41 =
+ * B40/0,8675 - B40). Editável por Tomador (ver Tomador.grossUp) — este valor só serve de
+ * referência/default da coluna no banco (ver db.ts); o cálculo abaixo sempre usa
+ * tomador.grossUp, nunca esta constante diretamente.
  */
 export const GROSS_UP_FACTOR = 0.8675;
 
@@ -29,6 +31,8 @@ export interface CalculatedLine {
   tomadorNome: string;
   /** FPAS do Tomador — 515 (Terceiro/CLT) ou 655 (Temporário) — usado pra separar faturamento/PDF por regime (ver filtroColaboradores.ts). */
   fpas: 515 | 655;
+  /** Gross Up do Tomador nesta linha (ver Tomador.grossUp) — já usado no cálculo de `nf` abaixo; exposto aqui só pra telas mostrarem/editarem o valor vigente sem round-trip extra. */
+  tomadorGrossUp: number;
   /** Centro de custo do colaborador (dados.cod_ccusto/descricao_ccusto) — eixo de agrupamento da fatura (ver aggregateByCcusto). */
   ccustoCodigo: string;
   ccustoNome: string;
@@ -95,6 +99,7 @@ function zeroLine(
     tomadorCodigo: tomador.codigo,
     tomadorNome: tomador.nome,
     fpas: tomador.fpas,
+    tomadorGrossUp: tomador.grossUp,
     ccustoCodigo: ccusto.codigo,
     ccustoNome: ccusto.nome,
     trilha,
@@ -188,7 +193,7 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
     const base = mov.valor;
     const taxaAdmValor = base * tomador.taxaAdm;
     const fatura = base + taxaAdmValor;
-    const nf = fatura / GROSS_UP_FACTOR;
+    const nf = fatura / tomador.grossUp;
     return {
       line: { ...zeroLine(mov, tomador, ccusto, "encargos", base, mov.tipo), base, taxaAdmValor, fatura, impostos: nf - fatura, nf },
       warning: null,
@@ -215,7 +220,7 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
     const base = valorFace;
     const taxaAdmValor = base * tomador.taxaAdm;
     const fatura = base + taxaAdmValor;
-    const nf = fatura / GROSS_UP_FACTOR;
+    const nf = fatura / tomador.grossUp;
     return {
       line: { ...zeroLine(mov, tomador, ccusto, "beneficio", valorFace, tipo), base, taxaAdmValor, fatura, impostos: nf - fatura, nf },
       warning: null,
@@ -250,7 +255,7 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
   const base = valorFace + inss + fgts + provFerias + prov13 + encInss + encFgts;
   const taxaAdmValor = base * tomador.taxaAdm;
   const fatura = base + taxaAdmValor;
-  const nf = fatura / GROSS_UP_FACTOR;
+  const nf = fatura / tomador.grossUp;
 
   return {
     line: {
@@ -263,6 +268,7 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
       tomadorCodigo: tomador.codigo,
       tomadorNome: tomador.nome,
       fpas: tomador.fpas,
+      tomadorGrossUp: tomador.grossUp,
       ccustoCodigo: ccusto.codigo,
       ccustoNome: ccusto.nome,
       trilha: "encargos",
@@ -363,7 +369,7 @@ async function generateComplementaryCharges(movimentos: Movimento[], ctx: Engine
         const base = item.valor;
         const taxaAdmValor = base * tomador.taxaAdm;
         const fatura = base + taxaAdmValor;
-        const nf = fatura / GROSS_UP_FACTOR;
+        const nf = fatura / tomador.grossUp;
         out.push({
           matricula: colaborador.matricula,
           nome: colaborador.nome,
@@ -374,6 +380,7 @@ async function generateComplementaryCharges(movimentos: Movimento[], ctx: Engine
           tomadorCodigo: tomador.codigo,
           tomadorNome: tomador.nome,
           fpas: tomador.fpas,
+          tomadorGrossUp: tomador.grossUp,
           ccustoCodigo: ccusto.codigo,
           ccustoNome: ccusto.nome,
           trilha: "beneficio",
@@ -482,7 +489,7 @@ function generateProvisaoRescisaoCharges(movimentos: Movimento[], ctx: EngineCon
         const base = item.valor;
         const taxaAdmValor = base * tomador.taxaAdm;
         const fatura = base + taxaAdmValor;
-        const nf = fatura / GROSS_UP_FACTOR;
+        const nf = fatura / tomador.grossUp;
         out.push({
           matricula: colaborador.matricula,
           nome: colaborador.nome,
@@ -493,6 +500,7 @@ function generateProvisaoRescisaoCharges(movimentos: Movimento[], ctx: EngineCon
           tomadorCodigo: tomador.codigo,
           tomadorNome: tomador.nome,
           fpas: tomador.fpas,
+          tomadorGrossUp: tomador.grossUp,
           ccustoCodigo: ccusto.codigo,
           ccustoNome: ccusto.nome,
           trilha: "encargos",
@@ -564,7 +572,7 @@ function generatePlrCharges(movimentos: Movimento[], ctx: EngineContext): Calcul
       const base = ctx.plrCeletista;
       const taxaAdmValor = base * tomador.taxaAdm;
       const fatura = base + taxaAdmValor;
-      const nf = fatura / GROSS_UP_FACTOR;
+      const nf = fatura / tomador.grossUp;
       out.push({
         matricula: colaborador.matricula,
         nome: colaborador.nome,
@@ -575,6 +583,7 @@ function generatePlrCharges(movimentos: Movimento[], ctx: EngineContext): Calcul
         tomadorCodigo: tomador.codigo,
         tomadorNome: tomador.nome,
         fpas: tomador.fpas,
+        tomadorGrossUp: tomador.grossUp,
         ccustoCodigo: ccusto.codigo,
         ccustoNome: ccusto.nome,
         trilha: "encargos",

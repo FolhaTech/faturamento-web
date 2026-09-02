@@ -2,16 +2,20 @@ import { ensureSchema, getDb } from "../db";
 import { normalizaTexto } from "../text";
 import type { Tomador } from "../types";
 
+/** Fator de gross-up padrão da Nota Fiscal (ver GROSS_UP_FACTOR em calc/engine.ts) — duplicado aqui como literal pra não criar import circular (engine.ts já importa deste módulo). */
+const GROSS_UP_PADRAO = 0.8675;
+
 interface Row {
   codigo: number;
   nome: string;
   fpas: number;
   taxa_adm: number;
+  gross_up: number;
   pendente: boolean;
 }
 
 function toTomador(row: Row): Tomador {
-  return { codigo: row.codigo, nome: row.nome, fpas: row.fpas === 515 ? 515 : 655, taxaAdm: row.taxa_adm, pendente: row.pendente };
+  return { codigo: row.codigo, nome: row.nome, fpas: row.fpas === 515 ? 515 : 655, taxaAdm: row.taxa_adm, grossUp: row.gross_up, pendente: row.pendente };
 }
 
 export async function listTomadores(): Promise<Tomador[]> {
@@ -31,16 +35,29 @@ export interface TomadorInput {
   nome: string;
   fpas: 515 | 655;
   taxaAdm: number;
+  /** Ausente = mantém 0,8675 (padrão) — a maioria dos chamadores não precisa pensar nisso. */
+  grossUp?: number;
 }
 
 /** Salva dados reais de um Tomador — sempre zera `pendente`, mesmo se o registro tivesse sido criado automaticamente (ver upsertTomadoresPendentes) por vir de um Cód Serviço sem cadastro. */
 export async function upsertTomador(input: TomadorInput): Promise<Tomador> {
   await ensureSchema();
+  const grossUp = input.grossUp ?? GROSS_UP_PADRAO;
   await getDb()`
-    INSERT INTO tomadores (codigo, nome, fpas, taxa_adm, pendente) VALUES (${input.codigo}, ${input.nome}, ${input.fpas}, ${input.taxaAdm}, false)
-    ON CONFLICT (codigo) DO UPDATE SET nome = excluded.nome, fpas = excluded.fpas, taxa_adm = excluded.taxa_adm, pendente = false
+    INSERT INTO tomadores (codigo, nome, fpas, taxa_adm, gross_up, pendente)
+    VALUES (${input.codigo}, ${input.nome}, ${input.fpas}, ${input.taxaAdm}, ${grossUp}, false)
+    ON CONFLICT (codigo) DO UPDATE SET nome = excluded.nome, fpas = excluded.fpas, taxa_adm = excluded.taxa_adm, gross_up = excluded.gross_up, pendente = false
   `;
   return (await getTomador(input.codigo))!;
+}
+
+/** Atualiza só o Gross Up de um Tomador já cadastrado — usado pelo formulário rápido na tela de Faturamento, que não tem os demais campos (nome/FPAS/Taxa Adm) à mão. */
+export async function updateGrossUp(codigo: number, grossUp: number): Promise<Tomador> {
+  await ensureSchema();
+  await getDb()`UPDATE tomadores SET gross_up = ${grossUp} WHERE codigo = ${codigo}`;
+  const tomador = await getTomador(codigo);
+  if (!tomador) throw new Error(`Tomador ${codigo} não encontrado.`);
+  return tomador;
 }
 
 export async function deleteTomador(codigo: number): Promise<void> {
@@ -77,7 +94,7 @@ export async function upsertTomadoresPendentes(entradas: TomadorPendenteInput[])
     jaCriados.add(e.codigo);
     const nome = e.nomeSugerido?.trim() || `Tomador cód. ${e.codigo} (cadastro pendente)`;
     await sql`
-      INSERT INTO tomadores (codigo, nome, fpas, taxa_adm, pendente) VALUES (${e.codigo}, ${nome}, 655, 0, true)
+      INSERT INTO tomadores (codigo, nome, fpas, taxa_adm, gross_up, pendente) VALUES (${e.codigo}, ${nome}, 655, 0, ${GROSS_UP_PADRAO}, true)
       ON CONFLICT (codigo) DO NOTHING
     `;
     const tomador = await getTomador(e.codigo);

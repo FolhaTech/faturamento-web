@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { resetDbForTests } from "../db";
-import { getTomador, listTomadores, upsertTomador, upsertTomadoresPendentes } from "./tomadores";
+import { getTomador, listTomadores, updateGrossUp, upsertTomador, upsertTomadoresPendentes } from "./tomadores";
 
 beforeEach(async () => {
   await resetDbForTests();
@@ -38,5 +38,30 @@ describe("tomadores repo — cadastro pendente (Cód Serviço sem Tomador cadast
     const t = (await getTomador(999))!;
     expect(t.pendente).toBe(false);
     expect(t.nome).toBe("EMPRESA REAL LTDA");
+  });
+});
+
+describe("tomadores repo — Gross Up", () => {
+  it("usa 0,8675 como padrão quando não informado", async () => {
+    await upsertTomador({ codigo: 999, nome: "EMPRESA LTDA", fpas: 515, taxaAdm: 0.1 });
+    const t = (await getTomador(999))!;
+    expect(t.grossUp).toBeCloseTo(0.8675, 6);
+  });
+
+  it("grava o Gross Up informado no upsert completo", async () => {
+    await upsertTomador({ codigo: 999, nome: "EMPRESA LTDA", fpas: 515, taxaAdm: 0.1, grossUp: 0.9 });
+    const t = (await getTomador(999))!;
+    expect(t.grossUp).toBeCloseTo(0.9, 6);
+  });
+
+  it("updateGrossUp atualiza só o Gross Up, sem mexer nos demais campos", async () => {
+    await upsertTomador({ codigo: 999, nome: "EMPRESA LTDA", fpas: 515, taxaAdm: 0.1 });
+    await updateGrossUp(999, 0.9);
+
+    const t = (await getTomador(999))!;
+    expect(t.grossUp).toBeCloseTo(0.9, 6);
+    expect(t.nome).toBe("EMPRESA LTDA");
+    expect(t.fpas).toBe(515);
+    expect(t.taxaAdm).toBeCloseTo(0.1, 6);
   });
 });

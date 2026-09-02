@@ -12,6 +12,11 @@ CREATE TABLE IF NOT EXISTS tomadores (
 -- pendente" de colaboradores. Ficam de fora do faturamento (calculateLine em engine.ts) até
 -- alguém completar FPAS/Taxa Adm pela tela de Tomadores, o que já zera esta coluna de volta.
 ALTER TABLE tomadores ADD COLUMN IF NOT EXISTS pendente BOOLEAN NOT NULL DEFAULT false;
+-- Fator de gross-up da Nota Fiscal desse Tomador (NF = fatura / gross_up) — era uma constante
+-- global fixa (0,8675 = 1 - 13,25% de PIS/COFINS/ISS/CSLL/IRRF, ver GROSS_UP_FACTOR em
+-- engine.ts), agora editável por Tomador porque nem todo cliente tem a mesma composição de
+-- impostos na NF. 0,8675 continua sendo o padrão pra quem nunca editou.
+ALTER TABLE tomadores ADD COLUMN IF NOT EXISTS gross_up DOUBLE PRECISION NOT NULL DEFAULT 0.8675;
 
 CREATE TABLE IF NOT EXISTS encargos (
   codigo INTEGER PRIMARY KEY,
