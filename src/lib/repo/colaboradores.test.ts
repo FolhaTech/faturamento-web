@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { resetDbForTests } from "../db";
-import { getColaborador, listColaboradores, upsertColaborador } from "./colaboradores";
+import { getColaborador, getTomadoresPorCcusto, listColaboradores, upsertColaborador } from "./colaboradores";
 
 beforeEach(async () => {
   await resetDbForTests();
@@ -59,5 +59,40 @@ describe("colaboradores repo", () => {
     expect(page2.items).toHaveLength(2);
     expect(page1.total).toBe(5);
     expect(page1.items.map((c) => c.matricula)).not.toEqual(page2.items.map((c) => c.matricula));
+  });
+});
+
+describe("getTomadoresPorCcusto — descobre o Tomador de um Centro de Custo pelos colaboradores já cadastrados", () => {
+  it("resolve quando um único Tomador está associado a esse Centro de Custo", async () => {
+    await upsertColaborador({
+      matricula: 1,
+      dados: { cod_epr: 1, nome: "FULANO", cod_servico: 14, cod_ccusto: "10", descricao_ccusto: "ITAU R&S 1050" },
+    });
+    await upsertColaborador({
+      matricula: 2,
+      dados: { cod_epr: 2, nome: "CICLANO", cod_servico: 14, cod_ccusto: "10", descricao_ccusto: "ITAU R&S 1050" },
+    });
+
+    const resultado = await getTomadoresPorCcusto(["ITAU R&S 1050"]);
+    expect(resultado.get("ITAU R&S 1050")).toEqual({ codigo: 14, ambiguo: false });
+  });
+
+  it("marca como ambíguo quando o mesmo Centro de Custo tem mais de um Tomador associado", async () => {
+    await upsertColaborador({
+      matricula: 1,
+      dados: { cod_epr: 1, nome: "FULANO", cod_servico: 14, cod_ccusto: "10", descricao_ccusto: "ITAU R&S 1050" },
+    });
+    await upsertColaborador({
+      matricula: 2,
+      dados: { cod_epr: 2, nome: "CICLANO", cod_servico: 23, cod_ccusto: "10", descricao_ccusto: "ITAU R&S 1050" },
+    });
+
+    const resultado = await getTomadoresPorCcusto(["ITAU R&S 1050"]);
+    expect(resultado.get("ITAU R&S 1050")?.ambiguo).toBe(true);
+  });
+
+  it("não retorna nada pra um Centro de Custo sem nenhum colaborador cadastrado", async () => {
+    const resultado = await getTomadoresPorCcusto(["CENTRO INEXISTENTE"]);
+    expect(resultado.has("CENTRO INEXISTENTE")).toBe(false);
   });
 });

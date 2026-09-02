@@ -239,6 +239,48 @@ export async function deleteColaborador(matricula: number): Promise<void> {
   await getDb()`DELETE FROM colaboradores WHERE matricula = ${matricula}`;
 }
 
+export interface TomadorPorCcusto {
+  codigo: number;
+  /** true = esse Centro de Custo já é usado por mais de um Tomador entre os colaboradores cadastrados (ex.: mesmo site atendido por contratos TEMP e CLT diferentes) — não escolhe sozinho. */
+  ambiguo: boolean;
+}
+
+/**
+ * Pra cada Centro de Custo (descrição) em `descricoesCcusto`, descobre qual Cód Serviço
+ * (Tomador) os colaboradores JÁ CADASTRADOS nesse mesmo Centro de Custo usam — usado pra
+ * vincular automaticamente um colaborador novo ao Tomador certo (ver /api/movimentos): um
+ * Centro de Custo específico de um cliente (ex. "ITAU R&S 1050") é um sinal bem mais confiável
+ * do que o cabeçalho "Empresa:" de um arquivo de Movimentos, que pode ser só a prestadora que
+ * administra a folha (ex. uma agência de RH terceirizando pra vários clientes), não quem paga
+ * a fatura. Um Centro de Custo genérico reaproveitado por várias empresas (ex.: "GERAL") fica
+ * marcado como ambíguo — nunca escolhe entre Tomadores concorrentes.
+ */
+export async function getTomadoresPorCcusto(descricoesCcusto: string[]): Promise<Map<string, TomadorPorCcusto>> {
+  const resultado = new Map<string, TomadorPorCcusto>();
+  const unicos = [...new Set(descricoesCcusto)].filter((d) => d.trim() !== "");
+  if (unicos.length === 0) return resultado;
+
+  await ensureSchema();
+  const sql = getDb();
+  const rows = await sql<{ descricao_ccusto: string; cod_servico: number }[]>`
+    SELECT DISTINCT dados::jsonb ->> 'descricao_ccusto' as descricao_ccusto, cod_servico
+    FROM colaboradores
+    WHERE dados::jsonb ->> 'descricao_ccusto' = ANY(${unicos}) AND cod_servico IS NOT NULL
+  `;
+
+  const codigosPorCcusto = new Map<string, Set<number>>();
+  for (const row of rows) {
+    const set = codigosPorCcusto.get(row.descricao_ccusto) ?? new Set<number>();
+    set.add(row.cod_servico);
+    codigosPorCcusto.set(row.descricao_ccusto, set);
+  }
+  for (const [ccusto, codigos] of codigosPorCcusto) {
+    const [primeiro] = codigos;
+    resultado.set(ccusto, codigos.size === 1 ? { codigo: primeiro, ambiguo: false } : { codigo: primeiro, ambiguo: true });
+  }
+  return resultado;
+}
+
 export async function countColaboradores(): Promise<number> {
   await ensureSchema();
   const [{ n }] = await getDb()<{ n: number }[]>`SELECT COUNT(*)::int as n FROM colaboradores`;

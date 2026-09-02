@@ -1,13 +1,18 @@
 import { NextResponse } from "next/server";
 import { aplicarAbatimentoFerias } from "@/lib/calc/abatimentoFerias";
-import { getColaboradoresPorMatriculas, upsertColaborador, upsertColaboradoresPendentes } from "@/lib/repo/colaboradores";
+import {
+  getColaboradoresPorMatriculas,
+  getTomadoresPorCcusto,
+  upsertColaborador,
+  upsertColaboradoresPendentes,
+} from "@/lib/repo/colaboradores";
 import {
   countMovimentos,
   countMovimentosPorCompetencia,
   listCompetencias,
   replaceMovimentosPorCompetencia,
 } from "@/lib/repo/movimentos";
-import { getTomadorPorNome, upsertTomadoresPendentes } from "@/lib/repo/tomadores";
+import { getTomadorPorNome, listTomadores, upsertTomadoresPendentes } from "@/lib/repo/tomadores";
 import { parseMovimentosFile } from "@/lib/xlsx/parseMovimentos";
 
 export const runtime = "nodejs";
@@ -66,15 +71,11 @@ export async function POST(request: Request) {
   const matriculasDoArquivo = [...new Set(linhas.map((l) => l.matricula))];
   let colaboradoresDoArquivo = await getColaboradoresPorMatriculas(matriculasDoArquivo);
 
-  // O layout "relatório" (ver parseMovimentos.ts) declara a Empresa/Tomador no cabeçalho do
-  // arquivo e o Centro de Custo ("Local de trabalho") por colaborador — completa
-  // automaticamente quem ainda estiver sem Cód Serviço e/ou sem Centro de Custo com o que o
-  // próprio arquivo já traz, em vez de deixar "Cadastro pendente" esperando alguém preencher
-  // manualmente uma informação que já veio no upload. Nunca sobrescreve um cadastro já
-  // preenchido (só completa o que estiver vazio). O Tomador só é vinculado quando o nome bate
-  // com exatamente um cadastrado — nunca escolhe entre nomes duplicados (ver getTomadorPorNome)
-  // nem inventa um Tomador novo a partir do código de Empresa do sistema de origem, que usa uma
-  // numeração própria e não corresponde ao código do Tomador aqui.
+  // O layout "relatório" (ver parseMovimentos.ts) declara a Empresa no cabeçalho do arquivo e o
+  // Centro de Custo ("Local de trabalho") por colaborador. O cabeçalho "Empresa:" só serve de
+  // ÚLTIMO recurso pro Tomador: pode ser só a prestadora que administra a folha (ex.: uma
+  // agência de RH terceirizando pra vários clientes finais), não quem paga a fatura — ver
+  // getTomadoresPorCcusto mais abaixo, que é o sinal preferido.
   let tomadorDoArquivo = null;
   let avisoTomadorArquivo: string | null = null;
   if (tomadorNomeArquivo) {
@@ -88,15 +89,6 @@ export async function POST(request: Request) {
     }
   }
 
-  // Quando o arquivo não traz "Local de trabalho" preenchido por colaborador (comum na
-  // prática — a coluna existe mas costuma vir vazia), herda o Centro de Custo do colaborador
-  // ANTERIOR no arquivo (na ordem em que aparecem nos Movimentos) em vez de olhar o cadastro
-  // inteiro do Tomador: um relatório de folha normalmente vem agrupado por local de trabalho, e
-  // o colaborador logo acima de quem está sem Ccusto é o sinal mais confiável de com quem ele
-  // deve ficar junto na fatura — bem mais preciso que um "Centro de Custo mais comum" que pode
-  // vir de outro site do mesmo Tomador. Só propaga um valor que já existe (do próprio cadastro
-  // ou de "Local de trabalho"); o primeiro colaborador do arquivo sem nenhum dos dois fica sem
-  // herdar nada, não tem de quem puxar.
   const matriculasEmOrdem: number[] = [];
   const matriculasVistas = new Set<number>();
   for (const l of linhas) {
@@ -106,40 +98,75 @@ export async function POST(request: Request) {
     }
   }
 
+  // 1ª passada: resolve o Centro de Custo de cada colaborador do arquivo (na ordem em que
+  // aparecem nos Movimentos), sem gravar nada ainda. Quando o arquivo não traz "Local de
+  // trabalho" preenchido por colaborador (comum na prática — a coluna existe mas costuma vir
+  // vazia), herda do colaborador ANTERIOR no arquivo: um relatório de folha normalmente vem
+  // agrupado por local de trabalho, e quem está logo acima de um colaborador sem Ccusto é o
+  // sinal mais confiável de com quem ele deve ficar junto. Só propaga um valor que já existe
+  // (do próprio cadastro ou de "Local de trabalho"); o primeiro colaborador do arquivo sem
+  // nenhum dos dois fica sem herdar nada.
+  const ccustoPorMatricula = new Map<number, { codigo: string; nome: string }>();
+  let ultimoCcusto: { codigo: string; nome: string } | null = null;
+  for (const matricula of matriculasEmOrdem) {
+    const c = colaboradoresDoArquivo.get(matricula);
+    if (!c) continue;
+    const ccustoVazio = c.dados.cod_ccusto === null || c.dados.cod_ccusto === undefined || String(c.dados.cod_ccusto).trim() === "";
+    const localTrabalho = localTrabalhoPorMatricula.get(matricula);
+    let ccusto: { codigo: string; nome: string } | null = null;
+    if (!ccustoVazio) {
+      ccusto = { codigo: String(c.dados.cod_ccusto), nome: c.dados.descricao_ccusto ? String(c.dados.descricao_ccusto) : String(c.dados.cod_ccusto) };
+    } else if (localTrabalho) {
+      ccusto = { codigo: localTrabalho, nome: localTrabalho };
+    } else if (ultimoCcusto) {
+      ccusto = ultimoCcusto;
+    }
+    if (ccusto) {
+      ccustoPorMatricula.set(matricula, ccusto);
+      ultimoCcusto = ccusto;
+    }
+  }
+
+  // Descobre, pra cada Centro de Custo envolvido, qual Tomador os colaboradores JÁ CADASTRADOS
+  // nesse mesmo Centro de Custo usam — sinal preferido sobre o cabeçalho "Empresa:" do arquivo
+  // (ver getTomadoresPorCcusto). Um Centro de Custo ambíguo (mais de um Tomador) ou sem
+  // histórico nenhum cai de volta pro cabeçalho "Empresa:".
+  const tomadorPorCcusto = await getTomadoresPorCcusto([...ccustoPorMatricula.values()].map((c) => c.nome));
+  const tomadoresPorCodigo = new Map((await listTomadores()).map((t) => [t.codigo, t]));
+
+  // 2ª passada: aplica os dois vínculos — Cód Serviço (Tomador) e Centro de Custo — em quem
+  // ainda estiver vazio. Nunca sobrescreve um cadastro já preenchido.
   const vinculadosAoArquivo: { matricula: number; nome: string }[] = [];
   const ccustoCompletado: { matricula: number; nome: string; ccusto: string }[] = [];
-  let ultimoCcusto: { codigo: string; nome: string } | null = null;
   for (const matricula of matriculasEmOrdem) {
     const c = colaboradoresDoArquivo.get(matricula);
     if (!c) continue;
 
     const patch: Record<string, string | number> = {};
-    if (c.codServico == null && tomadorDoArquivo) {
-      patch.cod_servico = tomadorDoArquivo.codigo;
-      patch.descricao_servico = tomadorDoArquivo.nome;
+    if (c.codServico == null) {
+      const ccusto = ccustoPorMatricula.get(matricula);
+      const porCcusto = ccusto ? tomadorPorCcusto.get(ccusto.nome) : undefined;
+      const tomadorResolvido =
+        porCcusto && !porCcusto.ambiguo ? (tomadoresPorCodigo.get(porCcusto.codigo) ?? null) : tomadorDoArquivo;
+      if (tomadorResolvido) {
+        patch.cod_servico = tomadorResolvido.codigo;
+        patch.descricao_servico = tomadorResolvido.nome;
+      }
     }
 
     const ccustoVazio = c.dados.cod_ccusto === null || c.dados.cod_ccusto === undefined || String(c.dados.cod_ccusto).trim() === "";
-    const localTrabalho = localTrabalhoPorMatricula.get(c.matricula);
-    let ccustoResolvido: { codigo: string; nome: string } | null = null;
-    if (!ccustoVazio) {
-      // já tinha Ccusto próprio — vira a referência pro próximo colaborador sem Ccusto no arquivo.
-      ultimoCcusto = { codigo: String(c.dados.cod_ccusto), nome: c.dados.descricao_ccusto ? String(c.dados.descricao_ccusto) : String(c.dados.cod_ccusto) };
-    } else if (localTrabalho) {
-      ccustoResolvido = { codigo: localTrabalho, nome: localTrabalho };
-      ultimoCcusto = ccustoResolvido;
-    } else if (ultimoCcusto) {
-      ccustoResolvido = ultimoCcusto;
-    }
-    if (ccustoVazio && ccustoResolvido) {
-      patch.cod_ccusto = ccustoResolvido.codigo;
-      patch.descricao_ccusto = ccustoResolvido.nome;
+    if (ccustoVazio) {
+      const ccustoResolvido = ccustoPorMatricula.get(matricula);
+      if (ccustoResolvido) {
+        patch.cod_ccusto = ccustoResolvido.codigo;
+        patch.descricao_ccusto = ccustoResolvido.nome;
+      }
     }
     if (Object.keys(patch).length === 0) continue;
 
     await upsertColaborador({ matricula: c.matricula, dados: { ...c.dados, ...patch } });
     if (patch.cod_servico) vinculadosAoArquivo.push({ matricula: c.matricula, nome: c.nome });
-    if (patch.cod_ccusto) ccustoCompletado.push({ matricula: c.matricula, nome: c.nome, ccusto: ccustoResolvido!.nome });
+    if (patch.cod_ccusto) ccustoCompletado.push({ matricula: c.matricula, nome: c.nome, ccusto: String(patch.descricao_ccusto) });
   }
   if (vinculadosAoArquivo.length > 0 || ccustoCompletado.length > 0) {
     colaboradoresDoArquivo = await getColaboradoresPorMatriculas(matriculasDoArquivo);
