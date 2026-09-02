@@ -22,7 +22,7 @@ export function GrossUpConfigForm({
     setError(null);
     setOk(false);
     const num = Number(valor.replace(",", ".")) / 100;
-    if (!Number.isFinite(num) || num < 0 || num > 1) return setError("Valor inválido — use um percentual entre 0 e 100 (0 desliga o gross-up: NF = fatura).");
+    if (!Number.isFinite(num) || num < 0 || num > 5) return setError("Valor inválido — use um percentual entre 0 e 500 (0 desliga o gross-up: NF = fatura; 115,27 é o padrão).");
 
     setBusy(true);
     try {

@@ -2,8 +2,8 @@ import { ensureSchema, getDb } from "../db";
 import { normalizaTexto } from "../text";
 import type { Tomador } from "../types";
 
-/** Fator de gross-up padrão da Nota Fiscal (ver GROSS_UP_FACTOR em calc/engine.ts) — duplicado aqui como literal pra não criar import circular (engine.ts já importa deste módulo). */
-const GROSS_UP_PADRAO = 0.8675;
+/** Multiplicador padrão de gross-up da Nota Fiscal — NF = fatura × grossUp (ver GROSS_UP_FACTOR em calc/engine.ts) — duplicado aqui como literal pra não criar import circular (engine.ts já importa deste módulo). */
+const GROSS_UP_PADRAO = 1 / 0.8675;
 
 interface Row {
   codigo: number;
@@ -35,7 +35,7 @@ export interface TomadorInput {
   nome: string;
   fpas: 515 | 655;
   taxaAdm: number;
-  /** Ausente = mantém 0,8675 (padrão) — a maioria dos chamadores não precisa pensar nisso. */
+  /** Ausente = mantém ~1,1527 (padrão, NF = fatura × 1,1527) — a maioria dos chamadores não precisa pensar nisso. */
   grossUp?: number;
 }
 

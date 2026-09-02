@@ -9,8 +9,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ codi
   const body = await request.json();
   const { grossUp } = body ?? {};
 
-  if (!Number.isFinite(grossUp) || grossUp < 0 || grossUp > 1) {
-    return NextResponse.json({ error: "Gross Up inválido — deve ser entre 0 e 1 (ex.: 0,8675). 0 desliga o gross-up: NF = fatura." }, { status: 400 });
+  if (!Number.isFinite(grossUp) || grossUp < 0 || grossUp > 5) {
+    return NextResponse.json({ error: "Gross Up inválido — deve ser entre 0 e 5 (ex.: 1,1527). 0 desliga o gross-up: NF = fatura." }, { status: 400 });
   }
 
   const tomador = await updateGrossUp(Number(codigo), grossUp);

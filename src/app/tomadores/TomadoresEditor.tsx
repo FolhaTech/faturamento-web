@@ -11,7 +11,7 @@ interface FormState {
   grossUp: string;
 }
 
-const EMPTY: FormState = { codigo: "", nome: "", fpas: "655", taxaAdm: "", grossUp: "86,75" };
+const EMPTY: FormState = { codigo: "", nome: "", fpas: "655", taxaAdm: "", grossUp: "115,27" };
 
 export function TomadoresEditor({ initial }: { initial: Tomador[] }) {
   const [items, setItems] = useState(initial);
@@ -53,7 +53,7 @@ export function TomadoresEditor({ initial }: { initial: Tomador[] }) {
     if (!codigo || codigo <= 0) return setError("Código inválido.");
     if (!form.nome.trim()) return setError("Informe o nome.");
     if (!Number.isFinite(taxaAdm) || taxaAdm < 0) return setError("Taxa administrativa inválida.");
-    if (!Number.isFinite(grossUp) || grossUp < 0 || grossUp > 1) return setError("Gross Up inválido — use um percentual entre 0% e 100% (0% desliga o gross-up: NF = fatura).");
+    if (!Number.isFinite(grossUp) || grossUp < 0 || grossUp > 5) return setError("Gross Up inválido — use um percentual entre 0% e 500% (0% desliga o gross-up: NF = fatura; ex.: 115,27% é o padrão).");
 
     const payload = { codigo, nome: form.nome.trim(), fpas: Number(form.fpas) as 515 | 655, taxaAdm, grossUp };
 
@@ -210,7 +210,7 @@ function EditRow({
         <input
           value={form.grossUp}
           onChange={(e) => setForm({ ...form, grossUp: e.target.value })}
-          placeholder="ex.: 86,75"
+          placeholder="ex.: 115,27"
           className="w-20 rounded border border-neutral-300 px-2 py-1 text-sm"
         />
         %

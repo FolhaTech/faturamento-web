@@ -8,20 +8,21 @@ import type { Colaborador, Encargo, Movimento, TipoEvento, Tomador } from "../ty
 import { CODIGO_DESCONTO_SALDO_FERIAS, CODIGO_DESCONTO_SALDO_UM_TERCO } from "./descontoSaldoFerias";
 
 /**
- * Fator de gross-up padrão da nota fiscal: 1 - (PIS 1,65% + COFINS 7,6% + ISS 2% + CSLL 1% +
- * IRRF 1%) = 0,8675. Confirmado batendo com a aba RESUMO do arquivo FATURAMENTO CHAMA (B41 =
- * B40/0,8675 - B40). Editável por Tomador (ver Tomador.grossUp) — este valor só serve de
- * referência/default da coluna no banco (ver db.ts); o cálculo abaixo sempre usa
- * tomador.grossUp, nunca esta constante diretamente.
+ * Multiplicador padrão de gross-up da nota fiscal: NF = fatura × grossUp. O fator "o que sobra
+ * líquido depois do imposto" é 1 - (PIS 1,65% + COFINS 7,6% + ISS 2% + CSLL 1% + IRRF 1%) =
+ * 0,8675 (confirmado batendo com a aba RESUMO do arquivo FATURAMENTO CHAMA), e o multiplicador
+ * que dá o mesmo resultado é o inverso dele, 1/0,8675 ≈ 1,152738 — NF sai igual ao antigo
+ * fatura/0,8675, só que calculado multiplicando em vez de dividir. Editável por Tomador (ver
+ * Tomador.grossUp); este valor só serve de referência/default da coluna no banco (ver db.ts).
  */
-export const GROSS_UP_FACTOR = 0.8675;
+export const GROSS_UP_FACTOR = 1 / 0.8675;
 
 /** Sentinela pra colaborador sem Ccusto cadastrado — mantém a linha visível em vez de sumir do faturamento. */
 export const CCUSTO_SEM_CADASTRO = { codigo: "0", nome: "Sem centro de custo" };
 
-/** NF = fatura / grossUp — Gross Up 0 é o valor usado pra "desligar" o gross-up desse Tomador (NF = fatura, sem inflar), não uma divisão por zero. */
+/** NF = fatura × grossUp — Gross Up 0 é o valor usado pra "desligar" o gross-up desse Tomador (NF = fatura, sem inflar), não faz a NF virar zero. */
 function calcularNf(fatura: number, grossUp: number): number {
-  return grossUp > 0 ? fatura / grossUp : fatura;
+  return grossUp > 0 ? fatura * grossUp : fatura;
 }
 
 export interface CalculatedLine {

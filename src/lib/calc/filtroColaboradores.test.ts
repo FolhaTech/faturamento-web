@@ -13,7 +13,7 @@ function linha(overrides: Partial<CalculatedLine>): CalculatedLine {
     tomadorCodigo: 1,
     tomadorNome: "TOMADOR",
     fpas: 515,
-    tomadorGrossUp: 0.8675,
+    tomadorGrossUp: 1 / 0.8675,
     ccustoCodigo: "1",
     ccustoNome: "GERAL",
     trilha: "encargos",

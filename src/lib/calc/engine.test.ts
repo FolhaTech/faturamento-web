@@ -78,12 +78,12 @@ describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
 
     expect(l.taxaAdmValor).toBeCloseTo(l.base * 0.1, 6);
     expect(l.fatura).toBeCloseTo(l.base + l.taxaAdmValor, 6);
-    expect(l.nf).toBeCloseTo(l.fatura / 0.8675, 6);
+    expect(l.nf).toBeCloseTo(l.fatura * (1 / 0.8675), 6);
     expect(l.trilha).toBe("encargos");
   });
 
-  it("usa o Gross Up do Tomador (não mais um valor fixo global) pra calcular a NF", async () => {
-    await upsertTomador({ ...TOMADOR_TERCEIRO, grossUp: 0.9 });
+  it("usa o Gross Up do Tomador (não mais um valor fixo global) pra calcular a NF, multiplicando (não dividindo)", async () => {
+    await upsertTomador({ ...TOMADOR_TERCEIRO, grossUp: 1.2 });
     const mov: Movimento = {
       id: "1",
       codigo: 8781,
@@ -101,9 +101,9 @@ describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
     const l = line!;
 
     expect(l.fpas).toBe(515);
-    expect(l.tomadorGrossUp).toBeCloseTo(0.9, 6);
-    expect(l.nf).toBeCloseTo(l.fatura / 0.9, 6);
-    expect(l.nf).not.toBeCloseTo(l.fatura / 0.8675, 6);
+    expect(l.tomadorGrossUp).toBeCloseTo(1.2, 6);
+    expect(l.nf).toBeCloseTo(l.fatura * 1.2, 6);
+    expect(l.nf).not.toBeCloseTo(l.fatura * (1 / 0.8675), 6);
   });
 
   it("Gross Up 0 desliga o gross-up — NF = fatura, sem divisão por zero", async () => {
@@ -232,7 +232,7 @@ describe("calculateLine — trilha de benefício em espécie (Tipo I)", () => {
     expect(l.base).toBe(315);
     expect(l.taxaAdmValor).toBeCloseTo(315 * 0.1, 6);
     expect(l.fatura).toBeCloseTo(315 * 1.1, 6);
-    expect(l.nf).toBeCloseTo((315 * 1.1) / 0.8675, 6);
+    expect(l.nf).toBeCloseTo((315 * 1.1) * (1 / 0.8675), 6);
   });
 });
 
