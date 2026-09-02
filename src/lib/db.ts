@@ -12,17 +12,14 @@ CREATE TABLE IF NOT EXISTS tomadores (
 -- pendente" de colaboradores. Ficam de fora do faturamento (calculateLine em engine.ts) até
 -- alguém completar FPAS/Taxa Adm pela tela de Tomadores, o que já zera esta coluna de volta.
 ALTER TABLE tomadores ADD COLUMN IF NOT EXISTS pendente BOOLEAN NOT NULL DEFAULT false;
--- Multiplicador de gross-up da Nota Fiscal desse Tomador (NF = fatura * gross_up) — era uma
--- constante global fixa, agora editável por Tomador porque nem todo cliente tem a mesma
--- composição de impostos na NF. Padrão 1/0,8675 ≈ 1,152738 (0,8675 = 1 - 13,25% de
--- PIS/COFINS/ISS/CSLL/IRRF, ver GROSS_UP_FACTOR em engine.ts) pra quem nunca editou.
-ALTER TABLE tomadores ADD COLUMN IF NOT EXISTS gross_up DOUBLE PRECISION NOT NULL DEFAULT (1/0.8675);
--- A coluna nasceu com NF = fatura / gross_up (default 0,8675, um divisor); a fórmula virou
--- multiplicação (ver calcularNf em engine.ts) pra evitar dividir, então o default de quem cria
--- a tabela do zero agora precisa ser o multiplicador equivalente, não o divisor antigo — só
--- essa linha, sem ADD COLUMN, porque a coluna já existe em produção (ALTER COLUMN SET DEFAULT
--- só vale pra INSERTs futuros; os valores já gravados foram convertidos à parte, uma vez só).
-ALTER TABLE tomadores ALTER COLUMN gross_up SET DEFAULT (1/0.8675);
+-- Gross Up da Nota Fiscal desse Tomador — era uma constante global fixa, agora editável por
+-- Tomador e com significado diferente por regime (ver calcularNf em engine.ts): Terceiro (FPAS
+-- 515) usa NF = fatura / gross_up (padrão 0,8675); Temporário (FPAS 655) usa NF = despesa +
+-- (Taxa Adm × gross_up) (padrão 0,1325). O default da COLUNA (só usado se algum INSERT não
+-- passar o campo, o que a aplicação sempre faz — ver upsertTomador/upsertTomadoresPendentes em
+-- repo/tomadores.ts) acompanha o default de fpas logo acima (655/Temporário), por isso é 0,1325.
+ALTER TABLE tomadores ADD COLUMN IF NOT EXISTS gross_up DOUBLE PRECISION NOT NULL DEFAULT 0.1325;
+ALTER TABLE tomadores ALTER COLUMN gross_up SET DEFAULT 0.1325;
 
 CREATE TABLE IF NOT EXISTS encargos (
   codigo INTEGER PRIMARY KEY,

@@ -13,6 +13,7 @@ describe("tomadores repo — cadastro pendente (Cód Serviço sem Tomador cadast
     expect(criado.nome).toBe("EMPRESA NOVA LTDA");
     expect(criado.fpas).toBe(655);
     expect(criado.taxaAdm).toBe(0);
+    expect(criado.grossUp).toBeCloseTo(0.1325, 6); // pendente sempre nasce FPAS 655 — padrão de Temporário
   });
 
   it("usa um rótulo genérico quando não há nome sugerido", async () => {
@@ -42,10 +43,16 @@ describe("tomadores repo — cadastro pendente (Cód Serviço sem Tomador cadast
 });
 
 describe("tomadores repo — Gross Up", () => {
-  it("usa 1/0,8675 (~1,1527) como padrão quando não informado", async () => {
+  it("Terceiro (515): usa 0,8675 como padrão quando não informado", async () => {
     await upsertTomador({ codigo: 999, nome: "EMPRESA LTDA", fpas: 515, taxaAdm: 0.1 });
     const t = (await getTomador(999))!;
-    expect(t.grossUp).toBeCloseTo(1 / 0.8675, 6);
+    expect(t.grossUp).toBeCloseTo(0.8675, 6);
+  });
+
+  it("Temporário (655): usa 0,1325 como padrão quando não informado", async () => {
+    await upsertTomador({ codigo: 999, nome: "EMPRESA LTDA", fpas: 655, taxaAdm: 0.1 });
+    const t = (await getTomador(999))!;
+    expect(t.grossUp).toBeCloseTo(0.1325, 6);
   });
 
   it("grava o Gross Up informado no upsert completo", async () => {

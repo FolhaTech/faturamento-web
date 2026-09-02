@@ -78,12 +78,12 @@ describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
 
     expect(l.taxaAdmValor).toBeCloseTo(l.base * 0.1, 6);
     expect(l.fatura).toBeCloseTo(l.base + l.taxaAdmValor, 6);
-    expect(l.nf).toBeCloseTo(l.fatura * (1 / 0.8675), 6);
+    expect(l.nf).toBeCloseTo(l.fatura / 0.8675, 6);
     expect(l.trilha).toBe("encargos");
   });
 
-  it("usa o Gross Up do Tomador (não mais um valor fixo global) pra calcular a NF, multiplicando (não dividindo)", async () => {
-    await upsertTomador({ ...TOMADOR_TERCEIRO, grossUp: 1.2 });
+  it("Terceiro (515): Gross Up customizado do Tomador divide a fatura inteira", async () => {
+    await upsertTomador({ ...TOMADOR_TERCEIRO, grossUp: 0.9 });
     const mov: Movimento = {
       id: "1",
       codigo: 8781,
@@ -101,9 +101,9 @@ describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
     const l = line!;
 
     expect(l.fpas).toBe(515);
-    expect(l.tomadorGrossUp).toBeCloseTo(1.2, 6);
-    expect(l.nf).toBeCloseTo(l.fatura * 1.2, 6);
-    expect(l.nf).not.toBeCloseTo(l.fatura * (1 / 0.8675), 6);
+    expect(l.tomadorGrossUp).toBeCloseTo(0.9, 6);
+    expect(l.nf).toBeCloseTo(l.fatura / 0.9, 6);
+    expect(l.nf).not.toBeCloseTo(l.fatura / 0.8675, 6);
   });
 
   it("Gross Up 0 desliga o gross-up — NF = fatura, sem divisão por zero", async () => {
@@ -154,6 +154,33 @@ describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
     expect(l.encInss).toBeCloseTo(l.prov13 * 0.255, 6);
     expect(l.encFgts).toBeCloseTo(l.prov13 * 0.08, 6);
     expect(l.taxaAdmValor).toBeCloseTo(l.base * 0.12, 6);
+    // Temporário (655): NF = despesa + (Taxa Adm × Gross Up) — não divide a fatura inteira como o Terceiro.
+    expect(l.tomadorGrossUp).toBeCloseTo(0.1325, 6);
+    expect(l.nf).toBeCloseTo(l.base + l.taxaAdmValor * 0.1325, 6);
+  });
+
+  it("Temporário (655): Gross Up 0 desliga — NF = fatura, igual ao Terceiro", async () => {
+    await upsertTomador({ ...TOMADOR_TEMPORARIO, grossUp: 0 });
+    await upsertColaborador({
+      matricula: 1,
+      dados: { cod_epr: 1, nome: "FULANO", situacao: "Trabalhando", cod_servico: TOMADOR_TEMPORARIO.codigo },
+    });
+    const mov: Movimento = {
+      id: "1",
+      codigo: 8781,
+      matricula: 1,
+      nome: "FULANO",
+      evento: "DIAS NORMAIS",
+      competencia: "07/2026",
+      valor: 1000,
+      ref: 30,
+      tipo: "P",
+      forma: "Dias",
+    };
+    const ctx = await buildContext([mov]);
+    const { line } = calculateLine(mov, ctx);
+    const l = line!;
+    expect(l.nf).toBeCloseTo(l.fatura, 6);
   });
 });
 
@@ -232,7 +259,7 @@ describe("calculateLine — trilha de benefício em espécie (Tipo I)", () => {
     expect(l.base).toBe(315);
     expect(l.taxaAdmValor).toBeCloseTo(315 * 0.1, 6);
     expect(l.fatura).toBeCloseTo(315 * 1.1, 6);
-    expect(l.nf).toBeCloseTo((315 * 1.1) * (1 / 0.8675), 6);
+    expect(l.nf).toBeCloseTo((315 * 1.1) / 0.8675, 6);
   });
 });
 
