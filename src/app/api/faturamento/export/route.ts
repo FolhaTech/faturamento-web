@@ -16,6 +16,8 @@ export async function GET(request: Request) {
   const codEmp = url.searchParams.get("codEmp") ?? undefined;
   const descricaoCargo = url.searchParams.get("descricaoCargo") ?? undefined;
   const descricaoDpto = url.searchParams.get("descricaoDpto") ?? undefined;
+  const regimeParam = url.searchParams.get("regime");
+  const fpas = regimeParam === "515" || regimeParam === "655" ? (Number(regimeParam) as 515 | 655) : undefined;
 
   if (!competencia) {
     return NextResponse.json({ error: "Informe a competência (?competencia=MM/AAAA)." }, { status: 400 });
@@ -27,7 +29,7 @@ export async function GET(request: Request) {
   }
 
   const { lines: allLines, warnings } = await runEngine(movimentos);
-  const lines = await filtrarLinesPorColaborador(allLines, { codEmp, descricaoCargo, descricaoDpto });
+  const lines = await filtrarLinesPorColaborador(allLines, { codEmp, descricaoCargo, descricaoDpto, fpas });
   const resumos = aggregateByCcusto(lines, competencia);
   const resumo = resumos.find((r) => r.ccustoCodigo === ccustoCodigo);
 
@@ -35,12 +37,19 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Centro de custo não encontrado nessa competência." }, { status: 404 });
   }
 
+  // Rótulo do regime quando o filtro está ativo — aparece no PDF e no nome do arquivo pra não
+  // sair um "Faturamento-X.pdf" idêntico ao da folha inteira, só com números diferentes.
+  const regimeLabel = fpas === 515 ? "Terceiro (CLT)" : fpas === 655 ? "Temporário" : null;
+
   // @react-pdf/renderer tipa renderToBuffer esperando um <Document> literal; FaturamentoPdf
   // retorna um, mas o elemento em si é tipado pelas próprias props do componente.
-  const pdfElement = createElement(FaturamentoPdf, { resumo, warnings }) as Parameters<typeof renderToBuffer>[0];
+  const pdfElement = createElement(FaturamentoPdf, { resumo, warnings, regimeLabel }) as Parameters<typeof renderToBuffer>[0];
   const buffer = await renderToBuffer(pdfElement);
 
-  const filename = `Faturamento-${resumo.ccustoNome}-${competencia.replace("/", "-")}.pdf`.replace(/[^a-zA-Z0-9._-]+/g, "_");
+  const filename = `Faturamento-${resumo.ccustoNome}-${competencia.replace("/", "-")}${regimeLabel ? `-${regimeLabel}` : ""}.pdf`.replace(
+    /[^a-zA-Z0-9._-]+/g,
+    "_",
+  );
 
   return new NextResponse(buffer as unknown as BodyInit, {
     headers: {

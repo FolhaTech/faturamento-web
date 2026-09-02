@@ -16,6 +16,8 @@ interface SearchParams {
   codEmp?: string;
   descricaoCargo?: string;
   descricaoDpto?: string;
+  /** FPAS do Tomador — "515" (Terceiro/CLT) ou "655" (Temporário) — ver FiltrosColaborador.fpas. */
+  regime?: string;
 }
 
 export default async function FaturamentoPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -25,7 +27,9 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   const codEmp = sp.codEmp ?? "";
   const descricaoCargo = sp.descricaoCargo ?? "";
   const descricaoDpto = sp.descricaoDpto ?? "";
-  const filtrosAtivos = Boolean(codEmp || descricaoCargo || descricaoDpto);
+  const regime = sp.regime === "515" || sp.regime === "655" ? sp.regime : "";
+  const fpas = regime ? (Number(regime) as 515 | 655) : undefined;
+  const filtrosAtivos = Boolean(codEmp || descricaoCargo || descricaoDpto || regime);
 
   const [codEmps, descricoesCargo, descricoesDpto, plrCeletista] = await Promise.all([
     listValoresDistintosDados("cod_emp"),
@@ -41,7 +45,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
     const engineResult = await runEngine(movimentos);
     warnings = engineResult.warnings;
 
-    const lines = await filtrarLinesPorColaborador(engineResult.lines, { codEmp, descricaoCargo, descricaoDpto });
+    const lines = await filtrarLinesPorColaborador(engineResult.lines, { codEmp, descricaoCargo, descricaoDpto, fpas });
     resumos = aggregateByCcusto(lines, competenciaAtual);
   }
 
@@ -49,14 +53,16 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   if (codEmp) filtrosQuery.set("codEmp", codEmp);
   if (descricaoCargo) filtrosQuery.set("descricaoCargo", descricaoCargo);
   if (descricaoDpto) filtrosQuery.set("descricaoDpto", descricaoDpto);
+  if (regime) filtrosQuery.set("regime", regime);
 
   function filterHref(overrides: Partial<SearchParams>): string {
     const params = new URLSearchParams();
-    const merged = { competencia: competenciaAtual ?? undefined, codEmp, descricaoCargo, descricaoDpto, ...overrides };
+    const merged = { competencia: competenciaAtual ?? undefined, codEmp, descricaoCargo, descricaoDpto, regime, ...overrides };
     if (merged.competencia) params.set("competencia", merged.competencia);
     if (merged.codEmp) params.set("codEmp", merged.codEmp);
     if (merged.descricaoCargo) params.set("descricaoCargo", merged.descricaoCargo);
     if (merged.descricaoDpto) params.set("descricaoDpto", merged.descricaoDpto);
+    if (merged.regime) params.set("regime", merged.regime);
     return `/faturamento?${params.toString()}`;
   }
 
@@ -141,12 +147,20 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
                 ))}
               </select>
             </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-neutral-500">Regime</label>
+              <select name="regime" defaultValue={regime} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm">
+                <option value="">Todos</option>
+                <option value="515">515 — Terceiro (CLT)</option>
+                <option value="655">655 — Temporário</option>
+              </select>
+            </div>
             <button type="submit" className="rounded-md border border-neutral-300 bg-white px-4 py-1.5 text-sm font-medium hover:bg-neutral-50">
               Filtrar
             </button>
             {filtrosAtivos && (
               <Link
-                href={filterHref({ codEmp: undefined, descricaoCargo: undefined, descricaoDpto: undefined })}
+                href={filterHref({ codEmp: undefined, descricaoCargo: undefined, descricaoDpto: undefined, regime: undefined })}
                 className="text-sm text-neutral-500 hover:underline"
               >
                 limpar
@@ -159,7 +173,12 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
             </p>
           )}
 
-          <FaturamentoViewer resumos={resumos} warnings={warnings} filtrosQuery={filtrosQuery} />
+          <FaturamentoViewer
+            resumos={resumos}
+            warnings={warnings}
+            filtrosQuery={filtrosQuery}
+            regimeLabel={fpas === 515 ? "Terceiro (CLT)" : fpas === 655 ? "Temporário" : null}
+          />
         </>
       )}
     </main>

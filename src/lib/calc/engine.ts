@@ -27,6 +27,8 @@ export interface CalculatedLine {
   /** Tomador do colaborador (cod_servico) — fonte de FPAS/taxa admin; não é mais o eixo de agrupamento da fatura, ver ccustoCodigo. */
   tomadorCodigo: number;
   tomadorNome: string;
+  /** FPAS do Tomador — 515 (Terceiro/CLT) ou 655 (Temporário) — usado pra separar faturamento/PDF por regime (ver filtroColaboradores.ts). */
+  fpas: 515 | 655;
   /** Centro de custo do colaborador (dados.cod_ccusto/descricao_ccusto) — eixo de agrupamento da fatura (ver aggregateByCcusto). */
   ccustoCodigo: string;
   ccustoNome: string;
@@ -92,6 +94,7 @@ function zeroLine(
     tipo,
     tomadorCodigo: tomador.codigo,
     tomadorNome: tomador.nome,
+    fpas: tomador.fpas,
     ccustoCodigo: ccusto.codigo,
     ccustoNome: ccusto.nome,
     trilha,
@@ -259,6 +262,7 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
       tipo,
       tomadorCodigo: tomador.codigo,
       tomadorNome: tomador.nome,
+      fpas: tomador.fpas,
       ccustoCodigo: ccusto.codigo,
       ccustoNome: ccusto.nome,
       trilha: "encargos",
@@ -369,6 +373,7 @@ async function generateComplementaryCharges(movimentos: Movimento[], ctx: Engine
           tipo: "I",
           tomadorCodigo: tomador.codigo,
           tomadorNome: tomador.nome,
+          fpas: tomador.fpas,
           ccustoCodigo: ccusto.codigo,
           ccustoNome: ccusto.nome,
           trilha: "beneficio",
@@ -487,6 +492,7 @@ function generateProvisaoRescisaoCharges(movimentos: Movimento[], ctx: EngineCon
           tipo: "P",
           tomadorCodigo: tomador.codigo,
           tomadorNome: tomador.nome,
+          fpas: tomador.fpas,
           ccustoCodigo: ccusto.codigo,
           ccustoNome: ccusto.nome,
           trilha: "encargos",
@@ -568,6 +574,7 @@ function generatePlrCharges(movimentos: Movimento[], ctx: EngineContext): Calcul
         tipo: "P",
         tomadorCodigo: tomador.codigo,
         tomadorNome: tomador.nome,
+        fpas: tomador.fpas,
         ccustoCodigo: ccusto.codigo,
         ccustoNome: ccusto.nome,
         trilha: "encargos",

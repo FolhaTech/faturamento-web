@@ -13,11 +13,14 @@ export function FaturamentoViewer({
   resumos,
   warnings,
   filtrosQuery,
+  regimeLabel = null,
 }: {
   resumos: CcustoResumo[];
   warnings: string[];
-  /** Filtros de colaborador (Cód Emp/Cargo/Dpto) ativos na tela, já como querystring — repassados ao export de PDF pra não divergir do que está sendo mostrado. */
+  /** Filtros de colaborador (Cód Emp/Cargo/Dpto/Regime) ativos na tela, já como querystring — repassados ao export de PDF pra não divergir do que está sendo mostrado. */
   filtrosQuery?: URLSearchParams;
+  /** "Terceiro (CLT)" ou "Temporário" quando o filtro de Regime está ativo — mostrado junto do Tomador pra não confundir com a fatura sem esse filtro. */
+  regimeLabel?: string | null;
 }) {
   const [ccustoCodigo, setCcustoCodigo] = useState<string | null>(resumos[0]?.ccustoCodigo ?? null);
   const resumo = useMemo(() => resumos.find((r) => r.ccustoCodigo === ccustoCodigo) ?? resumos[0] ?? null, [resumos, ccustoCodigo]);
@@ -60,7 +63,7 @@ export function FaturamentoViewer({
 
       {resumo && (
         <>
-          <TotalsCard resumo={resumo} />
+          <TotalsCard resumo={resumo} regimeLabel={regimeLabel} />
           <RubricasTable resumo={resumo} />
           <DescontosTable resumo={resumo} />
           <ColaboradoresTable resumo={resumo} />
@@ -91,7 +94,7 @@ function WarningsPanel({ warnings }: { warnings: string[] }) {
   );
 }
 
-function TotalsCard({ resumo }: { resumo: CcustoResumo }) {
+function TotalsCard({ resumo, regimeLabel }: { resumo: CcustoResumo; regimeLabel: string | null }) {
   const rows: [string, number, boolean?][] = [
     ["Total de despesas", resumo.totalDespesas],
     ["Taxa administrativa", resumo.taxaAdministrativa],
@@ -106,7 +109,10 @@ function TotalsCard({ resumo }: { resumo: CcustoResumo }) {
       <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
         {resumo.ccustoNome} — {resumo.competencia}
       </h2>
-      <p className="text-xs text-neutral-400">Tomador: {resumo.tomadorNome}</p>
+      <p className="text-xs text-neutral-400">
+        Tomador: {resumo.tomadorNome}
+        {regimeLabel && ` · Regime: ${regimeLabel}`}
+      </p>
       <dl className="mt-3 grid grid-cols-1 gap-x-8 gap-y-2 sm:grid-cols-2">
         {rows.map(([label, value, strong]) => (
           <div key={label} className="flex items-baseline justify-between border-b border-dashed border-neutral-200 py-1">

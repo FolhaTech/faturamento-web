@@ -94,12 +94,12 @@ const styles = StyleSheet.create({
   footnote: { fontSize: 7, color: INK_SOFT, marginTop: 6 },
 });
 
-function Footer({ resumo }: { resumo: CcustoResumo }) {
+function Footer({ resumo, regimeLabel }: { resumo: CcustoResumo; regimeLabel: string | null }) {
   return (
     <Text
       style={styles.footer}
       render={({ pageNumber, totalPages }) =>
-        `${resumo.ccustoNome} (${resumo.tomadorNome}) · ${resumo.competencia}     •     página ${pageNumber} de ${totalPages}`
+        `${resumo.ccustoNome} (${resumo.tomadorNome})${regimeLabel ? ` · Regime: ${regimeLabel}` : ""} · ${resumo.competencia}     •     página ${pageNumber} de ${totalPages}`
       }
       fixed
     />
@@ -320,15 +320,24 @@ function ColaboradoresSection({ resumo }: { resumo: CcustoResumo }) {
   );
 }
 
-export function FaturamentoPdf({ resumo, warnings }: { resumo: CcustoResumo; warnings: string[] }) {
+export function FaturamentoPdf({
+  resumo,
+  warnings,
+  regimeLabel = null,
+}: {
+  resumo: CcustoResumo;
+  warnings: string[];
+  /** "Terceiro (CLT)" ou "Temporário" quando o export foi filtrado por regime (ver /api/faturamento/export) — null pra fatura sem esse filtro (mistura os dois regimes). */
+  regimeLabel?: string | null;
+}) {
   const geradoEm = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date());
 
   return (
-    <Document title={`Faturamento - ${resumo.ccustoNome} - ${resumo.competencia}`}>
+    <Document title={`Faturamento - ${resumo.ccustoNome}${regimeLabel ? ` - ${regimeLabel}` : ""} - ${resumo.competencia}`}>
       <Page size="A4" orientation="landscape" style={styles.page}>
         <View style={styles.header}>
           <View>
-            <Text style={styles.eyebrow}>Relatório de Faturamento</Text>
+            <Text style={styles.eyebrow}>Relatório de Faturamento{regimeLabel ? ` · ${regimeLabel}` : ""}</Text>
             <Text style={styles.title}>{resumo.ccustoNome}</Text>
             <Text style={styles.subtitle}>Tomador: {resumo.tomadorNome} · Competência {resumo.competencia}</Text>
           </View>
@@ -358,7 +367,7 @@ export function FaturamentoPdf({ resumo, warnings }: { resumo: CcustoResumo; war
         <DescontosSection resumo={resumo} />
         <ColaboradoresSection resumo={resumo} />
 
-        <Footer resumo={resumo} />
+        <Footer resumo={resumo} regimeLabel={regimeLabel} />
       </Page>
     </Document>
   );
