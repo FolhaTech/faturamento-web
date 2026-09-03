@@ -130,6 +130,8 @@ export interface CcustoResumo {
   tomadorNome: string;
   /** Gross Up vigente desse Tomador (ver Tomador.grossUp) — exposto pra tela de Faturamento editar sem round-trip extra. */
   tomadorGrossUp: number;
+  /** FPAS do Tomador — muda o significado/fórmula do Gross Up (ver calcularNf em calc/engine.ts). */
+  fpas: 515 | 655;
   competencia: string;
   qtdColaboradores: number;
   rubricas: RubricaSomada[];
@@ -165,6 +167,7 @@ export function aggregateByCcusto(lines: CalculatedLine[], competencia: string):
     const tomadorCodigo = ccustoLines[0].tomadorCodigo;
     const tomadorNome = ccustoLines[0].tomadorNome;
     const tomadorGrossUp = ccustoLines[0].tomadorGrossUp;
+    const fpas = ccustoLines[0].fpas;
 
     const totalDespesas = sum(ccustoLines, (l) => l.base);
     const taxaAdministrativa = sum(ccustoLines, (l) => l.taxaAdmValor);
@@ -225,6 +228,7 @@ export function aggregateByCcusto(lines: CalculatedLine[], competencia: string):
       tomadorCodigo,
       tomadorNome,
       tomadorGrossUp,
+      fpas,
       competencia,
       qtdColaboradores: colaboradores.length,
       rubricas: agruparPorEvento(ccustoLines),

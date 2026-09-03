@@ -8,23 +8,45 @@ import type { Colaborador, Encargo, Movimento, TipoEvento, Tomador } from "../ty
 import { CODIGO_DESCONTO_SALDO_FERIAS, CODIGO_DESCONTO_SALDO_UM_TERCO } from "./descontoSaldoFerias";
 
 /**
- * Percentual de tributação padrão da Nota Fiscal (PIS 1,65% + COFINS 7,6% + ISS 2% + CSLL 1% +
- * IRRF 1% ≈ 13,25%), igual pros dois regimes. Editável por Tomador (ver Tomador.grossUp); este
- * valor só serve de referência/default da coluna no banco (ver db.ts).
+ * Fator de gross-up padrão da nota fiscal pra Tomador Terceiro (FPAS 515): 1 - (PIS 1,65% +
+ * COFINS 7,6% + ISS 2% + CSLL 1% + IRRF 1%) = 0,8675. Confirmado batendo com a aba RESUMO do
+ * arquivo FATURAMENTO CHAMA (B41 = B40/0,8675 - B40). Editável por Tomador (ver
+ * Tomador.grossUp); este valor só serve de referência/default da coluna no banco (ver db.ts) —
+ * o Tomador Temporário (FPAS 655) usa outro default e outra fórmula, ver calcularNf abaixo.
  */
-export const GROSS_UP_FACTOR = 0.1325;
+export const GROSS_UP_FACTOR = 0.8675;
+
+/** Default do Gross Up pra Tomador Temporário (FPAS 655) — ver calcularNf abaixo. */
+export const GROSS_UP_TEMPORARIO_FACTOR = 0.1325;
 
 /** Sentinela pra colaborador sem Ccusto cadastrado — mantém a linha visível em vez de sumir do faturamento. */
 export const CCUSTO_SEM_CADASTRO = { codigo: "0", nome: "Sem centro de custo" };
 
 /**
- * Nota Fiscal = Fatura + Tributação, onde Tributação = Fatura × Gross Up (mesma fórmula pros
- * dois regimes, Terceiro FPAS 515 e Temporário FPAS 655). Gross Up 0 "desliga": NF = fatura, sem
- * tributação nenhuma.
+ * Único Tomador que usa a fórmula multiplicativa de NF (ver calcularNf abaixo) — decisão do
+ * usuário em 2026-09-03: só o ITAU UNIBANCO S.A (Temporário, FPAS 655, código 14) fatura assim;
+ * todos os demais tomadores (incluindo o outro ITAU UNIBANCO S.A, código 23, FPAS 515) usam a
+ * fórmula por regime de sempre.
  */
-function calcularNf(fatura: number, grossUp: number): number {
+const CODIGO_TOMADOR_NF_MULTIPLICATIVA = 14;
+
+/**
+ * NF varia por regime do Tomador — os dois usam o mesmo campo Tomador.grossUp, mas com
+ * significados diferentes:
+ *  - Terceiro (FPAS 515): grossUp é o fator "o que sobra líquido depois do imposto" (~0,8675) —
+ *    NF = fatura / grossUp, inflando a fatura inteira pra sobrar o valor certo depois do
+ *    imposto retido sobre a NF.
+ *  - Temporário (FPAS 655): grossUp é o percentual de imposto (~0,1325) que incide só sobre a
+ *    Taxa Adm, não sobre a despesa — NF = despesa + (Taxa Adm × grossUp).
+ * Exceção: CODIGO_TOMADOR_NF_MULTIPLICATIVA usa NF = fatura + (fatura × grossUp), independente
+ * do regime.
+ * Em todos os casos, Gross Up 0 "desliga": NF = fatura, sem inflar nada.
+ */
+function calcularNf(base: number, taxaAdmValor: number, fatura: number, tomador: Tomador): number {
+  const { grossUp, fpas, codigo } = tomador;
   if (grossUp <= 0) return fatura;
-  return fatura + fatura * grossUp;
+  if (codigo === CODIGO_TOMADOR_NF_MULTIPLICATIVA) return fatura + fatura * grossUp;
+  return fpas === 655 ? base + taxaAdmValor * grossUp : fatura / grossUp;
 }
 
 export interface CalculatedLine {
@@ -201,7 +223,7 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
     const base = mov.valor;
     const taxaAdmValor = base * tomador.taxaAdm;
     const fatura = base + taxaAdmValor;
-    const nf = calcularNf(fatura, tomador.grossUp);
+    const nf = calcularNf(base, taxaAdmValor, fatura, tomador);
     return {
       line: { ...zeroLine(mov, tomador, ccusto, "encargos", base, mov.tipo), base, taxaAdmValor, fatura, impostos: nf - fatura, nf },
       warning: null,
@@ -228,7 +250,7 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
     const base = valorFace;
     const taxaAdmValor = base * tomador.taxaAdm;
     const fatura = base + taxaAdmValor;
-    const nf = calcularNf(fatura, tomador.grossUp);
+    const nf = calcularNf(base, taxaAdmValor, fatura, tomador);
     return {
       line: { ...zeroLine(mov, tomador, ccusto, "beneficio", valorFace, tipo), base, taxaAdmValor, fatura, impostos: nf - fatura, nf },
       warning: null,
@@ -263,7 +285,7 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
   const base = valorFace + inss + fgts + provFerias + prov13 + encInss + encFgts;
   const taxaAdmValor = base * tomador.taxaAdm;
   const fatura = base + taxaAdmValor;
-  const nf = calcularNf(fatura, tomador.grossUp);
+  const nf = calcularNf(base, taxaAdmValor, fatura, tomador);
 
   return {
     line: {
@@ -377,7 +399,7 @@ async function generateComplementaryCharges(movimentos: Movimento[], ctx: Engine
         const base = item.valor;
         const taxaAdmValor = base * tomador.taxaAdm;
         const fatura = base + taxaAdmValor;
-        const nf = calcularNf(fatura, tomador.grossUp);
+        const nf = calcularNf(base, taxaAdmValor, fatura, tomador);
         out.push({
           matricula: colaborador.matricula,
           nome: colaborador.nome,
@@ -497,7 +519,7 @@ function generateProvisaoRescisaoCharges(movimentos: Movimento[], ctx: EngineCon
         const base = item.valor;
         const taxaAdmValor = base * tomador.taxaAdm;
         const fatura = base + taxaAdmValor;
-        const nf = calcularNf(fatura, tomador.grossUp);
+        const nf = calcularNf(base, taxaAdmValor, fatura, tomador);
         out.push({
           matricula: colaborador.matricula,
           nome: colaborador.nome,
@@ -580,7 +602,7 @@ function generatePlrCharges(movimentos: Movimento[], ctx: EngineContext): Calcul
       const base = ctx.plrCeletista;
       const taxaAdmValor = base * tomador.taxaAdm;
       const fatura = base + taxaAdmValor;
-      const nf = calcularNf(fatura, tomador.grossUp);
+      const nf = calcularNf(base, taxaAdmValor, fatura, tomador);
       out.push({
         matricula: colaborador.matricula,
         nome: colaborador.nome,
