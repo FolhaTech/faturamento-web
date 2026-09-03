@@ -54,9 +54,7 @@ export function TomadoresEditor({ initial }: { initial: Tomador[] }) {
     if (!form.nome.trim()) return setError("Informe o nome.");
     if (!Number.isFinite(taxaAdm) || taxaAdm < 0) return setError("Taxa administrativa inválida.");
     if (!Number.isFinite(grossUp) || grossUp < 0 || grossUp > 1) {
-      return setError(
-        "Gross Up inválido — use um percentual entre 0% e 100% (0% desliga: NF = fatura). Terceiro: ~86,75% (divide a fatura). Temporário: ~13,25% (soma sobre a Taxa Adm).",
-      );
+      return setError("Gross Up inválido — use um percentual entre 0% e 100% (0% desliga: NF = fatura). Padrão: ~13,25% (soma sobre a fatura).");
     }
 
     const payload = { codigo, nome: form.nome.trim(), fpas: Number(form.fpas) as 515 | 655, taxaAdm, grossUp };
@@ -104,10 +102,7 @@ export function TomadoresEditor({ initial }: { initial: Tomador[] }) {
               <th className="px-4 py-2 text-left font-medium">Tomador</th>
               <th className="px-4 py-2 text-left font-medium">FPAS</th>
               <th className="px-4 py-2 text-left font-medium">Taxa Adm</th>
-              <th
-                className="px-4 py-2 text-left font-medium"
-                title="Terceiro: NF = fatura ÷ Gross Up (padrão ~86,75%). Temporário: NF = despesa + (Taxa Adm × Gross Up) (padrão ~13,25%)."
-              >
+              <th className="px-4 py-2 text-left font-medium" title="Nota Fiscal = Fatura + (Fatura × Gross Up) (padrão ~13,25%).">
                 Gross Up
               </th>
               <th className="px-4 py-2" />
@@ -130,10 +125,7 @@ export function TomadoresEditor({ initial }: { initial: Tomador[] }) {
                     {t.fpas} <span className="text-neutral-400">({t.fpas === 515 ? "Terceiro" : "Temporário"})</span>
                   </td>
                   <td className="px-4 py-2 font-mono tabular-nums">{(t.taxaAdm * 100).toLocaleString("pt-BR")}%</td>
-                  <td className="px-4 py-2 font-mono tabular-nums">
-                    {(t.grossUp * 100).toLocaleString("pt-BR")}%{" "}
-                    <span className="font-sans text-xs text-neutral-400">{t.fpas === 655 ? "(+ s/ Taxa Adm)" : "(÷ fatura)"}</span>
-                  </td>
+                  <td className="px-4 py-2 font-mono tabular-nums">{(t.grossUp * 100).toLocaleString("pt-BR")}%</td>
                   <td className="px-4 py-2 text-right">
                     <button type="button" onClick={() => startEdit(t)} className="text-emerald-700 hover:underline">
                       editar
@@ -222,8 +214,8 @@ function EditRow({
         <input
           value={form.grossUp}
           onChange={(e) => setForm({ ...form, grossUp: e.target.value })}
-          placeholder={form.fpas === "655" ? "ex.: 13,25" : "ex.: 86,75"}
-          title="Terceiro: NF = fatura ÷ Gross Up. Temporário: NF = despesa + (Taxa Adm × Gross Up)."
+          placeholder="ex.: 13,25"
+          title="Nota Fiscal = Fatura + (Fatura × Gross Up)."
           className="w-20 rounded border border-neutral-300 px-2 py-1 text-sm"
         />
         %

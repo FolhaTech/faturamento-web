@@ -43,16 +43,11 @@ describe("tomadores repo — cadastro pendente (Cód Serviço sem Tomador cadast
 });
 
 describe("tomadores repo — Gross Up", () => {
-  it("Terceiro (515): usa 0,8675 como padrão quando não informado", async () => {
-    await upsertTomador({ codigo: 999, nome: "EMPRESA LTDA", fpas: 515, taxaAdm: 0.1 });
-    const t = (await getTomador(999))!;
-    expect(t.grossUp).toBeCloseTo(0.8675, 6);
-  });
-
-  it("Temporário (655): usa 0,1325 como padrão quando não informado", async () => {
-    await upsertTomador({ codigo: 999, nome: "EMPRESA LTDA", fpas: 655, taxaAdm: 0.1 });
-    const t = (await getTomador(999))!;
-    expect(t.grossUp).toBeCloseTo(0.1325, 6);
+  it("usa 0,1325 como padrão quando não informado, igual pros dois regimes", async () => {
+    const terceiro = await upsertTomador({ codigo: 998, nome: "EMPRESA TERCEIRO LTDA", fpas: 515, taxaAdm: 0.1 });
+    const temporario = await upsertTomador({ codigo: 999, nome: "EMPRESA TEMPORARIO LTDA", fpas: 655, taxaAdm: 0.1 });
+    expect(terceiro.grossUp).toBeCloseTo(0.1325, 6);
+    expect(temporario.grossUp).toBeCloseTo(0.1325, 6);
   });
 
   it("grava o Gross Up informado no upsert completo", async () => {
@@ -61,7 +56,7 @@ describe("tomadores repo — Gross Up", () => {
     expect(t.grossUp).toBeCloseTo(0.9, 6);
   });
 
-  it("aceita e preserva 0 (não cai no padrão 0,8675) — 0 significa gross-up desligado", async () => {
+  it("aceita e preserva 0 (não cai no padrão 0,1325) — 0 significa gross-up desligado", async () => {
     await upsertTomador({ codigo: 999, nome: "EMPRESA LTDA", fpas: 515, taxaAdm: 0.1, grossUp: 0 });
     const t = (await getTomador(999))!;
     expect(t.grossUp).toBe(0);

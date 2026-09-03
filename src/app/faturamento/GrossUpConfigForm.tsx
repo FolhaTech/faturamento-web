@@ -7,13 +7,10 @@ export function GrossUpConfigForm({
   tomadorCodigo,
   tomadorNome,
   grossUpInicial,
-  fpas,
 }: {
   tomadorCodigo: number;
   tomadorNome: string;
   grossUpInicial: number;
-  /** Muda o significado do campo: Terceiro (515) divide a fatura inteira; Temporário (655) soma só sobre a Taxa Adm (ver calcularNf em calc/engine.ts). */
-  fpas: 515 | 655;
 }) {
   const router = useRouter();
   const [valor, setValor] = useState(String(grossUpInicial * 100));
@@ -26,11 +23,7 @@ export function GrossUpConfigForm({
     setOk(false);
     const num = Number(valor.replace(",", ".")) / 100;
     if (!Number.isFinite(num) || num < 0 || num > 1) {
-      return setError(
-        `Valor inválido — use um percentual entre 0 e 100 (0 desliga: NF = fatura). Padrão pra ${fpas === 655 ? "Temporário" : "Terceiro"}: ${
-          fpas === 655 ? "13,25%" : "86,75%"
-        }.`,
-      );
+      return setError("Valor inválido — use um percentual entre 0 e 100 (0 desliga: NF = fatura). Padrão: 13,25%.");
     }
 
     setBusy(true);
@@ -59,12 +52,12 @@ export function GrossUpConfigForm({
           <input
             value={valor}
             onChange={(e) => setValor(e.target.value)}
-            title={fpas === 655 ? "Temporário: NF = despesa + (Taxa Adm × Gross Up)" : "Terceiro: NF = fatura ÷ Gross Up"}
+            title="Nota Fiscal = Fatura + (Fatura × Gross Up)"
             className="w-16 rounded border border-neutral-300 px-2 py-1 text-sm font-mono text-neutral-900"
           />
           <span className="text-neutral-500">%</span>
         </div>
-        <span className="font-normal text-neutral-400">{fpas === 655 ? "soma sobre a Taxa Adm" : "divide a fatura"}</span>
+        <span className="font-normal text-neutral-400">soma sobre a fatura</span>
       </label>
       <button
         type="button"
