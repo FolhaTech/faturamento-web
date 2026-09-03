@@ -9,8 +9,8 @@ import { buildContext, calculateLine, runEngine } from "./engine";
 
 const TOMADOR_TERCEIRO = { codigo: 1, nome: "GENTER SERVICOS EM RECURSOS HUMANOS LTDA", fpas: 515 as const, taxaAdm: 0.1 };
 const TOMADOR_TEMPORARIO = { codigo: 36, nome: "GRUPO CHAMA DE DISTRIBUICAO LTDA", fpas: 655 as const, taxaAdm: 0.12 };
-/** Único Tomador com NF multiplicativa (ver CODIGO_TOMADOR_NF_MULTIPLICATIVA em engine.ts) — mesmo código do Tomador ITAU real (655) em produção. */
-const TOMADOR_ITAU_MULTIPLICATIVO = { codigo: 14, nome: "ITAU UNIBANCO S.A", fpas: 655 as const, taxaAdm: 0.095 };
+/** Único Tomador com fórmula diferente (ver CODIGO_TOMADOR_NF_SOBRE_TAXA_ADM em engine.ts) — mesmo código do Tomador ITAU real (655) em produção. */
+const TOMADOR_ITAU_SOBRE_TAXA_ADM = { codigo: 14, nome: "ITAU UNIBANCO S.A", fpas: 655 as const, taxaAdm: 0.095 };
 
 async function seedBase() {
   await resetDbForTests();
@@ -156,9 +156,9 @@ describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
     expect(l.encInss).toBeCloseTo(l.prov13 * 0.255, 6);
     expect(l.encFgts).toBeCloseTo(l.prov13 * 0.08, 6);
     expect(l.taxaAdmValor).toBeCloseTo(l.base * 0.12, 6);
-    // Temporário (655): NF = despesa + (Taxa Adm × Gross Up) — não divide a fatura inteira como o Terceiro.
-    expect(l.tomadorGrossUp).toBeCloseTo(0.1325, 6);
-    expect(l.nf).toBeCloseTo(l.base + l.taxaAdmValor * 0.1325, 6);
+    // NF não depende mais do regime — só o Tomador código 14 (ITAU) usa fórmula diferente.
+    expect(l.tomadorGrossUp).toBeCloseTo(0.8675, 6);
+    expect(l.nf).toBeCloseTo(l.fatura / 0.8675, 6);
   });
 
   it("Temporário (655): Gross Up 0 desliga — NF = fatura, igual ao Terceiro", async () => {
@@ -185,11 +185,11 @@ describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
     expect(l.nf).toBeCloseTo(l.fatura, 6);
   });
 
-  it("ITAU UNIBANCO S.A (código 14): único Tomador com NF multiplicativa — NF = fatura + (fatura × Gross Up)", async () => {
-    await upsertTomador(TOMADOR_ITAU_MULTIPLICATIVO);
+  it("ITAU UNIBANCO S.A (código 14): único Tomador com NF sobre a Taxa Adm — NF = despesa + (Taxa Adm × Gross Up)", async () => {
+    await upsertTomador(TOMADOR_ITAU_SOBRE_TAXA_ADM);
     await upsertColaborador({
       matricula: 1,
-      dados: { cod_epr: 1, nome: "FULANO", situacao: "Trabalhando", cod_servico: TOMADOR_ITAU_MULTIPLICATIVO.codigo },
+      dados: { cod_epr: 1, nome: "FULANO", situacao: "Trabalhando", cod_servico: TOMADOR_ITAU_SOBRE_TAXA_ADM.codigo },
     });
     const mov: Movimento = {
       id: "1",
@@ -207,13 +207,12 @@ describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
     const { line } = calculateLine(mov, ctx);
     const l = line!;
 
-    expect(l.fpas).toBe(655); // mesmo regime do Temporário comum, mas a fórmula é diferente
     expect(l.tomadorGrossUp).toBeCloseTo(0.1325, 6);
-    expect(l.nf).toBeCloseTo(l.fatura * 1.1325, 6);
-    expect(l.nf).not.toBeCloseTo(l.base + l.taxaAdmValor * 0.1325, 6); // não usa a fórmula do Temporário comum
+    expect(l.nf).toBeCloseTo(l.base + l.taxaAdmValor * 0.1325, 6);
+    expect(l.nf).not.toBeCloseTo(l.fatura / 0.8675, 6); // não usa a fórmula padrão
   });
 
-  it("outro Tomador ITAU UNIBANCO S.A (código diferente de 14) usa a fórmula normal do regime, não a multiplicativa", async () => {
+  it("outro Tomador ITAU UNIBANCO S.A (código diferente de 14) usa a fórmula padrão, não a do Tomador 14", async () => {
     await upsertTomador({ codigo: 23, nome: "ITAU UNIBANCO S.A", fpas: 515, taxaAdm: 0.1 });
     await upsertColaborador({
       matricula: 2,
@@ -236,7 +235,7 @@ describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
     const l = line!;
 
     expect(l.nf).toBeCloseTo(l.fatura / 0.8675, 6);
-    expect(l.nf).not.toBeCloseTo(l.fatura * 1.1325, 6);
+    expect(l.nf).not.toBeCloseTo(l.base + l.taxaAdmValor * 0.1325, 6);
   });
 });
 

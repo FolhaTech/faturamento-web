@@ -3,12 +3,13 @@ import { normalizaTexto } from "../text";
 import type { Tomador } from "../types";
 
 /**
- * Padrão de Gross Up por regime (ver calcularNf em calc/engine.ts, que usa esse mesmo campo com
- * significados diferentes por FPAS) — duplicado aqui como literal pra não criar import circular
- * (engine.ts já importa deste módulo).
+ * Padrão de Gross Up (ver calcularNf em calc/engine.ts) — duplicados aqui como literais pra não
+ * criar import circular (engine.ts já importa deste módulo). CODIGO_TOMADOR_NF_SOBRE_TAXA_ADM é
+ * o único Tomador (ITAU código 14) que usa a fórmula/default diferente.
  */
-const GROSS_UP_PADRAO_TERCEIRO = 0.8675;
-const GROSS_UP_PADRAO_TEMPORARIO = 0.1325;
+const GROSS_UP_PADRAO = 0.8675;
+const GROSS_UP_PADRAO_TOMADOR_ESPECIAL = 0.1325;
+const CODIGO_TOMADOR_NF_SOBRE_TAXA_ADM = 14;
 
 interface Row {
   codigo: number;
@@ -40,14 +41,14 @@ export interface TomadorInput {
   nome: string;
   fpas: 515 | 655;
   taxaAdm: number;
-  /** Ausente = mantém o padrão do regime (0,8675 pra FPAS 515, 0,1325 pra FPAS 655) — a maioria dos chamadores não precisa pensar nisso. */
+  /** Ausente = mantém o padrão (0,8675 — 0,1325 só pro Tomador 14/ITAU) — a maioria dos chamadores não precisa pensar nisso. */
   grossUp?: number;
 }
 
 /** Salva dados reais de um Tomador — sempre zera `pendente`, mesmo se o registro tivesse sido criado automaticamente (ver upsertTomadoresPendentes) por vir de um Cód Serviço sem cadastro. */
 export async function upsertTomador(input: TomadorInput): Promise<Tomador> {
   await ensureSchema();
-  const grossUp = input.grossUp ?? (input.fpas === 655 ? GROSS_UP_PADRAO_TEMPORARIO : GROSS_UP_PADRAO_TERCEIRO);
+  const grossUp = input.grossUp ?? (input.codigo === CODIGO_TOMADOR_NF_SOBRE_TAXA_ADM ? GROSS_UP_PADRAO_TOMADOR_ESPECIAL : GROSS_UP_PADRAO);
   await getDb()`
     INSERT INTO tomadores (codigo, nome, fpas, taxa_adm, gross_up, pendente)
     VALUES (${input.codigo}, ${input.nome}, ${input.fpas}, ${input.taxaAdm}, ${grossUp}, false)
@@ -98,8 +99,9 @@ export async function upsertTomadoresPendentes(entradas: TomadorPendenteInput[])
     if (jaExiste.has(e.codigo) || jaCriados.has(e.codigo)) continue;
     jaCriados.add(e.codigo);
     const nome = e.nomeSugerido?.trim() || `Tomador cód. ${e.codigo} (cadastro pendente)`;
+    const grossUp = e.codigo === CODIGO_TOMADOR_NF_SOBRE_TAXA_ADM ? GROSS_UP_PADRAO_TOMADOR_ESPECIAL : GROSS_UP_PADRAO;
     await sql`
-      INSERT INTO tomadores (codigo, nome, fpas, taxa_adm, gross_up, pendente) VALUES (${e.codigo}, ${nome}, 655, 0, ${GROSS_UP_PADRAO_TEMPORARIO}, true)
+      INSERT INTO tomadores (codigo, nome, fpas, taxa_adm, gross_up, pendente) VALUES (${e.codigo}, ${nome}, 655, 0, ${grossUp}, true)
       ON CONFLICT (codigo) DO NOTHING
     `;
     const tomador = await getTomador(e.codigo);

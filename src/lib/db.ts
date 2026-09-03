@@ -13,13 +13,13 @@ CREATE TABLE IF NOT EXISTS tomadores (
 -- alguém completar FPAS/Taxa Adm pela tela de Tomadores, o que já zera esta coluna de volta.
 ALTER TABLE tomadores ADD COLUMN IF NOT EXISTS pendente BOOLEAN NOT NULL DEFAULT false;
 -- Gross Up da Nota Fiscal desse Tomador — era uma constante global fixa, agora editável por
--- Tomador e com significado diferente por regime (ver calcularNf em engine.ts): Terceiro (FPAS
--- 515) usa NF = fatura / gross_up (padrão 0,8675); Temporário (FPAS 655) usa NF = despesa +
--- (Taxa Adm × gross_up) (padrão 0,1325). O default da COLUNA (só usado se algum INSERT não
--- passar o campo, o que a aplicação sempre faz — ver upsertTomador/upsertTomadoresPendentes em
--- repo/tomadores.ts) acompanha o default de fpas logo acima (655/Temporário), por isso é 0,1325.
-ALTER TABLE tomadores ADD COLUMN IF NOT EXISTS gross_up DOUBLE PRECISION NOT NULL DEFAULT 0.1325;
-ALTER TABLE tomadores ALTER COLUMN gross_up SET DEFAULT 0.1325;
+-- Tomador (ver calcularNf em engine.ts): NF = fatura / gross_up (padrão 0,8675) pra qualquer
+-- regime, EXCETO o Tomador código 14 (ITAU UNIBANCO S.A), que usa NF = despesa + (Taxa Adm ×
+-- gross_up) (padrão 0,1325) — é o único caso especial. O default da COLUNA (só usado se algum
+-- INSERT não passar o campo, o que a aplicação sempre faz — ver
+-- upsertTomador/upsertTomadoresPendentes em repo/tomadores.ts) acompanha o padrão geral, 0,8675.
+ALTER TABLE tomadores ADD COLUMN IF NOT EXISTS gross_up DOUBLE PRECISION NOT NULL DEFAULT 0.8675;
+ALTER TABLE tomadores ALTER COLUMN gross_up SET DEFAULT 0.8675;
 
 CREATE TABLE IF NOT EXISTS encargos (
   codigo INTEGER PRIMARY KEY,

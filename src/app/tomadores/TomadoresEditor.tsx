@@ -11,7 +11,10 @@ interface FormState {
   grossUp: string;
 }
 
-const EMPTY: FormState = { codigo: "", nome: "", fpas: "655", taxaAdm: "", grossUp: "13,25" };
+const EMPTY: FormState = { codigo: "", nome: "", fpas: "655", taxaAdm: "", grossUp: "86,75" };
+
+/** Único Tomador com fórmula diferente (ver CODIGO_TOMADOR_NF_SOBRE_TAXA_ADM em calc/engine.ts) — duplicado aqui pra não importar o motor de cálculo num Client Component. */
+const CODIGO_TOMADOR_NF_SOBRE_TAXA_ADM = 14;
 
 export function TomadoresEditor({ initial }: { initial: Tomador[] }) {
   const [items, setItems] = useState(initial);
@@ -55,7 +58,7 @@ export function TomadoresEditor({ initial }: { initial: Tomador[] }) {
     if (!Number.isFinite(taxaAdm) || taxaAdm < 0) return setError("Taxa administrativa inválida.");
     if (!Number.isFinite(grossUp) || grossUp < 0 || grossUp > 1) {
       return setError(
-        "Gross Up inválido — use um percentual entre 0% e 100% (0% desliga: NF = fatura). Terceiro: ~86,75% (divide a fatura). Temporário: ~13,25% (soma sobre a Taxa Adm).",
+        "Gross Up inválido — use um percentual entre 0% e 100% (0% desliga: NF = fatura). Padrão: ~86,75% (divide a fatura). Exceção (só Tomador código 14/ITAU): ~13,25% (soma sobre a Taxa Adm).",
       );
     }
 
@@ -106,7 +109,7 @@ export function TomadoresEditor({ initial }: { initial: Tomador[] }) {
               <th className="px-4 py-2 text-left font-medium">Taxa Adm</th>
               <th
                 className="px-4 py-2 text-left font-medium"
-                title="Terceiro: NF = fatura ÷ Gross Up (padrão ~86,75%). Temporário: NF = despesa + (Taxa Adm × Gross Up) (padrão ~13,25%)."
+                title="NF = fatura ÷ Gross Up (padrão ~86,75%). Exceção (só Tomador código 14/ITAU): NF = despesa + (Taxa Adm × Gross Up) (~13,25%)."
               >
                 Gross Up
               </th>
@@ -132,7 +135,9 @@ export function TomadoresEditor({ initial }: { initial: Tomador[] }) {
                   <td className="px-4 py-2 font-mono tabular-nums">{(t.taxaAdm * 100).toLocaleString("pt-BR")}%</td>
                   <td className="px-4 py-2 font-mono tabular-nums">
                     {(t.grossUp * 100).toLocaleString("pt-BR")}%{" "}
-                    <span className="font-sans text-xs text-neutral-400">{t.fpas === 655 ? "(+ s/ Taxa Adm)" : "(÷ fatura)"}</span>
+                    <span className="font-sans text-xs text-neutral-400">
+                      {t.codigo === CODIGO_TOMADOR_NF_SOBRE_TAXA_ADM ? "(+ s/ Taxa Adm)" : "(÷ fatura)"}
+                    </span>
                   </td>
                   <td className="px-4 py-2 text-right">
                     <button type="button" onClick={() => startEdit(t)} className="text-emerald-700 hover:underline">
@@ -222,8 +227,8 @@ function EditRow({
         <input
           value={form.grossUp}
           onChange={(e) => setForm({ ...form, grossUp: e.target.value })}
-          placeholder={form.fpas === "655" ? "ex.: 13,25" : "ex.: 86,75"}
-          title="Terceiro: NF = fatura ÷ Gross Up. Temporário: NF = despesa + (Taxa Adm × Gross Up)."
+          placeholder={Number(form.codigo) === CODIGO_TOMADOR_NF_SOBRE_TAXA_ADM ? "ex.: 13,25" : "ex.: 86,75"}
+          title="NF = fatura ÷ Gross Up. Exceção (só Tomador código 14/ITAU): NF = despesa + (Taxa Adm × Gross Up)."
           className="w-20 rounded border border-neutral-300 px-2 py-1 text-sm"
         />
         %

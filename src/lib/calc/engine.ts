@@ -8,45 +8,37 @@ import type { Colaborador, Encargo, Movimento, TipoEvento, Tomador } from "../ty
 import { CODIGO_DESCONTO_SALDO_FERIAS, CODIGO_DESCONTO_SALDO_UM_TERCO } from "./descontoSaldoFerias";
 
 /**
- * Fator de gross-up padrão da nota fiscal pra Tomador Terceiro (FPAS 515): 1 - (PIS 1,65% +
- * COFINS 7,6% + ISS 2% + CSLL 1% + IRRF 1%) = 0,8675. Confirmado batendo com a aba RESUMO do
- * arquivo FATURAMENTO CHAMA (B41 = B40/0,8675 - B40). Editável por Tomador (ver
- * Tomador.grossUp); este valor só serve de referência/default da coluna no banco (ver db.ts) —
- * o Tomador Temporário (FPAS 655) usa outro default e outra fórmula, ver calcularNf abaixo.
+ * Fator de gross-up padrão da Nota Fiscal, pra qualquer Tomador/regime: 1 - (PIS 1,65% + COFINS
+ * 7,6% + ISS 2% + CSLL 1% + IRRF 1%) = 0,8675. Confirmado batendo com a aba RESUMO do arquivo
+ * FATURAMENTO CHAMA (B41 = B40/0,8675 - B40). Editável por Tomador (ver Tomador.grossUp); este
+ * valor só serve de referência/default da coluna no banco (ver db.ts) — o único Tomador exceção
+ * (CODIGO_TOMADOR_NF_SOBRE_TAXA_ADM) usa outro default e outra fórmula, ver calcularNf abaixo.
  */
 export const GROSS_UP_FACTOR = 0.8675;
-
-/** Default do Gross Up pra Tomador Temporário (FPAS 655) — ver calcularNf abaixo. */
-export const GROSS_UP_TEMPORARIO_FACTOR = 0.1325;
 
 /** Sentinela pra colaborador sem Ccusto cadastrado — mantém a linha visível em vez de sumir do faturamento. */
 export const CCUSTO_SEM_CADASTRO = { codigo: "0", nome: "Sem centro de custo" };
 
 /**
- * Único Tomador que usa a fórmula multiplicativa de NF (ver calcularNf abaixo) — decisão do
- * usuário em 2026-09-03: só o ITAU UNIBANCO S.A (Temporário, FPAS 655, código 14) fatura assim;
- * todos os demais tomadores (incluindo o outro ITAU UNIBANCO S.A, código 23, FPAS 515) usam a
- * fórmula por regime de sempre.
+ * Único Tomador que não divide a fatura inteira (ver calcularNf abaixo) — decisão do usuário em
+ * 2026-09-03: só o ITAU UNIBANCO S.A código 14 (Temporário, FPAS 655) fatura assim; todos os
+ * demais tomadores, dos dois regimes (incluindo o outro ITAU UNIBANCO S.A, código 23, FPAS 515),
+ * usam a divisão padrão.
  */
-const CODIGO_TOMADOR_NF_MULTIPLICATIVA = 14;
+const CODIGO_TOMADOR_NF_SOBRE_TAXA_ADM = 14;
 
 /**
- * NF varia por regime do Tomador — os dois usam o mesmo campo Tomador.grossUp, mas com
- * significados diferentes:
- *  - Terceiro (FPAS 515): grossUp é o fator "o que sobra líquido depois do imposto" (~0,8675) —
- *    NF = fatura / grossUp, inflando a fatura inteira pra sobrar o valor certo depois do
- *    imposto retido sobre a NF.
- *  - Temporário (FPAS 655): grossUp é o percentual de imposto (~0,1325) que incide só sobre a
- *    Taxa Adm, não sobre a despesa — NF = despesa + (Taxa Adm × grossUp).
- * Exceção: CODIGO_TOMADOR_NF_MULTIPLICATIVA usa NF = fatura + (fatura × grossUp), independente
- * do regime.
- * Em todos os casos, Gross Up 0 "desliga": NF = fatura, sem inflar nada.
+ * NF = fatura / grossUp pra todo Tomador, de qualquer regime (~0,8675 padrão) — inflando a
+ * fatura inteira pra sobrar o valor certo depois do imposto retido sobre a NF. Exceção:
+ * CODIGO_TOMADOR_NF_SOBRE_TAXA_ADM usa NF = despesa + (Taxa Adm × grossUp) (~0,1325 padrão),
+ * onde o imposto incide só sobre a Taxa Adm, não sobre a despesa. Em ambos os casos, Gross Up 0
+ * "desliga": NF = fatura, sem inflar nada.
  */
 function calcularNf(base: number, taxaAdmValor: number, fatura: number, tomador: Tomador): number {
-  const { grossUp, fpas, codigo } = tomador;
+  const { grossUp, codigo } = tomador;
   if (grossUp <= 0) return fatura;
-  if (codigo === CODIGO_TOMADOR_NF_MULTIPLICATIVA) return fatura + fatura * grossUp;
-  return fpas === 655 ? base + taxaAdmValor * grossUp : fatura / grossUp;
+  if (codigo === CODIGO_TOMADOR_NF_SOBRE_TAXA_ADM) return base + taxaAdmValor * grossUp;
+  return fatura / grossUp;
 }
 
 export interface CalculatedLine {

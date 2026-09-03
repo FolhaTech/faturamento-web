@@ -13,7 +13,12 @@ describe("tomadores repo — cadastro pendente (Cód Serviço sem Tomador cadast
     expect(criado.nome).toBe("EMPRESA NOVA LTDA");
     expect(criado.fpas).toBe(655);
     expect(criado.taxaAdm).toBe(0);
-    expect(criado.grossUp).toBeCloseTo(0.1325, 6); // pendente sempre nasce FPAS 655 — padrão de Temporário
+    expect(criado.grossUp).toBeCloseTo(0.8675, 6); // padrão geral — só o Tomador código 14 (ITAU) tem outro
+  });
+
+  it("pendente com o código do Tomador 14 (ITAU) nasce com o Gross Up especial 0,1325", async () => {
+    const [criado] = await upsertTomadoresPendentes([{ codigo: 14, nomeSugerido: "ITAU UNIBANCO S.A" }]);
+    expect(criado.grossUp).toBeCloseTo(0.1325, 6);
   });
 
   it("usa um rótulo genérico quando não há nome sugerido", async () => {
@@ -43,15 +48,15 @@ describe("tomadores repo — cadastro pendente (Cód Serviço sem Tomador cadast
 });
 
 describe("tomadores repo — Gross Up", () => {
-  it("Terceiro (515): usa 0,8675 como padrão quando não informado", async () => {
-    await upsertTomador({ codigo: 999, nome: "EMPRESA LTDA", fpas: 515, taxaAdm: 0.1 });
-    const t = (await getTomador(999))!;
-    expect(t.grossUp).toBeCloseTo(0.8675, 6);
+  it("usa 0,8675 como padrão quando não informado, em qualquer regime (exceto o Tomador código 14)", async () => {
+    const t515 = await upsertTomador({ codigo: 998, nome: "EMPRESA A LTDA", fpas: 515, taxaAdm: 0.1 });
+    const t655 = await upsertTomador({ codigo: 999, nome: "EMPRESA B LTDA", fpas: 655, taxaAdm: 0.1 });
+    expect(t515.grossUp).toBeCloseTo(0.8675, 6);
+    expect(t655.grossUp).toBeCloseTo(0.8675, 6);
   });
 
-  it("Temporário (655): usa 0,1325 como padrão quando não informado", async () => {
-    await upsertTomador({ codigo: 999, nome: "EMPRESA LTDA", fpas: 655, taxaAdm: 0.1 });
-    const t = (await getTomador(999))!;
+  it("Tomador código 14 (ITAU): usa 0,1325 como padrão, independente do regime informado", async () => {
+    const t = await upsertTomador({ codigo: 14, nome: "ITAU UNIBANCO S.A", fpas: 655, taxaAdm: 0.095 });
     expect(t.grossUp).toBeCloseTo(0.1325, 6);
   });
 
