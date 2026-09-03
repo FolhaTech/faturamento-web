@@ -169,19 +169,20 @@ function SummarySection({ resumo }: { resumo: CcustoResumo }) {
 }
 
 const RUBRICA_COLS: { key: keyof RubricaSomada; label: string; width: string; strong?: boolean }[] = [
-  { key: "evento", label: "Evento", width: "18%" },
+  { key: "evento", label: "Evento", width: "16%" },
   { key: "valorBruto", label: "Valor", width: "7%" },
   { key: "inss", label: "INSS", width: "7%" },
   { key: "fgts", label: "FGTS", width: "7%" },
-  { key: "provFerias", label: "Prov. Férias", width: "8%" },
+  { key: "provFerias", label: "Prov. Férias", width: "7%" },
   { key: "prov13", label: "Prov. 13º", width: "7%" },
-  { key: "encInss", label: "Enc. INSS/Prov.", width: "9%" },
-  { key: "encFgts", label: "Enc. FGTS/Prov.", width: "9%" },
-  { key: "totalProvisoes", label: "Total Prov.", width: "8%" },
-  { key: "despesa", label: "Despesa (BASE)", width: "9%", strong: true },
+  { key: "encInss", label: "Enc. INSS/Prov.", width: "8%" },
+  { key: "encFgts", label: "Enc. FGTS/Prov.", width: "8%" },
+  { key: "totalProvisoes", label: "Total Prov.", width: "7%" },
+  { key: "despesa", label: "Despesa (BASE)", width: "8%", strong: true },
   { key: "taxaAdm", label: "Taxa Adm", width: "7%" },
   { key: "fatura", label: "Fatura", width: "7%" },
-  { key: "nf", label: "NF", width: "7%" },
+  { key: "impostos", label: "Tributação", width: "7%" },
+  { key: "nf", label: "Nota Fiscal", width: "7%", strong: true },
 ];
 
 function RubricasSection({ resumo }: { resumo: CcustoResumo }) {
@@ -215,18 +216,19 @@ function RubricasSection({ resumo }: { resumo: CcustoResumo }) {
           </View>
         ))}
         <View style={styles.totalsRow}>
-          <Text style={[styles.totalsCell, { width: "18%" }]}>Total</Text>
+          <Text style={[styles.totalsCell, { width: "16%" }]}>Total</Text>
+          <Text style={[styles.totalsCellRight, { width: "7%" }]} />
+          <Text style={[styles.totalsCellRight, { width: "7%" }]} />
           <Text style={[styles.totalsCellRight, { width: "7%" }]} />
           <Text style={[styles.totalsCellRight, { width: "7%" }]} />
           <Text style={[styles.totalsCellRight, { width: "7%" }]} />
           <Text style={[styles.totalsCellRight, { width: "8%" }]} />
-          <Text style={[styles.totalsCellRight, { width: "7%" }]} />
-          <Text style={[styles.totalsCellRight, { width: "9%" }]} />
-          <Text style={[styles.totalsCellRight, { width: "9%" }]} />
           <Text style={[styles.totalsCellRight, { width: "8%" }]} />
-          <Text style={[styles.totalsCellRight, { width: "9%" }]}>{fmt(resumo.totalDespesas)}</Text>
+          <Text style={[styles.totalsCellRight, { width: "7%" }]} />
+          <Text style={[styles.totalsCellRight, { width: "8%" }]}>{fmt(resumo.totalDespesas)}</Text>
           <Text style={[styles.totalsCellRight, { width: "7%" }]}>{fmt(resumo.taxaAdministrativa)}</Text>
           <Text style={[styles.totalsCellRight, { width: "7%" }]}>{fmt(resumo.totalFaturaSemEncargos)}</Text>
+          <Text style={[styles.totalsCellRight, { width: "7%" }]}>{fmt(resumo.totalFatura - resumo.totalFaturaSemEncargos)}</Text>
           <Text style={[styles.totalsCellRight, { width: "7%" }]}>{fmt(resumo.totalFatura)}</Text>
         </View>
       </View>
@@ -278,12 +280,13 @@ function DescontosSection({ resumo }: { resumo: CcustoResumo }) {
 }
 
 const COLAB_COLS: { key: keyof ColaboradorResumo; label: string; width: string }[] = [
-  { key: "matricula", label: "Matrícula", width: "14%" },
-  { key: "nome", label: "Nome", width: "42%" },
-  { key: "despesa", label: "Despesa", width: "11%" },
-  { key: "taxaAdm", label: "Taxa Adm", width: "11%" },
-  { key: "fatura", label: "Fatura", width: "11%" },
-  { key: "nf", label: "NF", width: "11%" },
+  { key: "matricula", label: "Matrícula", width: "13%" },
+  { key: "nome", label: "Nome", width: "35%" },
+  { key: "despesa", label: "Despesa", width: "10%" },
+  { key: "taxaAdm", label: "Taxa Adm", width: "10%" },
+  { key: "fatura", label: "Fatura", width: "10%" },
+  { key: "impostos", label: "Tributação", width: "11%" },
+  { key: "nf", label: "Nota Fiscal", width: "11%" },
 ];
 
 function ColaboradoresSection({ resumo }: { resumo: CcustoResumo }) {
@@ -300,19 +303,21 @@ function ColaboradoresSection({ resumo }: { resumo: CcustoResumo }) {
         </View>
         {resumo.colaboradores.map((c, i) => (
           <View key={c.matricula} style={i % 2 === 1 ? styles.tRowAlt : styles.tRow} wrap={false}>
-            <Text style={[styles.tCell, { width: "14%" }]}>{c.matricula}</Text>
-            <Text style={[styles.tCell, { width: "42%" }]}>{c.nome}</Text>
-            <Text style={[styles.tCellRight, { width: "11%" }]}>{fmt(c.despesa)}</Text>
-            <Text style={[styles.tCellRight, { width: "11%" }]}>{fmt(c.taxaAdm)}</Text>
-            <Text style={[styles.tCellRight, { width: "11%" }]}>{fmt(c.fatura)}</Text>
-            <Text style={[styles.tCellRight, { width: "11%" }]}>{fmt(c.nf)}</Text>
+            <Text style={[styles.tCell, { width: "13%" }]}>{c.matricula}</Text>
+            <Text style={[styles.tCell, { width: "35%" }]}>{c.nome}</Text>
+            <Text style={[styles.tCellRight, { width: "10%" }]}>{fmt(c.despesa)}</Text>
+            <Text style={[styles.tCellRight, { width: "10%" }]}>{fmt(c.taxaAdm)}</Text>
+            <Text style={[styles.tCellRight, { width: "10%" }]}>{fmt(c.fatura)}</Text>
+            <Text style={[styles.tCellRight, { width: "11%" }]}>{fmt(c.impostos)}</Text>
+            <Text style={[styles.tCellStrong, { width: "11%" }]}>{fmt(c.nf)}</Text>
           </View>
         ))}
         <View style={styles.totalsRow}>
-          <Text style={[styles.totalsCell, { width: "56%" }]}>Total</Text>
-          <Text style={[styles.totalsCellRight, { width: "11%" }]}>{fmt(resumo.totalDespesas)}</Text>
-          <Text style={[styles.totalsCellRight, { width: "11%" }]}>{fmt(resumo.taxaAdministrativa)}</Text>
-          <Text style={[styles.totalsCellRight, { width: "11%" }]}>{fmt(resumo.totalFaturaSemEncargos)}</Text>
+          <Text style={[styles.totalsCell, { width: "48%" }]}>Total</Text>
+          <Text style={[styles.totalsCellRight, { width: "10%" }]}>{fmt(resumo.totalDespesas)}</Text>
+          <Text style={[styles.totalsCellRight, { width: "10%" }]}>{fmt(resumo.taxaAdministrativa)}</Text>
+          <Text style={[styles.totalsCellRight, { width: "10%" }]}>{fmt(resumo.totalFaturaSemEncargos)}</Text>
+          <Text style={[styles.totalsCellRight, { width: "11%" }]}>{fmt(resumo.totalFatura - resumo.totalFaturaSemEncargos)}</Text>
           <Text style={[styles.totalsCellRight, { width: "11%" }]}>{fmt(resumo.totalFatura)}</Text>
         </View>
       </View>

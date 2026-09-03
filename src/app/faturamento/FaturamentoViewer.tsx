@@ -150,7 +150,7 @@ function RubricasTable({ rubricas }: { rubricas: RubricaSomada[] }) {
   return (
     <div className="flex flex-col gap-2">
       <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-        <table className="w-full min-w-[1240px] text-sm">
+        <table className="w-full min-w-[1360px] text-sm">
           <thead className="bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
             <tr>
               <Th>Evento</Th>
@@ -165,7 +165,8 @@ function RubricasTable({ rubricas }: { rubricas: RubricaSomada[] }) {
               <Th right>Despesa (BASE)</Th>
               <Th right>Taxa Adm</Th>
               <Th right>Fatura</Th>
-              <Th right>NF</Th>
+              <Th right>Tributação</Th>
+              <Th right>Nota Fiscal</Th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100">
@@ -206,7 +207,10 @@ function RubricasTable({ rubricas }: { rubricas: RubricaSomada[] }) {
                   {fmt(r.fatura)}
                 </Td>
                 <Td right mono>
-                  {fmt(r.nf)}
+                  {fmt(r.impostos)}
+                </Td>
+                <Td right mono>
+                  <span className="font-semibold text-neutral-900">{fmt(r.nf)}</span>
                 </Td>
               </tr>
             ))}
@@ -287,7 +291,7 @@ function ColaboradoresTable({ colaboradores }: { colaboradores: ColaboradorResum
     <div className="flex flex-col gap-2">
       <h3 className="px-1 text-sm font-semibold text-neutral-700">Detalhamento por colaborador — clique numa linha pra ver o detalhamento por evento dele</h3>
       <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-        <table className="w-full min-w-[640px] text-sm">
+        <table className="w-full min-w-[760px] text-sm">
           <thead className="bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
             <tr>
               <Th>Matrícula</Th>
@@ -295,7 +299,8 @@ function ColaboradoresTable({ colaboradores }: { colaboradores: ColaboradorResum
               <Th right>Despesa</Th>
               <Th right>Taxa Adm</Th>
               <Th right>Fatura</Th>
-              <Th right>NF</Th>
+              <Th right>Tributação</Th>
+              <Th right>Nota Fiscal</Th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100">
@@ -323,12 +328,15 @@ function ColaboradoresTable({ colaboradores }: { colaboradores: ColaboradorResum
                       {fmt(c.fatura)}
                     </Td>
                     <Td right mono>
-                      {fmt(c.nf)}
+                      {fmt(c.impostos)}
+                    </Td>
+                    <Td right mono>
+                      <span className="font-semibold text-neutral-900">{fmt(c.nf)}</span>
                     </Td>
                   </tr>
                   {aberta && (
                     <tr>
-                      <td colSpan={6} className="bg-neutral-50 p-3">
+                      <td colSpan={7} className="bg-neutral-50 p-3">
                         <div className="flex flex-col gap-3">
                           <RubricasTable rubricas={c.rubricas} />
                           <DescontosTable rubricas={c.rubricas} />
