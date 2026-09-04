@@ -7,6 +7,10 @@ function fmt(n: number): string {
   return currency.format(n);
 }
 
+function sum<T>(items: T[], pick: (item: T) => number): number {
+  return items.reduce((acc, item) => acc + pick(item), 0);
+}
+
 const INK = "#1e2420";
 const INK_SOFT = "#4f5951";
 const ACCENT = "#0f6b4c";
@@ -228,8 +232,8 @@ function RubricasSection({ resumo }: { resumo: CcustoResumo }) {
           <Text style={[styles.totalsCellRight, { width: "8%" }]}>{fmt(resumo.totalDespesas)}</Text>
           <Text style={[styles.totalsCellRight, { width: "7%" }]}>{fmt(resumo.taxaAdministrativa)}</Text>
           <Text style={[styles.totalsCellRight, { width: "7%" }]}>{fmt(resumo.totalFaturaSemEncargos)}</Text>
-          <Text style={[styles.totalsCellRight, { width: "7%" }]}>{fmt(resumo.totalFatura - resumo.totalFaturaSemEncargos)}</Text>
-          <Text style={[styles.totalsCellRight, { width: "7%" }]}>{fmt(resumo.totalFatura)}</Text>
+          <Text style={[styles.totalsCellRight, { width: "7%" }]}>{fmt(sum(comImpacto, (r) => r.impostos))}</Text>
+          <Text style={[styles.totalsCellRight, { width: "7%" }]}>{fmt(sum(comImpacto, (r) => r.nf))}</Text>
         </View>
       </View>
       {ocultas > 0 && (
@@ -317,8 +321,8 @@ function ColaboradoresSection({ resumo }: { resumo: CcustoResumo }) {
           <Text style={[styles.totalsCellRight, { width: "10%" }]}>{fmt(resumo.totalDespesas)}</Text>
           <Text style={[styles.totalsCellRight, { width: "10%" }]}>{fmt(resumo.taxaAdministrativa)}</Text>
           <Text style={[styles.totalsCellRight, { width: "10%" }]}>{fmt(resumo.totalFaturaSemEncargos)}</Text>
-          <Text style={[styles.totalsCellRight, { width: "11%" }]}>{fmt(resumo.totalFatura - resumo.totalFaturaSemEncargos)}</Text>
-          <Text style={[styles.totalsCellRight, { width: "11%" }]}>{fmt(resumo.totalFatura)}</Text>
+          <Text style={[styles.totalsCellRight, { width: "11%" }]}>{fmt(sum(resumo.colaboradores, (c) => c.impostos))}</Text>
+          <Text style={[styles.totalsCellRight, { width: "11%" }]}>{fmt(sum(resumo.colaboradores, (c) => c.nf))}</Text>
         </View>
       </View>
     </View>
