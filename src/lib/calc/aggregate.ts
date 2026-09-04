@@ -18,6 +18,8 @@ function ehBeneficioExcluidoDaBaseInss(evento: string): boolean {
 }
 
 export interface RubricaSomada {
+  /** Código do evento (Encargos) — mesmo evento sempre tem o mesmo código, vem da 1ª linha agregada. Usado pra editar INSS/FGTS/Provisões direto da tela de Faturamento. */
+  codigo: number;
   evento: string;
   /** Tipo do evento (ver TipoEvento) — mesmo evento sempre tem o mesmo tipo, vem da 1ª linha agregada. */
   tipo: TipoEvento;
@@ -44,8 +46,9 @@ export interface RubricaSomada {
   nf: number;
 }
 
-function novaRubrica(evento: string, tipo: TipoEvento, trilha: CalculatedLine["trilha"]): RubricaSomada {
+function novaRubrica(codigo: number, evento: string, tipo: TipoEvento, trilha: CalculatedLine["trilha"]): RubricaSomada {
   return {
+    codigo,
     evento,
     tipo,
     trilha,
@@ -86,7 +89,7 @@ function somaLinhaNaRubrica(r: RubricaSomada, l: CalculatedLine): void {
 function agruparPorEvento(lines: CalculatedLine[]): RubricaSomada[] {
   const map = new Map<string, RubricaSomada>();
   for (const l of lines) {
-    const r = map.get(l.evento) ?? novaRubrica(l.evento, l.tipo, l.trilha);
+    const r = map.get(l.evento) ?? novaRubrica(l.codigo, l.evento, l.tipo, l.trilha);
     somaLinhaNaRubrica(r, l);
     map.set(l.evento, r);
   }

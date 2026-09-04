@@ -64,6 +64,46 @@ export async function upsertEncargo(input: EncargoInput): Promise<Encargo> {
   return (await getEncargo(input.codigo))!;
 }
 
+/**
+ * Alíquotas padrão de INSS/FGTS/Provisões — as mesmas usadas em DIAS NORMAIS (código 8781),
+ * confirmadas batendo com a folha real. Usadas pelos checkboxes de componentes da tela de
+ * Faturamento (ver updateEncargoComponentes) — "ligar" um componente aplica esse valor de
+ * referência; "desligar" zera.
+ */
+export const INSS_515_PADRAO = 0.288;
+export const INSS_655_PADRAO = 0.255;
+export const FGTS_PADRAO = 0.08;
+export const PROV_FERIAS_PADRAO = 0.11110833333333332;
+export const PROV_13_PADRAO = 0.08333333333333333;
+
+export interface EncargoComponentes {
+  inss: boolean;
+  fgts: boolean;
+  provisoes: boolean;
+}
+
+/**
+ * Liga/desliga em bloco os componentes (INSS, FGTS, Provisões) de um evento, usando as
+ * alíquotas padrão — usado pelos checkboxes rápidos da tela de Faturamento, que não exigem que
+ * o usuário saiba os percentuais exatos de cor. Cria o Encargo (tipo "P") se ainda não existir
+ * — caso comum pra evento que nunca tinha aparecido numa planilha antes.
+ */
+export async function updateEncargoComponentes(codigo: number, evento: string, tipo: TipoEvento, componentes: EncargoComponentes): Promise<Encargo> {
+  await ensureSchema();
+  const atual = await getEncargo(codigo);
+  return upsertEncargo({
+    codigo,
+    evento: atual?.evento ?? evento,
+    tipo: atual?.tipo ?? tipo,
+    inss655: componentes.inss ? INSS_655_PADRAO : 0,
+    inss515: componentes.inss ? INSS_515_PADRAO : 0,
+    fgts: componentes.fgts ? FGTS_PADRAO : 0,
+    provFerias: componentes.provisoes ? PROV_FERIAS_PADRAO : 0,
+    prov13: componentes.provisoes ? PROV_13_PADRAO : 0,
+    abateSaldo: atual?.abateSaldo ?? null,
+  });
+}
+
 export async function deleteEncargo(codigo: number): Promise<void> {
   await ensureSchema();
   await getDb()`DELETE FROM encargos WHERE codigo = ${codigo}`;

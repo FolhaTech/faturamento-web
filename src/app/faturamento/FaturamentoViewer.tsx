@@ -1,8 +1,10 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { CcustoResumo, ColaboradorResumo, RubricaSomada } from "@/lib/calc/aggregate";
 import { normalizaTexto } from "@/lib/text";
+import type { Encargo } from "@/lib/types";
 import { GrossUpConfigForm } from "./GrossUpConfigForm";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -15,6 +17,7 @@ export function FaturamentoViewer({
   warnings,
   filtrosQuery,
   regimeLabel = null,
+  encargos,
 }: {
   resumos: CcustoResumo[];
   warnings: string[];
@@ -28,9 +31,12 @@ export function FaturamentoViewer({
   filtrosQuery?: string;
   /** "Terceiro (CLT)" ou "Temporário" quando o filtro de Regime está ativo — mostrado junto do Tomador pra não confundir com a fatura sem esse filtro. */
   regimeLabel?: string | null;
+  /** Cadastro completo de Encargos — usado pelos checkboxes de INSS/FGTS/Provisões por evento (ver EncargoComponentesToggle). */
+  encargos: Encargo[];
 }) {
   const [ccustoCodigo, setCcustoCodigo] = useState<string | null>(resumos[0]?.ccustoCodigo ?? null);
   const resumo = useMemo(() => resumos.find((r) => r.ccustoCodigo === ccustoCodigo) ?? resumos[0] ?? null, [resumos, ccustoCodigo]);
+  const encargosPorCodigo = useMemo(() => new Map(encargos.map((e) => [e.codigo, e])), [encargos]);
 
   if (resumos.length === 0) {
     return <p className="text-sm text-neutral-500">Nenhum centro de custo com lançamentos nessa competência.</p>;
@@ -71,9 +77,9 @@ export function FaturamentoViewer({
       {resumo && (
         <>
           <TotalsCard resumo={resumo} regimeLabel={regimeLabel} />
-          <RubricasTable rubricas={resumo.rubricas} />
+          <RubricasTable rubricas={resumo.rubricas} encargosPorCodigo={encargosPorCodigo} />
           <DescontosTable rubricas={resumo.rubricas} />
-          <ColaboradoresTable colaboradores={resumo.colaboradores} />
+          <ColaboradoresTable colaboradores={resumo.colaboradores} encargosPorCodigo={encargosPorCodigo} />
         </>
       )}
     </div>
@@ -142,7 +148,7 @@ function TotalsCard({ resumo, regimeLabel }: { resumo: CcustoResumo; regimeLabel
   );
 }
 
-function RubricasTable({ rubricas }: { rubricas: RubricaSomada[] }) {
+function RubricasTable({ rubricas, encargosPorCodigo }: { rubricas: RubricaSomada[]; encargosPorCodigo: Map<number, Encargo> }) {
   const rubricasComImpacto = rubricas.filter((r) => r.trilha !== "excluido");
   const ocultas = rubricas.length - rubricasComImpacto.length;
 
@@ -171,7 +177,10 @@ function RubricasTable({ rubricas }: { rubricas: RubricaSomada[] }) {
           <tbody className="divide-y divide-neutral-100">
             {rubricasComImpacto.map((r) => (
               <tr key={r.evento} className="hover:bg-neutral-50">
-                <Td>{r.evento}</Td>
+                <Td>
+                  {r.evento}
+                  <EncargoComponentesToggle codigo={r.codigo} evento={r.evento} tipo={r.tipo} encargo={encargosPorCodigo.get(r.codigo)} />
+                </Td>
                 <Td right mono>
                   {fmt(r.valorBruto)}
                 </Td>
@@ -221,6 +230,71 @@ function RubricasTable({ rubricas }: { rubricas: RubricaSomada[] }) {
           {ocultas} evento(s) do tipo Desconto/FGTS/INSS não entram na soma do faturamento — veja a tabela de descontos abaixo.
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * Checkboxes rápidos pra ligar/desligar INSS, FGTS e Provisões (Férias+13º) de um evento sem
+ * precisar saber os percentuais de cor — chama /api/encargos/[codigo]/componentes, que aplica
+ * as alíquotas padrão (iguais a DIAS NORMAIS) quando ligado, ou zera quando desligado.
+ */
+function EncargoComponentesToggle({
+  codigo,
+  evento,
+  tipo,
+  encargo,
+}: {
+  codigo: number;
+  evento: string;
+  tipo: RubricaSomada["tipo"];
+  encargo: Encargo | undefined;
+}) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [estado, setEstado] = useState(() => ({
+    inss: (encargo?.inss515 ?? 0) > 0 || (encargo?.inss655 ?? 0) > 0,
+    fgts: (encargo?.fgts ?? 0) > 0,
+    provisoes: (encargo?.provFerias ?? 0) > 0 || (encargo?.prov13 ?? 0) > 0,
+  }));
+
+  async function toggle(campo: "inss" | "fgts" | "provisoes") {
+    const estadoAnterior = estado;
+    const novoEstado = { ...estado, [campo]: !estado[campo] };
+    setEstado(novoEstado);
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/encargos/${codigo}/componentes`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ evento, tipo, ...novoEstado }),
+      });
+      if (!res.ok) {
+        setEstado(estadoAnterior);
+        return;
+      }
+      router.refresh();
+    } catch {
+      setEstado(estadoAnterior);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-1 flex gap-2 text-[10px] font-normal text-neutral-400" onClick={(e) => e.stopPropagation()}>
+      <label className="flex cursor-pointer items-center gap-0.5" title="Aplica INSS 515/655 (28,8%/25,5%) quando ligado.">
+        <input type="checkbox" checked={estado.inss} disabled={busy} onChange={() => toggle("inss")} className="h-3 w-3" />
+        INSS
+      </label>
+      <label className="flex cursor-pointer items-center gap-0.5" title="Aplica FGTS (8%) quando ligado.">
+        <input type="checkbox" checked={estado.fgts} disabled={busy} onChange={() => toggle("fgts")} className="h-3 w-3" />
+        FGTS
+      </label>
+      <label className="flex cursor-pointer items-center gap-0.5" title="Aplica Prov. Férias (11,11%) + Prov. 13º (8,33%) quando ligado.">
+        <input type="checkbox" checked={estado.provisoes} disabled={busy} onChange={() => toggle("provisoes")} className="h-3 w-3" />
+        Prov.
+      </label>
     </div>
   );
 }
@@ -283,7 +357,7 @@ function DescontosTable({ rubricas }: { rubricas: RubricaSomada[] }) {
 }
 
 /** Cada linha abre o detalhamento por evento (rubricas) daquele colaborador — mesmas colunas da tabela de rubricas do centro de custo inteiro, só que restrita a ele. */
-function ColaboradoresTable({ colaboradores }: { colaboradores: ColaboradorResumo[] }) {
+function ColaboradoresTable({ colaboradores, encargosPorCodigo }: { colaboradores: ColaboradorResumo[]; encargosPorCodigo: Map<number, Encargo> }) {
   const [expandida, setExpandida] = useState<number | null>(null);
 
   return (
@@ -337,7 +411,7 @@ function ColaboradoresTable({ colaboradores }: { colaboradores: ColaboradorResum
                     <tr>
                       <td colSpan={7} className="bg-neutral-50 p-3">
                         <div className="flex flex-col gap-3">
-                          <RubricasTable rubricas={c.rubricas} />
+                          <RubricasTable rubricas={c.rubricas} encargosPorCodigo={encargosPorCodigo} />
                           <DescontosTable rubricas={c.rubricas} />
                         </div>
                       </td>

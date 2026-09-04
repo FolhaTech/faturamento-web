@@ -5,6 +5,7 @@ import { filtrarLinesPorColaborador } from "@/lib/calc/filtroColaboradores";
 import { listCompetencias, listMovimentosByCompetencia } from "@/lib/repo/movimentos";
 import { listValoresDistintosDados } from "@/lib/repo/colaboradores";
 import { CHAVE_PLR_CELETISTA, getConfigNumero } from "@/lib/repo/configuracoes";
+import { listEncargos } from "@/lib/repo/encargos";
 import { FaturamentoViewer } from "./FaturamentoViewer";
 import { PlrConfigForm } from "./PlrConfigForm";
 import { UploadMovimentosForm } from "./UploadMovimentosForm";
@@ -31,11 +32,12 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   const fpas = regime ? (Number(regime) as 515 | 655) : undefined;
   const filtrosAtivos = Boolean(codEmp || descricaoCargo || descricaoDpto || regime);
 
-  const [codEmps, descricoesCargo, descricoesDpto, plrCeletista] = await Promise.all([
+  const [codEmps, descricoesCargo, descricoesDpto, plrCeletista, encargos] = await Promise.all([
     listValoresDistintosDados("cod_emp"),
     listValoresDistintosDados("descricao_cargo"),
     listValoresDistintosDados("descricao_dpto"),
     getConfigNumero(CHAVE_PLR_CELETISTA, 29.32),
+    listEncargos(),
   ]);
 
   let resumos: ReturnType<typeof aggregateByCcusto> = [];
@@ -178,6 +180,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
             warnings={warnings}
             filtrosQuery={filtrosQuery.toString()}
             regimeLabel={fpas === 515 ? "Terceiro (CLT)" : fpas === 655 ? "Temporário" : null}
+            encargos={encargos}
           />
         </>
       )}
