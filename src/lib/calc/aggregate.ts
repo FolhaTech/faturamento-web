@@ -3,28 +3,16 @@ import type { CalculatedLine } from "./engine";
 import type { TipoEvento } from "../types";
 
 /**
- * Categorias de benefício deduzidas do TOTAL FATURA (com encargos) inteiro — não entram na Nota
- * Fiscal cobrada do tomador junto com o resto do faturamento. Decisão do usuário em 2026-09-04.
+ * Categorias de benefício excluídas da base de retenção de INSS na fonte
+ * (11%), replicando a mesma regra usada no RESUMO real (C53 = TOTAL FATURA
+ * - VT/VR/VA/Bonificação). As demais retenções (IRRF, CSLL, COFINS, PIS,
+ * ISS) incidem sobre o total cheio da fatura.
  */
-const CATEGORIAS_EXCLUIDAS_DA_FATURA = ["VALE TRANSPORTE", "VALE REFEI", "VALE ALIMENTA", "BOA PERMANEN"];
-
-function ehBeneficioExcluidoDaFatura(evento: string): boolean {
-  const n = normalizaTexto(evento);
-  return CATEGORIAS_EXCLUIDAS_DA_FATURA.some((cat) => n.includes(cat));
-}
-
-/**
- * Categorias de benefício excluídas ADICIONALMENTE só da base de retenção de INSS na fonte
- * (11%), replicando a mesma regra usada no RESUMO real (C53 = TOTAL FATURA - VT/VR/VA/
- * Bonificação) — VT/VR/VA já saem do Total Fatura acima, só falta Bonificação. As demais
- * retenções (IRRF, CSLL, COFINS, PIS, ISS) incidem sobre o Total Fatura (já líquido de
- * VT/VR/VA/Boa Permanência).
- */
-const CATEGORIAS_EXCLUIDAS_BASE_INSS_ADICIONAL = ["BONIFICA"];
+const CATEGORIAS_EXCLUIDAS_BASE_INSS = ["VALE TRANSPORTE", "VALE REFEI", "VALE ALIMENTA", "BONIFICA"];
 
 function ehBeneficioExcluidoDaBaseInss(evento: string): boolean {
   const n = normalizaTexto(evento);
-  return CATEGORIAS_EXCLUIDAS_BASE_INSS_ADICIONAL.some((cat) => n.includes(cat));
+  return CATEGORIAS_EXCLUIDAS_BASE_INSS.some((cat) => n.includes(cat));
 }
 
 export interface RubricaSomada {
@@ -181,12 +169,7 @@ export function aggregateByCcusto(lines: CalculatedLine[], competencia: string):
     const totalDespesas = sum(ccustoLines, (l) => l.base);
     const taxaAdministrativa = sum(ccustoLines, (l) => l.taxaAdmValor);
     const totalFaturaSemEncargos = totalDespesas + taxaAdministrativa;
-
-    const faturaExcluida = sum(
-      ccustoLines.filter((l) => l.trilha === "beneficio" && ehBeneficioExcluidoDaFatura(l.evento)),
-      (l) => l.nf,
-    );
-    const totalFatura = sum(ccustoLines, (l) => l.nf) - faturaExcluida;
+    const totalFatura = sum(ccustoLines, (l) => l.nf);
 
     const encargosFatura: EncargosFatura = {
       pis: totalFatura * 0.0165,
