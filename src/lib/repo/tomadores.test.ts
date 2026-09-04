@@ -13,11 +13,6 @@ describe("tomadores repo — cadastro pendente (Cód Serviço sem Tomador cadast
     expect(criado.nome).toBe("EMPRESA NOVA LTDA");
     expect(criado.fpas).toBe(655);
     expect(criado.taxaAdm).toBe(0);
-    expect(criado.grossUp).toBeCloseTo(0.8675, 6); // padrão geral — só o Tomador código 14 (ITAU) tem outro
-  });
-
-  it("pendente com o código do Tomador 14 (ITAU) nasce com o Gross Up especial 0,1325", async () => {
-    const [criado] = await upsertTomadoresPendentes([{ codigo: 14, nomeSugerido: "ITAU UNIBANCO S.A" }]);
     expect(criado.grossUp).toBeCloseTo(0.1325, 6);
   });
 
@@ -48,16 +43,11 @@ describe("tomadores repo — cadastro pendente (Cód Serviço sem Tomador cadast
 });
 
 describe("tomadores repo — Gross Up", () => {
-  it("usa 0,8675 como padrão quando não informado, em qualquer regime (exceto o Tomador código 14)", async () => {
+  it("usa 0,1325 como padrão quando não informado, em qualquer regime", async () => {
     const t515 = await upsertTomador({ codigo: 998, nome: "EMPRESA A LTDA", fpas: 515, taxaAdm: 0.1 });
     const t655 = await upsertTomador({ codigo: 999, nome: "EMPRESA B LTDA", fpas: 655, taxaAdm: 0.1 });
-    expect(t515.grossUp).toBeCloseTo(0.8675, 6);
-    expect(t655.grossUp).toBeCloseTo(0.8675, 6);
-  });
-
-  it("Tomador código 14 (ITAU): usa 0,1325 como padrão, independente do regime informado", async () => {
-    const t = await upsertTomador({ codigo: 14, nome: "ITAU UNIBANCO S.A", fpas: 655, taxaAdm: 0.095 });
-    expect(t.grossUp).toBeCloseTo(0.1325, 6);
+    expect(t515.grossUp).toBeCloseTo(0.1325, 6);
+    expect(t655.grossUp).toBeCloseTo(0.1325, 6);
   });
 
   it("grava o Gross Up informado no upsert completo", async () => {
@@ -66,7 +56,7 @@ describe("tomadores repo — Gross Up", () => {
     expect(t.grossUp).toBeCloseTo(0.9, 6);
   });
 
-  it("aceita e preserva 0 (não cai no padrão 0,8675) — 0 significa gross-up desligado", async () => {
+  it("aceita e preserva 0 (não cai no padrão 0,1325) — 0 significa gross-up desligado", async () => {
     await upsertTomador({ codigo: 999, nome: "EMPRESA LTDA", fpas: 515, taxaAdm: 0.1, grossUp: 0 });
     const t = (await getTomador(999))!;
     expect(t.grossUp).toBe(0);

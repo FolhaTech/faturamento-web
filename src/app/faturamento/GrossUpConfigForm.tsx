@@ -3,9 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-/** Único Tomador com fórmula diferente (ver CODIGO_TOMADOR_NF_SOBRE_TAXA_ADM em calc/engine.ts) — duplicado aqui pra não importar o motor de cálculo num Client Component. */
-const CODIGO_TOMADOR_NF_SOBRE_TAXA_ADM = 14;
-
 export function GrossUpConfigForm({
   tomadorCodigo,
   tomadorNome,
@@ -21,14 +18,12 @@ export function GrossUpConfigForm({
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
 
-  const especial = tomadorCodigo === CODIGO_TOMADOR_NF_SOBRE_TAXA_ADM;
-
   async function salvar() {
     setError(null);
     setOk(false);
     const num = Number(valor.replace(",", ".")) / 100;
     if (!Number.isFinite(num) || num < 0 || num > 1) {
-      return setError(`Valor inválido — use um percentual entre 0 e 100 (0 desliga: NF = fatura). Padrão: ${especial ? "13,25%" : "86,75%"}.`);
+      return setError("Valor inválido — use um percentual entre 0 e 100 (0 desliga: NF = fatura). Padrão: 13,25%.");
     }
 
     setBusy(true);
@@ -57,12 +52,12 @@ export function GrossUpConfigForm({
           <input
             value={valor}
             onChange={(e) => setValor(e.target.value)}
-            title={especial ? "NF = despesa + (Taxa Adm × Gross Up)" : "NF = fatura ÷ Gross Up"}
+            title="Nota Fiscal = Fatura + (Fatura × Gross Up)"
             className="w-16 rounded border border-neutral-300 px-2 py-1 text-sm font-mono text-neutral-900"
           />
           <span className="text-neutral-500">%</span>
         </div>
-        <span className="font-normal text-neutral-400">{especial ? "soma sobre a Taxa Adm" : "divide a fatura"}</span>
+        <span className="font-normal text-neutral-400">soma sobre a fatura</span>
       </label>
       <button
         type="button"

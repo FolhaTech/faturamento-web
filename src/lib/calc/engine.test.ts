@@ -9,8 +9,6 @@ import { buildContext, calculateLine, runEngine } from "./engine";
 
 const TOMADOR_TERCEIRO = { codigo: 1, nome: "GENTER SERVICOS EM RECURSOS HUMANOS LTDA", fpas: 515 as const, taxaAdm: 0.1 };
 const TOMADOR_TEMPORARIO = { codigo: 36, nome: "GRUPO CHAMA DE DISTRIBUICAO LTDA", fpas: 655 as const, taxaAdm: 0.12 };
-/** Único Tomador com fórmula diferente (ver CODIGO_TOMADOR_NF_SOBRE_TAXA_ADM em engine.ts) — mesmo código do Tomador ITAU real (655) em produção. */
-const TOMADOR_ITAU_SOBRE_TAXA_ADM = { codigo: 14, nome: "ITAU UNIBANCO S.A", fpas: 655 as const, taxaAdm: 0.095 };
 
 async function seedBase() {
   await resetDbForTests();
@@ -80,11 +78,11 @@ describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
 
     expect(l.taxaAdmValor).toBeCloseTo(l.base * 0.1, 6);
     expect(l.fatura).toBeCloseTo(l.base + l.taxaAdmValor, 6);
-    expect(l.nf).toBeCloseTo(l.fatura / 0.8675, 6);
+    expect(l.nf).toBeCloseTo(l.fatura * 1.1325, 6);
     expect(l.trilha).toBe("encargos");
   });
 
-  it("Terceiro (515): Gross Up customizado do Tomador divide a fatura inteira", async () => {
+  it("Gross Up customizado do Tomador multiplica a fatura (mesma fórmula pra qualquer regime)", async () => {
     await upsertTomador({ ...TOMADOR_TERCEIRO, grossUp: 0.9 });
     const mov: Movimento = {
       id: "1",
@@ -104,8 +102,8 @@ describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
 
     expect(l.fpas).toBe(515);
     expect(l.tomadorGrossUp).toBeCloseTo(0.9, 6);
-    expect(l.nf).toBeCloseTo(l.fatura / 0.9, 6);
-    expect(l.nf).not.toBeCloseTo(l.fatura / 0.8675, 6);
+    expect(l.nf).toBeCloseTo(l.fatura * 1.9, 6);
+    expect(l.nf).not.toBeCloseTo(l.fatura * 1.1325, 6);
   });
 
   it("Gross Up 0 desliga o gross-up — NF = fatura, sem divisão por zero", async () => {
@@ -156,9 +154,9 @@ describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
     expect(l.encInss).toBeCloseTo(l.prov13 * 0.255, 6);
     expect(l.encFgts).toBeCloseTo(l.prov13 * 0.08, 6);
     expect(l.taxaAdmValor).toBeCloseTo(l.base * 0.12, 6);
-    // NF não depende mais do regime — só o Tomador código 14 (ITAU) usa fórmula diferente.
-    expect(l.tomadorGrossUp).toBeCloseTo(0.8675, 6);
-    expect(l.nf).toBeCloseTo(l.fatura / 0.8675, 6);
+    // NF não depende do regime — mesma fórmula multiplicativa pra Terceiro e Temporário.
+    expect(l.tomadorGrossUp).toBeCloseTo(0.1325, 6);
+    expect(l.nf).toBeCloseTo(l.fatura * 1.1325, 6);
   });
 
   it("Temporário (655): Gross Up 0 desliga — NF = fatura, igual ao Terceiro", async () => {
@@ -185,11 +183,11 @@ describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
     expect(l.nf).toBeCloseTo(l.fatura, 6);
   });
 
-  it("ITAU UNIBANCO S.A (código 14): único Tomador com NF sobre a Taxa Adm — NF = despesa + (Taxa Adm × Gross Up)", async () => {
-    await upsertTomador(TOMADOR_ITAU_SOBRE_TAXA_ADM);
+  it("Tomador código 14 (ITAU) não é mais caso especial — usa a mesma fórmula multiplicativa de qualquer outro Tomador", async () => {
+    await upsertTomador({ codigo: 14, nome: "ITAU UNIBANCO S.A", fpas: 655, taxaAdm: 0.095 });
     await upsertColaborador({
       matricula: 1,
-      dados: { cod_epr: 1, nome: "FULANO", situacao: "Trabalhando", cod_servico: TOMADOR_ITAU_SOBRE_TAXA_ADM.codigo },
+      dados: { cod_epr: 1, nome: "FULANO", situacao: "Trabalhando", cod_servico: 14 },
     });
     const mov: Movimento = {
       id: "1",
@@ -208,34 +206,8 @@ describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
     const l = line!;
 
     expect(l.tomadorGrossUp).toBeCloseTo(0.1325, 6);
-    expect(l.nf).toBeCloseTo(l.base + l.taxaAdmValor * 0.1325, 6);
-    expect(l.nf).not.toBeCloseTo(l.fatura / 0.8675, 6); // não usa a fórmula padrão
-  });
-
-  it("outro Tomador ITAU UNIBANCO S.A (código diferente de 14) usa a fórmula padrão, não a do Tomador 14", async () => {
-    await upsertTomador({ codigo: 23, nome: "ITAU UNIBANCO S.A", fpas: 515, taxaAdm: 0.1 });
-    await upsertColaborador({
-      matricula: 2,
-      dados: { cod_epr: 2, nome: "CICLANO", situacao: "Trabalhando", cod_servico: 23 },
-    });
-    const mov: Movimento = {
-      id: "1",
-      codigo: 8781,
-      matricula: 2,
-      nome: "CICLANO",
-      evento: "DIAS NORMAIS",
-      competencia: "07/2026",
-      valor: 1000,
-      ref: 30,
-      tipo: "P",
-      forma: "Dias",
-    };
-    const ctx = await buildContext([mov]);
-    const { line } = calculateLine(mov, ctx);
-    const l = line!;
-
-    expect(l.nf).toBeCloseTo(l.fatura / 0.8675, 6);
-    expect(l.nf).not.toBeCloseTo(l.base + l.taxaAdmValor * 0.1325, 6);
+    expect(l.nf).toBeCloseTo(l.fatura * 1.1325, 6);
+    expect(l.nf).not.toBeCloseTo(l.base + l.taxaAdmValor * 0.1325, 6); // não usa a fórmula antiga do Tomador 14
   });
 });
 
@@ -314,7 +286,7 @@ describe("calculateLine — trilha de benefício em espécie (Tipo I)", () => {
     expect(l.base).toBe(315);
     expect(l.taxaAdmValor).toBeCloseTo(315 * 0.1, 6);
     expect(l.fatura).toBeCloseTo(315 * 1.1, 6);
-    expect(l.nf).toBeCloseTo((315 * 1.1) / 0.8675, 6);
+    expect(l.nf).toBeCloseTo(315 * 1.1 * 1.1325, 6);
   });
 });
 

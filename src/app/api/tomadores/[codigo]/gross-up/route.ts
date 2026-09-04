@@ -11,7 +11,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ codi
 
   if (!Number.isFinite(grossUp) || grossUp < 0 || grossUp > 1) {
     return NextResponse.json(
-      { error: "Gross Up inválido — deve ser entre 0 e 1 (padrão ~0,8675; exceção Tomador código 14/ITAU ~0,1325). 0 desliga o gross-up: NF = fatura." },
+      { error: "Gross Up inválido — deve ser entre 0 e 1 (padrão ~0,1325). 0 desliga o gross-up: NF = fatura." },
       { status: 400 },
     );
   }
