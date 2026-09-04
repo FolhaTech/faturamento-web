@@ -236,6 +236,40 @@ describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
     expect(l.nf).toBeCloseTo(l.fatura / 0.8675, 6);
     expect(l.nf).not.toBeCloseTo(l.fatura * 1.8675, 6); // não usa a fórmula padrão multiplicativa
   });
+
+  it("DIAS AFAST.P/ACID.TRABALHO (código 8786): Valor não entra na Despesa/Fatura — só o FGTS gerado por ele", async () => {
+    await upsertEncargo({
+      codigo: 8786,
+      evento: "DIAS AFAST.P/ACID.TRABALHO",
+      tipo: "P",
+      inss655: 0,
+      inss515: 0,
+      fgts: 0.08,
+      provFerias: 0,
+      prov13: 0,
+      abateSaldo: null,
+    });
+    const mov: Movimento = {
+      id: "1",
+      codigo: 8786,
+      matricula: 90103392,
+      nome: "ADALBERTO ALVARES JUNIOR",
+      evento: "DIAS AFAST.P/ACID.TRABALHO",
+      competencia: "01/2026",
+      valor: 2175.62,
+      ref: 15,
+      tipo: "P",
+      forma: "Dias",
+    };
+    const ctx = await buildContext([mov]);
+    const { line } = calculateLine(mov, ctx);
+    const l = line!;
+
+    expect(l.dre).toBeCloseTo(2175.62, 6); // "Valor" continua mostrando o bruto, só como referência
+    expect(l.fgts).toBeCloseTo(2175.62 * 0.08, 6);
+    expect(l.base).toBeCloseTo(l.fgts, 6); // Despesa = só o FGTS, sem o Valor bruto somado
+    expect(l.base).not.toBeCloseTo(l.dre + l.fgts, 6);
+  });
 });
 
 describe("calculateLine — desconto (Tipo D/R) não entra na soma do faturamento", () => {

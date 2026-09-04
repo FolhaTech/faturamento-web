@@ -18,6 +18,14 @@ export const GROSS_UP_FACTOR = 0.1325;
 export const CCUSTO_SEM_CADASTRO = { codigo: "0", nome: "Sem centro de custo" };
 
 /**
+ * Códigos de evento cujo "Valor" (DRE) é só demonstrativo — não entra na Despesa/Fatura/Nota
+ * Fiscal, só o encargo calculado em cima dele (ex.: FGTS). Decisão do usuário em 2026-09-04:
+ * DIAS AFAST.P/ACID.TRABALHO (código 8786) é cobrado só pelo FGTS gerado, não pelo valor cheio
+ * dos dias afastados.
+ */
+const CODIGOS_EVENTO_VALOR_SO_DEMONSTRATIVO = [8786];
+
+/**
  * Único Tomador que divide a fatura em vez de multiplicar (ver calcularNf abaixo) — decisão do
  * usuário em 2026-09-04: só o ITAU UNIBANCO S.A código 23 (Terceiro, FPAS 515) fatura assim;
  * todos os demais tomadores, incluindo o outro ITAU UNIBANCO S.A (código 14, FPAS 655), usam a
@@ -270,7 +278,8 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
     encFgts = baseEncProv * encargo.fgts;
   }
 
-  const base = valorFace + inss + fgts + provFerias + prov13 + encInss + encFgts;
+  const valorNaBase = CODIGOS_EVENTO_VALOR_SO_DEMONSTRATIVO.includes(mov.codigo) ? 0 : valorFace;
+  const base = valorNaBase + inss + fgts + provFerias + prov13 + encInss + encFgts;
   const taxaAdmValor = base * tomador.taxaAdm;
   const fatura = base + taxaAdmValor;
   const nf = calcularNf(fatura, tomador.grossUp, tomador.codigo);
