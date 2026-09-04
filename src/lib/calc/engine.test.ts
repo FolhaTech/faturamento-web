@@ -349,6 +349,46 @@ describe("calculateLine — trilha de benefício em espécie (Tipo I)", () => {
     expect(l.fatura).toBeCloseTo(315 * 1.1, 6);
     expect(l.nf).toBeCloseTo(315 * 1.1 * 1.1325, 6);
   });
+
+  it("aplica INSS/FGTS/Provisões num benefício (Tipo I) quando o Encargo do código está configurado — checkbox da tela de Faturamento", async () => {
+    await upsertEncargo({
+      codigo: 344,
+      evento: "BOA PERMANENCIA FORNECIDO*",
+      tipo: "I",
+      inss655: 0.255,
+      inss515: 0.288,
+      fgts: 0.08,
+      provFerias: 0.11110833333333332,
+      prov13: 0.08333333333333333,
+      abateSaldo: null,
+    });
+    const mov: Movimento = {
+      id: "1",
+      codigo: 344,
+      matricula: 90103392,
+      nome: "ADALBERTO ALVARES JUNIOR",
+      evento: "BOA PERMANENCIA FORNECIDO*",
+      competencia: "01/2026",
+      valor: 220,
+      ref: 220,
+      tipo: "I",
+      forma: "Valor",
+    };
+    const ctx = await buildContext([mov]);
+    const { line, warning } = calculateLine(mov, ctx);
+    expect(warning).toBeNull();
+    const l = line!;
+    expect(l.trilha).toBe("beneficio");
+    expect(l.dre).toBeCloseTo(220, 6); // "Valor" continua mostrando o bruto
+    expect(l.inss).toBeCloseTo(220 * 0.288, 6);
+    expect(l.fgts).toBeCloseTo(220 * 0.08, 6);
+    expect(l.provFerias).toBeCloseTo(220 * 0.11110833333333332, 6);
+    expect(l.prov13).toBeCloseTo(220 * 0.08333333333333333, 6);
+    expect(l.encInss).toBeCloseTo((l.provFerias + l.prov13) * 0.288, 6);
+    expect(l.encFgts).toBeCloseTo((l.provFerias + l.prov13) * 0.08, 6);
+    expect(l.base).toBeCloseTo(l.dre + l.inss + l.fgts + l.provFerias + l.prov13 + l.encInss + l.encFgts, 6);
+    expect(l.base).not.toBeCloseTo(220, 6); // não fica só no valor de face — os encargos entram na Despesa
+  });
 });
 
 describe("calculateLine — linhas de restatement (Tipo FGTS / INSS)", () => {

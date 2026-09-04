@@ -45,6 +45,41 @@ function calcularNf(fatura: number, grossUp: number, codigo: number): number {
   return fatura + fatura * grossUp;
 }
 
+interface EncargosCalculados {
+  inss: number;
+  fgts: number;
+  provFerias: number;
+  prov13: number;
+  encInss: number;
+  encFgts: number;
+}
+
+const ENCARGOS_ZERO: EncargosCalculados = { inss: 0, fgts: 0, provFerias: 0, prov13: 0, encInss: 0, encFgts: 0 };
+
+/**
+ * Calcula INSS, FGTS e provisões (Férias/13º + encargo sobre elas) de um valor de face, usando
+ * as alíquotas de Encargos — mesma fórmula pra qualquer trilha (proventos tipo "P" e benefícios
+ * tipo "I"/gerados por Informativas), pra que os checkboxes de INSS/FGTS/Provisões da tela de
+ * Faturamento (ver EncargoComponentesToggle) funcionem em qualquer evento, não só em proventos.
+ * Sem Encargo cadastrado pro código, tudo fica zero (sem encargo adicional).
+ */
+function calcularEncargosSobreValor(valorFace: number, encargo: Encargo | undefined, fpas: 515 | 655): EncargosCalculados {
+  if (!encargo) return ENCARGOS_ZERO;
+  const inssRate = fpas === 515 ? encargo.inss515 : encargo.inss655;
+  const inss = valorFace * inssRate;
+  const fgts = valorFace * encargo.fgts;
+  const provFerias = valorFace * encargo.provFerias;
+  const prov13 = valorFace * encargo.prov13;
+  // Regime Temporário (FPAS 655): encargo incide só sobre a provisão de 13º.
+  // Regime Terceiro (FPAS 515): incide sobre férias + 13º somados.
+  // Mesma alíquota de INSS/FGTS já usada acima para o provento em si —
+  // quando férias/13º forem pagos de fato, vão gerar o mesmo encargo.
+  const baseEncProv = fpas === 655 ? prov13 : provFerias + prov13;
+  const encInss = baseEncProv * inssRate;
+  const encFgts = baseEncProv * encargo.fgts;
+  return { inss, fgts, provFerias, prov13, encInss, encFgts };
+}
+
 export interface CalculatedLine {
   matricula: number;
   nome: string;
@@ -243,40 +278,35 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
   }
 
   if (tipo === "I") {
-    const base = valorFace;
+    const { inss, fgts, provFerias, prov13, encInss, encFgts } = calcularEncargosSobreValor(valorFace, encargo, tomador.fpas);
+    const base = valorFace + inss + fgts + provFerias + prov13 + encInss + encFgts;
     const taxaAdmValor = base * tomador.taxaAdm;
     const fatura = base + taxaAdmValor;
     const nf = calcularNf(fatura, tomador.grossUp, tomador.codigo);
     return {
-      line: { ...zeroLine(mov, tomador, ccusto, "beneficio", valorFace, tipo), base, taxaAdmValor, fatura, impostos: nf - fatura, nf },
+      line: {
+        ...zeroLine(mov, tomador, ccusto, "beneficio", valorFace, tipo),
+        inss,
+        fgts,
+        provFerias,
+        prov13,
+        encInss,
+        encFgts,
+        base,
+        taxaAdmValor,
+        fatura,
+        impostos: nf - fatura,
+        nf,
+      },
       warning: null,
     };
   }
 
   // tipo "P" -> trilha de encargos
-  let warning: string | null = null;
-  let inss = 0;
-  let fgts = 0;
-  let provFerias = 0;
-  let prov13 = 0;
-  let encInss = 0;
-  let encFgts = 0;
-  if (!encargo) {
-    warning = `Código de evento ${mov.codigo} ("${mov.evento}") não encontrado em Encargos — provento lançado sem encargos adicionais.`;
-  } else {
-    const inssRate = tomador.fpas === 515 ? encargo.inss515 : encargo.inss655;
-    inss = valorFace * inssRate;
-    fgts = valorFace * encargo.fgts;
-    provFerias = valorFace * encargo.provFerias;
-    prov13 = valorFace * encargo.prov13;
-    // Regime Temporário (FPAS 655): encargo incide só sobre a provisão de 13º.
-    // Regime Terceiro (FPAS 515): incide sobre férias + 13º somados.
-    // Mesma alíquota de INSS/FGTS já usada acima para o provento em si —
-    // quando férias/13º forem pagos de fato, vão gerar o mesmo encargo.
-    const baseEncProv = tomador.fpas === 655 ? prov13 : provFerias + prov13;
-    encInss = baseEncProv * inssRate;
-    encFgts = baseEncProv * encargo.fgts;
-  }
+  const warning: string | null = encargo
+    ? null
+    : `Código de evento ${mov.codigo} ("${mov.evento}") não encontrado em Encargos — provento lançado sem encargos adicionais.`;
+  const { inss, fgts, provFerias, prov13, encInss, encFgts } = calcularEncargosSobreValor(valorFace, encargo, tomador.fpas);
 
   const valorNaBase = CODIGOS_EVENTO_VALOR_SO_DEMONSTRATIVO.includes(mov.codigo) ? 0 : valorFace;
   const base = valorNaBase + inss + fgts + provFerias + prov13 + encInss + encFgts;
@@ -393,7 +423,10 @@ async function generateComplementaryCharges(movimentos: Movimento[], ctx: Engine
           continue;
         }
 
-        const base = item.valor;
+        const valorFace = item.valor;
+        const encargo = item.codigo != null ? ctx.encargosPorCodigo.get(item.codigo) : undefined;
+        const { inss, fgts, provFerias, prov13, encInss, encFgts } = calcularEncargosSobreValor(valorFace, encargo, tomador.fpas);
+        const base = valorFace + inss + fgts + provFerias + prov13 + encInss + encFgts;
         const taxaAdmValor = base * tomador.taxaAdm;
         const fatura = base + taxaAdmValor;
         const nf = calcularNf(fatura, tomador.grossUp, tomador.codigo);
@@ -411,13 +444,13 @@ async function generateComplementaryCharges(movimentos: Movimento[], ctx: Engine
           ccustoCodigo: ccusto.codigo,
           ccustoNome: ccusto.nome,
           trilha: "beneficio",
-          dre: base,
-          inss: 0,
-          fgts: 0,
-          provFerias: 0,
-          prov13: 0,
-          encInss: 0,
-          encFgts: 0,
+          dre: valorFace,
+          inss,
+          fgts,
+          provFerias,
+          prov13,
+          encInss,
+          encFgts,
           base,
           taxaAdmValor,
           fatura,
