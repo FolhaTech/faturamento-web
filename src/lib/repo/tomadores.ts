@@ -1,15 +1,10 @@
 import { ensureSchema, getDb } from "../db";
 import { normalizaTexto } from "../text";
-import type { Tomador } from "../types";
+import type { GrossUpOperacao, Tomador } from "../types";
 
-/**
- * Padrão de Gross Up (ver calcularNf em calc/engine.ts) — duplicados aqui como literais pra não
- * criar import circular (engine.ts já importa deste módulo). CODIGO_TOMADOR_NF_DIVISAO é o único
- * Tomador (ITAU código 23) que usa a fórmula/default diferente.
- */
+/** Padrão de Gross Up (ver calcularNf em calc/engine.ts) — duplicado aqui como literal pra não criar import circular (engine.ts já importa deste módulo). */
 const GROSS_UP_PADRAO = 0.1325;
-const GROSS_UP_PADRAO_TOMADOR_DIVISAO = 0.8675;
-const CODIGO_TOMADOR_NF_DIVISAO = 23;
+const GROSS_UP_OPERACAO_PADRAO: GrossUpOperacao = "+";
 
 interface Row {
   codigo: number;
@@ -17,11 +12,26 @@ interface Row {
   fpas: number;
   taxa_adm: number;
   gross_up: number;
+  gross_up_operacao: string;
   pendente: boolean;
 }
 
+const OPERACOES: GrossUpOperacao[] = ["+", "-", "*", "/"];
+
+function toOperacao(v: string): GrossUpOperacao {
+  return (OPERACOES as string[]).includes(v) ? (v as GrossUpOperacao) : GROSS_UP_OPERACAO_PADRAO;
+}
+
 function toTomador(row: Row): Tomador {
-  return { codigo: row.codigo, nome: row.nome, fpas: row.fpas === 515 ? 515 : 655, taxaAdm: row.taxa_adm, grossUp: row.gross_up, pendente: row.pendente };
+  return {
+    codigo: row.codigo,
+    nome: row.nome,
+    fpas: row.fpas === 515 ? 515 : 655,
+    taxaAdm: row.taxa_adm,
+    grossUp: row.gross_up,
+    grossUpOperacao: toOperacao(row.gross_up_operacao),
+    pendente: row.pendente,
+  };
 }
 
 export async function listTomadores(): Promise<Tomador[]> {
@@ -41,26 +51,30 @@ export interface TomadorInput {
   nome: string;
   fpas: 515 | 655;
   taxaAdm: number;
-  /** Ausente = mantém o padrão (0,1325 — 0,8675 só pro Tomador 23/ITAU) — a maioria dos chamadores não precisa pensar nisso. */
+  /** Ausente = mantém o padrão (0,1325) — a maioria dos chamadores não precisa pensar nisso. */
   grossUp?: number;
+  /** Ausente = mantém o padrão ('+', soma a tributação) — ver GrossUpOperacao. */
+  grossUpOperacao?: GrossUpOperacao;
 }
 
 /** Salva dados reais de um Tomador — sempre zera `pendente`, mesmo se o registro tivesse sido criado automaticamente (ver upsertTomadoresPendentes) por vir de um Cód Serviço sem cadastro. */
 export async function upsertTomador(input: TomadorInput): Promise<Tomador> {
   await ensureSchema();
-  const grossUp = input.grossUp ?? (input.codigo === CODIGO_TOMADOR_NF_DIVISAO ? GROSS_UP_PADRAO_TOMADOR_DIVISAO : GROSS_UP_PADRAO);
+  const grossUp = input.grossUp ?? GROSS_UP_PADRAO;
+  const grossUpOperacao = input.grossUpOperacao ?? GROSS_UP_OPERACAO_PADRAO;
   await getDb()`
-    INSERT INTO tomadores (codigo, nome, fpas, taxa_adm, gross_up, pendente)
-    VALUES (${input.codigo}, ${input.nome}, ${input.fpas}, ${input.taxaAdm}, ${grossUp}, false)
-    ON CONFLICT (codigo) DO UPDATE SET nome = excluded.nome, fpas = excluded.fpas, taxa_adm = excluded.taxa_adm, gross_up = excluded.gross_up, pendente = false
+    INSERT INTO tomadores (codigo, nome, fpas, taxa_adm, gross_up, gross_up_operacao, pendente)
+    VALUES (${input.codigo}, ${input.nome}, ${input.fpas}, ${input.taxaAdm}, ${grossUp}, ${grossUpOperacao}, false)
+    ON CONFLICT (codigo) DO UPDATE SET nome = excluded.nome, fpas = excluded.fpas, taxa_adm = excluded.taxa_adm,
+      gross_up = excluded.gross_up, gross_up_operacao = excluded.gross_up_operacao, pendente = false
   `;
   return (await getTomador(input.codigo))!;
 }
 
-/** Atualiza só o Gross Up de um Tomador já cadastrado — usado pelo formulário rápido na tela de Faturamento, que não tem os demais campos (nome/FPAS/Taxa Adm) à mão. */
-export async function updateGrossUp(codigo: number, grossUp: number): Promise<Tomador> {
+/** Atualiza só o Gross Up (valor + operador) de um Tomador já cadastrado — usado pelo formulário rápido na tela de Faturamento, que não tem os demais campos (nome/FPAS/Taxa Adm) à mão. */
+export async function updateGrossUp(codigo: number, grossUp: number, grossUpOperacao: GrossUpOperacao): Promise<Tomador> {
   await ensureSchema();
-  await getDb()`UPDATE tomadores SET gross_up = ${grossUp} WHERE codigo = ${codigo}`;
+  await getDb()`UPDATE tomadores SET gross_up = ${grossUp}, gross_up_operacao = ${grossUpOperacao} WHERE codigo = ${codigo}`;
   const tomador = await getTomador(codigo);
   if (!tomador) throw new Error(`Tomador ${codigo} não encontrado.`);
   return tomador;
@@ -99,9 +113,9 @@ export async function upsertTomadoresPendentes(entradas: TomadorPendenteInput[])
     if (jaExiste.has(e.codigo) || jaCriados.has(e.codigo)) continue;
     jaCriados.add(e.codigo);
     const nome = e.nomeSugerido?.trim() || `Tomador cód. ${e.codigo} (cadastro pendente)`;
-    const grossUp = e.codigo === CODIGO_TOMADOR_NF_DIVISAO ? GROSS_UP_PADRAO_TOMADOR_DIVISAO : GROSS_UP_PADRAO;
     await sql`
-      INSERT INTO tomadores (codigo, nome, fpas, taxa_adm, gross_up, pendente) VALUES (${e.codigo}, ${nome}, 655, 0, ${grossUp}, true)
+      INSERT INTO tomadores (codigo, nome, fpas, taxa_adm, gross_up, gross_up_operacao, pendente)
+      VALUES (${e.codigo}, ${nome}, 655, 0, ${GROSS_UP_PADRAO}, ${GROSS_UP_OPERACAO_PADRAO}, true)
       ON CONFLICT (codigo) DO NOTHING
     `;
     const tomador = await getTomador(e.codigo);

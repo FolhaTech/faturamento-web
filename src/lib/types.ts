@@ -3,13 +3,22 @@ export type TipoEvento = "P" | "D" | "I" | "R" | "FGTS" | "INSS";
 /** Qual saldo do colaborador um código de férias/1/3 real abate — ver Encargo.abateSaldo. */
 export type TipoSaldoFerias = "ferias" | "terco";
 
+/**
+ * Operador entre Fatura e Gross Up que define a Nota Fiscal (ver calcularNf em calc/engine.ts):
+ * '+' soma a tributação (fatura + fatura×grossUp), '-' subtrai (fatura - fatura×grossUp),
+ * '*' multiplica direto (fatura×grossUp), '/' divide direto (fatura/grossUp).
+ */
+export type GrossUpOperacao = "+" | "-" | "*" | "/";
+
 export interface Tomador {
   codigo: number;
   nome: string;
   fpas: 515 | 655;
   taxaAdm: number;
-  /** Percentual de tributação desse Tomador — NF = fatura + (fatura × grossUp) (ver GROSS_UP_FACTOR em engine.ts). Padrão 0,1325; exceção é o Tomador código 23 (ITAU), que divide em vez de multiplicar. */
+  /** Percentual de tributação desse Tomador (ver GROSS_UP_FACTOR em engine.ts). Padrão 0,1325. */
   grossUp: number;
+  /** Como grossUp combina com a fatura pra formar a Nota Fiscal — ver GrossUpOperacao. Padrão '+'. */
+  grossUpOperacao: GrossUpOperacao;
   /** true = criado automaticamente a partir de um Cód Serviço sem cadastro em Tomadores (ver upsertTomadoresPendentes) — ainda não entra no faturamento até alguém completar FPAS/Taxa Adm pela tela. */
   pendente: boolean;
 }

@@ -1,6 +1,6 @@
 import { normalizaTexto } from "../text";
 import type { CalculatedLine } from "./engine";
-import type { TipoEvento } from "../types";
+import type { GrossUpOperacao, TipoEvento } from "../types";
 
 /**
  * Categorias de benefício excluídas da base de retenção de INSS na fonte (11%), replicando a
@@ -135,6 +135,8 @@ export interface CcustoResumo {
   tomadorNome: string;
   /** Gross Up vigente desse Tomador (ver Tomador.grossUp) — exposto pra tela de Faturamento editar sem round-trip extra. */
   tomadorGrossUp: number;
+  /** Operador do Gross Up vigente (ver Tomador.grossUpOperacao) — mesmo motivo do tomadorGrossUp acima. */
+  tomadorGrossUpOperacao: GrossUpOperacao;
   competencia: string;
   qtdColaboradores: number;
   rubricas: RubricaSomada[];
@@ -170,6 +172,7 @@ export function aggregateByCcusto(lines: CalculatedLine[], competencia: string):
     const tomadorCodigo = ccustoLines[0].tomadorCodigo;
     const tomadorNome = ccustoLines[0].tomadorNome;
     const tomadorGrossUp = ccustoLines[0].tomadorGrossUp;
+    const tomadorGrossUpOperacao = ccustoLines[0].tomadorGrossUpOperacao;
 
     const totalDespesas = sum(ccustoLines, (l) => l.base);
     const taxaAdministrativa = sum(ccustoLines, (l) => l.taxaAdmValor);
@@ -230,6 +233,7 @@ export function aggregateByCcusto(lines: CalculatedLine[], competencia: string):
       tomadorCodigo,
       tomadorNome,
       tomadorGrossUp,
+      tomadorGrossUpOperacao,
       competencia,
       qtdColaboradores: colaboradores.length,
       rubricas: agruparPorEvento(ccustoLines),

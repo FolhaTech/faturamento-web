@@ -43,22 +43,20 @@ describe("tomadores repo — cadastro pendente (Cód Serviço sem Tomador cadast
 });
 
 describe("tomadores repo — Gross Up", () => {
-  it("usa 0,1325 como padrão quando não informado, em qualquer regime (exceto o Tomador código 23)", async () => {
+  it("usa 0,1325 e operador '+' como padrão quando não informado, em qualquer regime", async () => {
     const t515 = await upsertTomador({ codigo: 998, nome: "EMPRESA A LTDA", fpas: 515, taxaAdm: 0.1 });
     const t655 = await upsertTomador({ codigo: 999, nome: "EMPRESA B LTDA", fpas: 655, taxaAdm: 0.1 });
     expect(t515.grossUp).toBeCloseTo(0.1325, 6);
+    expect(t515.grossUpOperacao).toBe("+");
     expect(t655.grossUp).toBeCloseTo(0.1325, 6);
+    expect(t655.grossUpOperacao).toBe("+");
   });
 
-  it("Tomador código 23 (ITAU): usa 0,8675 como padrão, independente do regime informado", async () => {
-    const t = await upsertTomador({ codigo: 23, nome: "ITAU UNIBANCO S.A", fpas: 515, taxaAdm: 0.08 });
-    expect(t.grossUp).toBeCloseTo(0.8675, 6);
-  });
-
-  it("grava o Gross Up informado no upsert completo", async () => {
-    await upsertTomador({ codigo: 999, nome: "EMPRESA LTDA", fpas: 515, taxaAdm: 0.1, grossUp: 0.9 });
+  it("grava o Gross Up e o operador informados no upsert completo", async () => {
+    await upsertTomador({ codigo: 999, nome: "EMPRESA LTDA", fpas: 515, taxaAdm: 0.1, grossUp: 0.9, grossUpOperacao: "/" });
     const t = (await getTomador(999))!;
     expect(t.grossUp).toBeCloseTo(0.9, 6);
+    expect(t.grossUpOperacao).toBe("/");
   });
 
   it("aceita e preserva 0 (não cai no padrão 0,1325) — 0 significa gross-up desligado", async () => {
@@ -67,12 +65,13 @@ describe("tomadores repo — Gross Up", () => {
     expect(t.grossUp).toBe(0);
   });
 
-  it("updateGrossUp atualiza só o Gross Up, sem mexer nos demais campos", async () => {
+  it("updateGrossUp atualiza o Gross Up e o operador, sem mexer nos demais campos", async () => {
     await upsertTomador({ codigo: 999, nome: "EMPRESA LTDA", fpas: 515, taxaAdm: 0.1 });
-    await updateGrossUp(999, 0.9);
+    await updateGrossUp(999, 0.9, "*");
 
     const t = (await getTomador(999))!;
     expect(t.grossUp).toBeCloseTo(0.9, 6);
+    expect(t.grossUpOperacao).toBe("*");
     expect(t.nome).toBe("EMPRESA LTDA");
     expect(t.fpas).toBe(515);
     expect(t.taxaAdm).toBeCloseTo(0.1, 6);

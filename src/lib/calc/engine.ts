@@ -4,7 +4,7 @@ import { listEncargos } from "../repo/encargos";
 import { listInformativas } from "../repo/informativas";
 import { listTomadores } from "../repo/tomadores";
 import { normalizaTexto } from "../text";
-import type { Colaborador, Encargo, Movimento, TipoEvento, Tomador } from "../types";
+import type { Colaborador, Encargo, GrossUpOperacao, Movimento, TipoEvento, Tomador } from "../types";
 import { CODIGO_DESCONTO_SALDO_FERIAS, CODIGO_DESCONTO_SALDO_UM_TERCO } from "./descontoSaldoFerias";
 
 /**
@@ -26,23 +26,24 @@ export const CCUSTO_SEM_CADASTRO = { codigo: "0", nome: "Sem centro de custo" };
 const CODIGOS_EVENTO_VALOR_SO_DEMONSTRATIVO = [8786];
 
 /**
- * Único Tomador que divide a fatura em vez de multiplicar (ver calcularNf abaixo) — decisão do
- * usuário em 2026-09-04: só o ITAU UNIBANCO S.A código 23 (Terceiro, FPAS 515) fatura assim;
- * todos os demais tomadores, incluindo o outro ITAU UNIBANCO S.A (código 14, FPAS 655), usam a
- * multiplicação padrão.
+ * Combina Fatura e Gross Up pra formar a Nota Fiscal, de acordo com o operador escolhido pelo
+ * Tomador (ver Tomador.grossUpOperacao) — editável por Tomador na tela de Faturamento/Tomadores,
+ * não é mais um caso especial fixo no código. '+' soma a tributação (fatura + fatura×grossUp,
+ * padrão); '-' subtrai (fatura - fatura×grossUp); '*' multiplica direto (fatura×grossUp); '/'
+ * divide direto (fatura/grossUp). Gross Up 0 "desliga": NF = fatura, sem tributação nenhuma.
  */
-const CODIGO_TOMADOR_NF_DIVISAO = 23;
-
-/**
- * Tributação = Fatura × Gross Up (~13,25% padrão); Nota Fiscal = Fatura + Tributação — mesma
- * fórmula pra qualquer Tomador, de qualquer regime. Exceção: CODIGO_TOMADOR_NF_DIVISAO usa NF =
- * fatura / Gross Up (divisão, não soma). Em ambos os casos, Gross Up 0 "desliga": NF = fatura,
- * sem tributação nenhuma.
- */
-function calcularNf(fatura: number, grossUp: number, codigo: number): number {
+function calcularNf(fatura: number, grossUp: number, operacao: GrossUpOperacao): number {
   if (grossUp <= 0) return fatura;
-  if (codigo === CODIGO_TOMADOR_NF_DIVISAO) return fatura / grossUp;
-  return fatura + fatura * grossUp;
+  switch (operacao) {
+    case "-":
+      return fatura - fatura * grossUp;
+    case "*":
+      return fatura * grossUp;
+    case "/":
+      return fatura / grossUp;
+    default:
+      return fatura + fatura * grossUp;
+  }
 }
 
 interface EncargosCalculados {
@@ -94,6 +95,8 @@ export interface CalculatedLine {
   fpas: 515 | 655;
   /** Gross Up do Tomador nesta linha (ver Tomador.grossUp) — já usado no cálculo de `nf` abaixo; exposto aqui só pra telas mostrarem/editarem o valor vigente sem round-trip extra. */
   tomadorGrossUp: number;
+  /** Operador do Gross Up desse Tomador (ver Tomador.grossUpOperacao) — já usado no cálculo de `nf`; exposto aqui pelo mesmo motivo do tomadorGrossUp acima. */
+  tomadorGrossUpOperacao: GrossUpOperacao;
   /** Centro de custo do colaborador (dados.cod_ccusto/descricao_ccusto) — eixo de agrupamento da fatura (ver aggregateByCcusto). */
   ccustoCodigo: string;
   ccustoNome: string;
@@ -161,6 +164,7 @@ function zeroLine(
     tomadorNome: tomador.nome,
     fpas: tomador.fpas,
     tomadorGrossUp: tomador.grossUp,
+    tomadorGrossUpOperacao: tomador.grossUpOperacao,
     ccustoCodigo: ccusto.codigo,
     ccustoNome: ccusto.nome,
     trilha,
@@ -254,7 +258,7 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
     const base = mov.valor;
     const taxaAdmValor = base * tomador.taxaAdm;
     const fatura = base + taxaAdmValor;
-    const nf = calcularNf(fatura, tomador.grossUp, tomador.codigo);
+    const nf = calcularNf(fatura, tomador.grossUp, tomador.grossUpOperacao);
     return {
       line: { ...zeroLine(mov, tomador, ccusto, "encargos", base, mov.tipo), base, taxaAdmValor, fatura, impostos: nf - fatura, nf },
       warning: null,
@@ -282,7 +286,7 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
     const base = valorFace + inss + fgts + provFerias + prov13 + encInss + encFgts;
     const taxaAdmValor = base * tomador.taxaAdm;
     const fatura = base + taxaAdmValor;
-    const nf = calcularNf(fatura, tomador.grossUp, tomador.codigo);
+    const nf = calcularNf(fatura, tomador.grossUp, tomador.grossUpOperacao);
     return {
       line: {
         ...zeroLine(mov, tomador, ccusto, "beneficio", valorFace, tipo),
@@ -312,7 +316,7 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
   const base = valorNaBase + inss + fgts + provFerias + prov13 + encInss + encFgts;
   const taxaAdmValor = base * tomador.taxaAdm;
   const fatura = base + taxaAdmValor;
-  const nf = calcularNf(fatura, tomador.grossUp, tomador.codigo);
+  const nf = calcularNf(fatura, tomador.grossUp, tomador.grossUpOperacao);
 
   return {
     line: {
@@ -326,6 +330,7 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
       tomadorNome: tomador.nome,
       fpas: tomador.fpas,
       tomadorGrossUp: tomador.grossUp,
+    tomadorGrossUpOperacao: tomador.grossUpOperacao,
       ccustoCodigo: ccusto.codigo,
       ccustoNome: ccusto.nome,
       trilha: "encargos",
@@ -429,7 +434,7 @@ async function generateComplementaryCharges(movimentos: Movimento[], ctx: Engine
         const base = valorFace + inss + fgts + provFerias + prov13 + encInss + encFgts;
         const taxaAdmValor = base * tomador.taxaAdm;
         const fatura = base + taxaAdmValor;
-        const nf = calcularNf(fatura, tomador.grossUp, tomador.codigo);
+        const nf = calcularNf(fatura, tomador.grossUp, tomador.grossUpOperacao);
         out.push({
           matricula: colaborador.matricula,
           nome: colaborador.nome,
@@ -441,6 +446,7 @@ async function generateComplementaryCharges(movimentos: Movimento[], ctx: Engine
           tomadorNome: tomador.nome,
           fpas: tomador.fpas,
           tomadorGrossUp: tomador.grossUp,
+    tomadorGrossUpOperacao: tomador.grossUpOperacao,
           ccustoCodigo: ccusto.codigo,
           ccustoNome: ccusto.nome,
           trilha: "beneficio",
@@ -549,7 +555,7 @@ function generateProvisaoRescisaoCharges(movimentos: Movimento[], ctx: EngineCon
         const base = item.valor;
         const taxaAdmValor = base * tomador.taxaAdm;
         const fatura = base + taxaAdmValor;
-        const nf = calcularNf(fatura, tomador.grossUp, tomador.codigo);
+        const nf = calcularNf(fatura, tomador.grossUp, tomador.grossUpOperacao);
         out.push({
           matricula: colaborador.matricula,
           nome: colaborador.nome,
@@ -561,6 +567,7 @@ function generateProvisaoRescisaoCharges(movimentos: Movimento[], ctx: EngineCon
           tomadorNome: tomador.nome,
           fpas: tomador.fpas,
           tomadorGrossUp: tomador.grossUp,
+    tomadorGrossUpOperacao: tomador.grossUpOperacao,
           ccustoCodigo: ccusto.codigo,
           ccustoNome: ccusto.nome,
           trilha: "encargos",
@@ -632,7 +639,7 @@ function generatePlrCharges(movimentos: Movimento[], ctx: EngineContext): Calcul
       const base = ctx.plrCeletista;
       const taxaAdmValor = base * tomador.taxaAdm;
       const fatura = base + taxaAdmValor;
-      const nf = calcularNf(fatura, tomador.grossUp, tomador.codigo);
+      const nf = calcularNf(fatura, tomador.grossUp, tomador.grossUpOperacao);
       out.push({
         matricula: colaborador.matricula,
         nome: colaborador.nome,
@@ -644,6 +651,7 @@ function generatePlrCharges(movimentos: Movimento[], ctx: EngineContext): Calcul
         tomadorNome: tomador.nome,
         fpas: tomador.fpas,
         tomadorGrossUp: tomador.grossUp,
+    tomadorGrossUpOperacao: tomador.grossUpOperacao,
         ccustoCodigo: ccusto.codigo,
         ccustoNome: ccusto.nome,
         trilha: "encargos",

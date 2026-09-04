@@ -19,6 +19,16 @@ ALTER TABLE tomadores ADD COLUMN IF NOT EXISTS pendente BOOLEAN NOT NULL DEFAULT
 -- acompanha esse mesmo padrão.
 ALTER TABLE tomadores ADD COLUMN IF NOT EXISTS gross_up DOUBLE PRECISION NOT NULL DEFAULT 0.1325;
 ALTER TABLE tomadores ALTER COLUMN gross_up SET DEFAULT 0.1325;
+-- Operador entre Fatura e Gross Up que define a Nota Fiscal (ver calcularNf em engine.ts):
+--   '+' soma a tributação: NF = fatura + (fatura × gross_up)  (padrão, igual pra qualquer regime)
+--   '-' subtrai a tributação: NF = fatura - (fatura × gross_up)
+--   '*' multiplica direto: NF = fatura × gross_up
+--   '/' divide direto: NF = fatura / gross_up
+-- Substituiu o hardcode "só o Tomador código 23 divide" por um campo editável por Tomador —
+-- por isso o backfill abaixo preserva justamente esse comportamento pra quem já tinha
+-- gross_up = 0,8675 (o valor que só fazia sentido pra divisão).
+ALTER TABLE tomadores ADD COLUMN IF NOT EXISTS gross_up_operacao TEXT NOT NULL DEFAULT '+';
+UPDATE tomadores SET gross_up_operacao = '/' WHERE codigo = 23 AND gross_up_operacao = '+';
 
 CREATE TABLE IF NOT EXISTS encargos (
   codigo INTEGER PRIMARY KEY,

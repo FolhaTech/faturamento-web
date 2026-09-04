@@ -134,6 +134,7 @@ function TotalsCard({ resumo, regimeLabel }: { resumo: CcustoResumo; regimeLabel
           tomadorCodigo={resumo.tomadorCodigo}
           tomadorNome={resumo.tomadorNome}
           grossUpInicial={resumo.tomadorGrossUp}
+          grossUpOperacaoInicial={resumo.tomadorGrossUpOperacao}
         />
       </div>
       <dl className="mt-3 grid grid-cols-1 gap-x-8 gap-y-2 sm:grid-cols-2">

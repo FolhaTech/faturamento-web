@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Tomador } from "@/lib/types";
+import type { GrossUpOperacao, Tomador } from "@/lib/types";
 
 interface FormState {
   codigo: string;
@@ -9,12 +9,21 @@ interface FormState {
   fpas: "515" | "655";
   taxaAdm: string;
   grossUp: string;
+  grossUpOperacao: GrossUpOperacao;
 }
 
-const EMPTY: FormState = { codigo: "", nome: "", fpas: "655", taxaAdm: "", grossUp: "13,25" };
+const EMPTY: FormState = { codigo: "", nome: "", fpas: "655", taxaAdm: "", grossUp: "13,25", grossUpOperacao: "+" };
 
-/** Único Tomador com fórmula diferente (ver CODIGO_TOMADOR_NF_DIVISAO em calc/engine.ts) — duplicado aqui pra não importar o motor de cálculo num Client Component. */
-const CODIGO_TOMADOR_NF_DIVISAO = 23;
+const OPERACOES: { valor: GrossUpOperacao; simbolo: string; label: string }[] = [
+  { valor: "+", simbolo: "+", label: "soma" },
+  { valor: "-", simbolo: "−", label: "subtrai" },
+  { valor: "*", simbolo: "×", label: "multiplica" },
+  { valor: "/", simbolo: "÷", label: "divide" },
+];
+
+function labelOperacao(op: GrossUpOperacao): string {
+  return OPERACOES.find((o) => o.valor === op)?.label ?? "soma";
+}
 
 export function TomadoresEditor({ initial }: { initial: Tomador[] }) {
   const [items, setItems] = useState(initial);
@@ -33,6 +42,7 @@ export function TomadoresEditor({ initial }: { initial: Tomador[] }) {
       fpas: String(t.fpas) as "515" | "655",
       taxaAdm: String(t.taxaAdm * 100),
       grossUp: String(t.grossUp * 100),
+      grossUpOperacao: t.grossUpOperacao,
     });
   }
 
@@ -57,12 +67,17 @@ export function TomadoresEditor({ initial }: { initial: Tomador[] }) {
     if (!form.nome.trim()) return setError("Informe o nome.");
     if (!Number.isFinite(taxaAdm) || taxaAdm < 0) return setError("Taxa administrativa inválida.");
     if (!Number.isFinite(grossUp) || grossUp < 0 || grossUp > 1) {
-      return setError(
-        "Gross Up inválido — use um percentual entre 0% e 100% (0% desliga: NF = fatura). Padrão: ~13,25% (soma sobre a fatura). Exceção (só Tomador código 23/ITAU): ~86,75% (divide a fatura).",
-      );
+      return setError("Gross Up inválido — use um percentual entre 0% e 100% (0% desliga: NF = fatura). Padrão: ~13,25%.");
     }
 
-    const payload = { codigo, nome: form.nome.trim(), fpas: Number(form.fpas) as 515 | 655, taxaAdm, grossUp };
+    const payload = {
+      codigo,
+      nome: form.nome.trim(),
+      fpas: Number(form.fpas) as 515 | 655,
+      taxaAdm,
+      grossUp,
+      grossUpOperacao: form.grossUpOperacao,
+    };
 
     setBusy(true);
     try {
@@ -100,7 +115,7 @@ export function TomadoresEditor({ initial }: { initial: Tomador[] }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-        <table className="w-full min-w-[640px] text-sm">
+        <table className="w-full min-w-[700px] text-sm">
           <thead className="bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
             <tr>
               <th className="px-4 py-2 text-left font-medium">Código</th>
@@ -109,7 +124,7 @@ export function TomadoresEditor({ initial }: { initial: Tomador[] }) {
               <th className="px-4 py-2 text-left font-medium">Taxa Adm</th>
               <th
                 className="px-4 py-2 text-left font-medium"
-                title="Nota Fiscal = Fatura + (Fatura × Gross Up) (padrão ~13,25%). Exceção (só Tomador código 23/ITAU): Nota Fiscal = Fatura ÷ Gross Up (~86,75%)."
+                title="Operador escolhido define como Gross Up combina com a Fatura: + soma a tributação, − subtrai, × multiplica direto, ÷ divide direto."
               >
                 Gross Up
               </th>
@@ -135,7 +150,7 @@ export function TomadoresEditor({ initial }: { initial: Tomador[] }) {
                   <td className="px-4 py-2 font-mono tabular-nums">{(t.taxaAdm * 100).toLocaleString("pt-BR")}%</td>
                   <td className="px-4 py-2 font-mono tabular-nums">
                     {(t.grossUp * 100).toLocaleString("pt-BR")}%{" "}
-                    <span className="font-sans text-xs text-neutral-400">{t.codigo === CODIGO_TOMADOR_NF_DIVISAO ? "(÷ fatura)" : "(+ s/ fatura)"}</span>
+                    <span className="font-sans text-xs text-neutral-400">({labelOperacao(t.grossUpOperacao)})</span>
                   </td>
                   <td className="px-4 py-2 text-right">
                     <button type="button" onClick={() => startEdit(t)} className="text-emerald-700 hover:underline">
@@ -222,14 +237,27 @@ function EditRow({
         %
       </td>
       <td className="px-4 py-2">
-        <input
-          value={form.grossUp}
-          onChange={(e) => setForm({ ...form, grossUp: e.target.value })}
-          placeholder={Number(form.codigo) === CODIGO_TOMADOR_NF_DIVISAO ? "ex.: 86,75" : "ex.: 13,25"}
-          title="Nota Fiscal = Fatura + (Fatura × Gross Up). Exceção (só Tomador código 23/ITAU): Nota Fiscal = Fatura ÷ Gross Up."
-          className="w-20 rounded border border-neutral-300 px-2 py-1 text-sm"
-        />
-        %
+        <div className="flex items-center gap-1">
+          <select
+            value={form.grossUpOperacao}
+            onChange={(e) => setForm({ ...form, grossUpOperacao: e.target.value as GrossUpOperacao })}
+            title="Operador entre Fatura e Gross Up"
+            className="rounded border border-neutral-300 px-1 py-1 text-sm font-mono"
+          >
+            {OPERACOES.map((o) => (
+              <option key={o.valor} value={o.valor}>
+                {o.simbolo}
+              </option>
+            ))}
+          </select>
+          <input
+            value={form.grossUp}
+            onChange={(e) => setForm({ ...form, grossUp: e.target.value })}
+            placeholder="ex.: 13,25"
+            className="w-20 rounded border border-neutral-300 px-2 py-1 text-sm"
+          />
+          %
+        </div>
       </td>
       <td className="px-4 py-2 text-right">
         <button type="button" onClick={onSave} disabled={busy} className="text-emerald-700 hover:underline">
