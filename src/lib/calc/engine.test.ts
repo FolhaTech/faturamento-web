@@ -183,7 +183,7 @@ describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
     expect(l.nf).toBeCloseTo(l.fatura, 6);
   });
 
-  it("Tomador código 14 (ITAU) não é mais caso especial — usa a mesma fórmula multiplicativa de qualquer outro Tomador", async () => {
+  it("Tomador código 14 (ITAU) não é caso especial — usa a mesma fórmula multiplicativa de qualquer outro Tomador", async () => {
     await upsertTomador({ codigo: 14, nome: "ITAU UNIBANCO S.A", fpas: 655, taxaAdm: 0.095 });
     await upsertColaborador({
       matricula: 1,
@@ -207,7 +207,34 @@ describe("calculateLine — trilha de encargos (proventos/descontos)", () => {
 
     expect(l.tomadorGrossUp).toBeCloseTo(0.1325, 6);
     expect(l.nf).toBeCloseTo(l.fatura * 1.1325, 6);
-    expect(l.nf).not.toBeCloseTo(l.base + l.taxaAdmValor * 0.1325, 6); // não usa a fórmula antiga do Tomador 14
+    expect(l.nf).not.toBeCloseTo(l.fatura / 0.8675, 6); // não usa a fórmula do Tomador 23
+  });
+
+  it("Tomador código 23 (ITAU): único Tomador que divide a fatura em vez de multiplicar", async () => {
+    await upsertTomador({ codigo: 23, nome: "ITAU UNIBANCO S.A", fpas: 515, taxaAdm: 0.08 });
+    await upsertColaborador({
+      matricula: 1,
+      dados: { cod_epr: 1, nome: "FULANO", situacao: "Trabalhando", cod_servico: 23 },
+    });
+    const mov: Movimento = {
+      id: "1",
+      codigo: 8781,
+      matricula: 1,
+      nome: "FULANO",
+      evento: "DIAS NORMAIS",
+      competencia: "07/2026",
+      valor: 1000,
+      ref: 30,
+      tipo: "P",
+      forma: "Dias",
+    };
+    const ctx = await buildContext([mov]);
+    const { line } = calculateLine(mov, ctx);
+    const l = line!;
+
+    expect(l.tomadorGrossUp).toBeCloseTo(0.8675, 6);
+    expect(l.nf).toBeCloseTo(l.fatura / 0.8675, 6);
+    expect(l.nf).not.toBeCloseTo(l.fatura * 1.8675, 6); // não usa a fórmula padrão multiplicativa
   });
 });
 

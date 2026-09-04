@@ -8,7 +8,7 @@ export interface Tomador {
   nome: string;
   fpas: 515 | 655;
   taxaAdm: number;
-  /** Percentual de tributação desse Tomador — NF = fatura + (fatura × grossUp) (ver GROSS_UP_FACTOR em engine.ts). Padrão 0,1325. */
+  /** Percentual de tributação desse Tomador — NF = fatura + (fatura × grossUp) (ver GROSS_UP_FACTOR em engine.ts). Padrão 0,1325; exceção é o Tomador código 23 (ITAU), que divide em vez de multiplicar. */
   grossUp: number;
   /** true = criado automaticamente a partir de um Cód Serviço sem cadastro em Tomadores (ver upsertTomadoresPendentes) — ainda não entra no faturamento até alguém completar FPAS/Taxa Adm pela tela. */
   pendente: boolean;

@@ -18,12 +18,22 @@ export const GROSS_UP_FACTOR = 0.1325;
 export const CCUSTO_SEM_CADASTRO = { codigo: "0", nome: "Sem centro de custo" };
 
 /**
- * Tributação = Fatura × Gross Up (~13,25% padrão); Nota Fiscal = Fatura + Tributação. Mesma
- * fórmula pra qualquer Tomador, de qualquer regime — decisão do usuário em 2026-09-04. Gross Up
- * 0 "desliga": NF = fatura, sem tributação nenhuma.
+ * Único Tomador que divide a fatura em vez de multiplicar (ver calcularNf abaixo) — decisão do
+ * usuário em 2026-09-04: só o ITAU UNIBANCO S.A código 23 (Terceiro, FPAS 515) fatura assim;
+ * todos os demais tomadores, incluindo o outro ITAU UNIBANCO S.A (código 14, FPAS 655), usam a
+ * multiplicação padrão.
  */
-function calcularNf(fatura: number, grossUp: number): number {
+const CODIGO_TOMADOR_NF_DIVISAO = 23;
+
+/**
+ * Tributação = Fatura × Gross Up (~13,25% padrão); Nota Fiscal = Fatura + Tributação — mesma
+ * fórmula pra qualquer Tomador, de qualquer regime. Exceção: CODIGO_TOMADOR_NF_DIVISAO usa NF =
+ * fatura / Gross Up (divisão, não soma). Em ambos os casos, Gross Up 0 "desliga": NF = fatura,
+ * sem tributação nenhuma.
+ */
+function calcularNf(fatura: number, grossUp: number, codigo: number): number {
   if (grossUp <= 0) return fatura;
+  if (codigo === CODIGO_TOMADOR_NF_DIVISAO) return fatura / grossUp;
   return fatura + fatura * grossUp;
 }
 
@@ -201,7 +211,7 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
     const base = mov.valor;
     const taxaAdmValor = base * tomador.taxaAdm;
     const fatura = base + taxaAdmValor;
-    const nf = calcularNf(fatura, tomador.grossUp);
+    const nf = calcularNf(fatura, tomador.grossUp, tomador.codigo);
     return {
       line: { ...zeroLine(mov, tomador, ccusto, "encargos", base, mov.tipo), base, taxaAdmValor, fatura, impostos: nf - fatura, nf },
       warning: null,
@@ -228,7 +238,7 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
     const base = valorFace;
     const taxaAdmValor = base * tomador.taxaAdm;
     const fatura = base + taxaAdmValor;
-    const nf = calcularNf(fatura, tomador.grossUp);
+    const nf = calcularNf(fatura, tomador.grossUp, tomador.codigo);
     return {
       line: { ...zeroLine(mov, tomador, ccusto, "beneficio", valorFace, tipo), base, taxaAdmValor, fatura, impostos: nf - fatura, nf },
       warning: null,
@@ -263,7 +273,7 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
   const base = valorFace + inss + fgts + provFerias + prov13 + encInss + encFgts;
   const taxaAdmValor = base * tomador.taxaAdm;
   const fatura = base + taxaAdmValor;
-  const nf = calcularNf(fatura, tomador.grossUp);
+  const nf = calcularNf(fatura, tomador.grossUp, tomador.codigo);
 
   return {
     line: {
@@ -377,7 +387,7 @@ async function generateComplementaryCharges(movimentos: Movimento[], ctx: Engine
         const base = item.valor;
         const taxaAdmValor = base * tomador.taxaAdm;
         const fatura = base + taxaAdmValor;
-        const nf = calcularNf(fatura, tomador.grossUp);
+        const nf = calcularNf(fatura, tomador.grossUp, tomador.codigo);
         out.push({
           matricula: colaborador.matricula,
           nome: colaborador.nome,
@@ -497,7 +507,7 @@ function generateProvisaoRescisaoCharges(movimentos: Movimento[], ctx: EngineCon
         const base = item.valor;
         const taxaAdmValor = base * tomador.taxaAdm;
         const fatura = base + taxaAdmValor;
-        const nf = calcularNf(fatura, tomador.grossUp);
+        const nf = calcularNf(fatura, tomador.grossUp, tomador.codigo);
         out.push({
           matricula: colaborador.matricula,
           nome: colaborador.nome,
@@ -580,7 +590,7 @@ function generatePlrCharges(movimentos: Movimento[], ctx: EngineContext): Calcul
       const base = ctx.plrCeletista;
       const taxaAdmValor = base * tomador.taxaAdm;
       const fatura = base + taxaAdmValor;
-      const nf = calcularNf(fatura, tomador.grossUp);
+      const nf = calcularNf(fatura, tomador.grossUp, tomador.codigo);
       out.push({
         matricula: colaborador.matricula,
         nome: colaborador.nome,

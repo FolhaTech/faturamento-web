@@ -13,7 +13,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ codi
   if (!Number.isFinite(taxaAdm) || taxaAdm < 0) return NextResponse.json({ error: "Taxa administrativa inválida." }, { status: 400 });
   if (grossUp !== undefined && (!Number.isFinite(grossUp) || grossUp < 0 || grossUp > 1)) {
     return NextResponse.json(
-      { error: "Gross Up inválido — deve ser entre 0 e 1 (padrão ~0,1325). 0 desliga o gross-up: NF = fatura." },
+      { error: "Gross Up inválido — deve ser entre 0 e 1 (padrão ~0,1325; exceção Tomador código 23/ITAU ~0,8675). 0 desliga o gross-up: NF = fatura." },
       { status: 400 },
     );
   }

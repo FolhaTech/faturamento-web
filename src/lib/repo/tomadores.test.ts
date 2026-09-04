@@ -43,11 +43,16 @@ describe("tomadores repo — cadastro pendente (Cód Serviço sem Tomador cadast
 });
 
 describe("tomadores repo — Gross Up", () => {
-  it("usa 0,1325 como padrão quando não informado, em qualquer regime", async () => {
+  it("usa 0,1325 como padrão quando não informado, em qualquer regime (exceto o Tomador código 23)", async () => {
     const t515 = await upsertTomador({ codigo: 998, nome: "EMPRESA A LTDA", fpas: 515, taxaAdm: 0.1 });
     const t655 = await upsertTomador({ codigo: 999, nome: "EMPRESA B LTDA", fpas: 655, taxaAdm: 0.1 });
     expect(t515.grossUp).toBeCloseTo(0.1325, 6);
     expect(t655.grossUp).toBeCloseTo(0.1325, 6);
+  });
+
+  it("Tomador código 23 (ITAU): usa 0,8675 como padrão, independente do regime informado", async () => {
+    const t = await upsertTomador({ codigo: 23, nome: "ITAU UNIBANCO S.A", fpas: 515, taxaAdm: 0.08 });
+    expect(t.grossUp).toBeCloseTo(0.8675, 6);
   });
 
   it("grava o Gross Up informado no upsert completo", async () => {
