@@ -4,12 +4,13 @@ import type { TipoEvento } from "../types";
 
 /**
  * Categorias de benefício excluídas da base de retenção de INSS na fonte (11%), replicando a
- * mesma regra usada no RESUMO real (C53 = TOTAL FATURA - VT/VR/VA/Bonificação). A dedução usa o
- * valor BASE de cada evento (Valor/DRE, antes de INSS/FGTS/provisões/taxa adm/gross-up), não a
- * Nota Fiscal já tributada. As demais retenções (IRRF, CSLL, COFINS, PIS, ISS) incidem sobre o
- * total cheio da fatura.
+ * mesma regra usada no RESUMO real (C53 = TOTAL FATURA - VT/VR/VA/Bonificação) — Boa Permanência
+ * entra junto com Bonificação porque no arquivo de origem o mesmo benefício às vezes vem
+ * nomeado de um jeito, às vezes do outro. A dedução usa o valor BASE de cada evento (Valor/DRE,
+ * antes de INSS/FGTS/provisões/taxa adm/gross-up), não a Nota Fiscal já tributada. As demais
+ * retenções (IRRF, CSLL, COFINS, PIS, ISS) incidem sobre o total cheio da fatura.
  */
-const CATEGORIAS_EXCLUIDAS_BASE_INSS = ["VALE TRANSPORTE", "VALE REFEI", "VALE ALIMENTA", "BONIFICA"];
+const CATEGORIAS_EXCLUIDAS_BASE_INSS = ["VALE TRANSPORTE", "VALE REFEI", "VALE ALIMENTA", "BONIFICA", "BOA PERMANEN"];
 
 function ehBeneficioExcluidoDaBaseInss(evento: string): boolean {
   const n = normalizaTexto(evento);
