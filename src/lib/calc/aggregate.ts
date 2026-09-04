@@ -3,10 +3,11 @@ import type { CalculatedLine } from "./engine";
 import type { TipoEvento } from "../types";
 
 /**
- * Categorias de benefício excluídas da base de retenção de INSS na fonte
- * (11%), replicando a mesma regra usada no RESUMO real (C53 = TOTAL FATURA
- * - VT/VR/VA/Bonificação). As demais retenções (IRRF, CSLL, COFINS, PIS,
- * ISS) incidem sobre o total cheio da fatura.
+ * Categorias de benefício excluídas da base de retenção de INSS na fonte (11%), replicando a
+ * mesma regra usada no RESUMO real (C53 = TOTAL FATURA - VT/VR/VA/Bonificação). A dedução usa o
+ * valor BASE de cada evento (Valor/DRE, antes de INSS/FGTS/provisões/taxa adm/gross-up), não a
+ * Nota Fiscal já tributada. As demais retenções (IRRF, CSLL, COFINS, PIS, ISS) incidem sobre o
+ * total cheio da fatura.
  */
 const CATEGORIAS_EXCLUIDAS_BASE_INSS = ["VALE TRANSPORTE", "VALE REFEI", "VALE ALIMENTA", "BONIFICA"];
 
@@ -183,7 +184,7 @@ export function aggregateByCcusto(lines: CalculatedLine[], competencia: string):
 
     const faturaExcluidaInss = sum(
       ccustoLines.filter((l) => l.trilha === "beneficio" && ehBeneficioExcluidoDaBaseInss(l.evento)),
-      (l) => l.nf,
+      (l) => l.dre,
     );
     const baseRetencaoInss = totalFatura - faturaExcluidaInss;
 
