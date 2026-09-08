@@ -3,8 +3,10 @@ import { resetDbForTests } from "../db";
 import { upsertColaborador } from "../repo/colaboradores";
 import { upsertEncargo } from "../repo/encargos";
 import { createInformativa } from "../repo/informativas";
+import { replaceMovimentosPorCompetencia } from "../repo/movimentos";
 import { upsertTomador, upsertTomadoresPendentes } from "../repo/tomadores";
 import type { Movimento } from "../types";
+import { lancarDescontoSaldoFerias } from "./descontoSaldoFerias";
 import { buildContext, calculateLine, runEngine } from "./engine";
 
 const TOMADOR_TERCEIRO = { codigo: 1, nome: "GENTER SERVICOS EM RECURSOS HUMANOS LTDA", fpas: 515 as const, taxaAdm: 0.1 };
@@ -626,5 +628,51 @@ describe("runEngine — benefícios de Informativas com recorrência fixa", () =
     const seguros = lines.filter((l) => l.evento.toUpperCase().includes("SEGURO DE VIDA"));
     expect(seguros).toHaveLength(1);
     expect(seguros[0].base).toBe(5.5);
+  });
+});
+
+describe("runEngine — desconto de saldo de férias/1/3 sobrevive a reenvio de Movimentos", () => {
+  const movimentosCompetencia: Movimento[] = [
+    {
+      id: "1",
+      codigo: 8781,
+      matricula: 90103392,
+      nome: "ADALBERTO ALVARES JUNIOR",
+      evento: "DIAS NORMAIS",
+      competencia: "08/2026",
+      valor: 1000,
+      ref: 30,
+      tipo: "P",
+      forma: "Dias",
+    },
+  ];
+
+  it("continua descontando a fatura mesmo depois do arquivo daquela competência ser reenviado (substituído)", async () => {
+    await replaceMovimentosPorCompetencia(movimentosCompetencia);
+
+    const competenciaAplicada = await lancarDescontoSaldoFerias({ matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" }, 200, 0);
+    expect(competenciaAplicada).toBe("08/2026");
+
+    // Reenvio: replaceMovimentosPorCompetencia apaga e recria as linhas de Movimentos da competência,
+    // igual a subir o arquivo de novo — não deve apagar o desconto lançado acima.
+    await replaceMovimentosPorCompetencia(movimentosCompetencia);
+
+    const { lines } = await runEngine(movimentosCompetencia);
+    const desconto = lines.find((l) => l.evento === "DESCONTO SALDO DE FÉRIAS");
+    expect(desconto).toBeDefined();
+    expect(desconto!.trilha).toBe("encargos");
+    expect(desconto!.base).toBe(-200);
+    expect(desconto!.fatura).toBeCloseTo(-200 * 1.1, 6); // taxaAdm 10% do Tomador Terceiro
+    expect(desconto!.nf).toBeLessThan(0);
+  });
+
+  it("salvar de novo pra mesma competência acumula (soma) em vez de substituir", async () => {
+    await replaceMovimentosPorCompetencia(movimentosCompetencia);
+    await lancarDescontoSaldoFerias({ matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" }, 100, 0);
+    await lancarDescontoSaldoFerias({ matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" }, 50, 0);
+
+    const { lines } = await runEngine(movimentosCompetencia);
+    const desconto = lines.find((l) => l.evento === "DESCONTO SALDO DE FÉRIAS");
+    expect(desconto!.base).toBe(-150);
   });
 });

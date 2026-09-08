@@ -108,6 +108,21 @@ CREATE TABLE IF NOT EXISTS configuracoes (
   valor DOUBLE PRECISION NOT NULL
 );
 INSERT INTO configuracoes (chave, valor) VALUES ('plr_celetista', 29.32) ON CONFLICT (chave) DO NOTHING;
+
+-- Desconto de saldo de férias/1/3 lançado manualmente na tela do colaborador (ver
+-- descontoSaldoFerias.ts) — separado de Movimentos de propósito: reenviar o arquivo da folha
+-- daquela competência (replaceMovimentosPorCompetencia) apaga e recria as linhas de Movimentos,
+-- mas não mexe aqui, então o desconto continua sendo aplicado (ver generateDescontoSaldoFeriasCharges
+-- em engine.ts, que gera a linha de novo a cada cálculo em vez de depender de uma linha física
+-- sobrevivendo em Movimentos). Um valor por matrícula+competência+tipo; salvar de novo pra mesma
+-- competência SOMA ao valor já lançado (não substitui).
+CREATE TABLE IF NOT EXISTS descontos_saldo (
+  matricula INTEGER NOT NULL,
+  competencia TEXT NOT NULL,
+  tipo TEXT NOT NULL,
+  valor DOUBLE PRECISION NOT NULL DEFAULT 0,
+  PRIMARY KEY (matricula, competencia, tipo)
+);
 `;
 
 export type Sql = ReturnType<typeof postgres>;
@@ -160,6 +175,6 @@ export async function resetDbForTests(): Promise<void> {
   }
   await ensureSchema();
   const sql = getDb();
-  await sql`TRUNCATE tomadores, encargos, informativas, colaboradores, movimentos`;
+  await sql`TRUNCATE tomadores, encargos, informativas, colaboradores, movimentos, descontos_saldo`;
   await sql`UPDATE configuracoes SET valor = 29.32 WHERE chave = 'plr_celetista'`;
 }

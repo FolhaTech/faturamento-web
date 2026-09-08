@@ -1,5 +1,6 @@
+import { upsertDescontoSaldo } from "../repo/descontosSaldo";
 import { upsertEncargo } from "../repo/encargos";
-import { insertMovimentoAvulso, listCompetencias, type MovimentoInput } from "../repo/movimentos";
+import { listCompetencias } from "../repo/movimentos";
 import type { Colaborador } from "../types";
 
 /** Códigos reservados (fora da faixa usada pelo sistema de folha real) para os descontos sintéticos de saldo. */
@@ -32,16 +33,15 @@ async function garantirEncargosDeDesconto(): Promise<void> {
 }
 
 /**
- * Lança saldoFerias/saldoUmTerco (quando > 0) como desconto — um lançamento avulso de valor
- * NEGATIVO por saldo, na competência mais recente já enviada — reduzindo de verdade o total
- * cobrado do tomador daquele colaborador (ver calculateLine em engine.ts: tipo "P" com valor
- * negativo passa negativo pela cadeia de base/taxa adm/NF inteira).
+ * Lança saldoFerias/saldoUmTerco (quando > 0) como desconto — valor NEGATIVO gravado em
+ * descontos_saldo (matrícula + competência mais recente já enviada + tipo), reduzindo de
+ * verdade o total cobrado do tomador daquele colaborador (ver generateDescontoSaldoFeriasCharges
+ * em engine.ts: gerado a cada cálculo a partir dessa tabela, não de uma linha em Movimentos —
+ * por isso sobrevive a reenvios do arquivo daquela competência, diferente do antigo lançamento
+ * avulso em Movimentos).
  *
  * Não mexe nos saldos em si — quem chama decide se/como zera depois (ver route.ts). Retorna a
  * competência usada, ou null se não havia nenhuma ainda (nada a lançar).
- *
- * Atenção: reenviar o arquivo da folha dessa competência mais tarde apaga esse lançamento
- * avulso junto com os demais (replaceMovimentosPorCompetencia substitui tudo).
  */
 export async function lancarDescontoSaldoFerias(
   colaborador: Pick<Colaborador, "matricula" | "nome">,
@@ -56,20 +56,11 @@ export async function lancarDescontoSaldoFerias(
 
   await garantirEncargosDeDesconto();
 
-  const base: Omit<MovimentoInput, "codigo" | "evento" | "valor"> = {
-    matricula: colaborador.matricula,
-    nome: colaborador.nome,
-    competencia: competenciaAtual,
-    ref: 0,
-    tipo: "P",
-    forma: "Valor",
-  };
-
   if (saldoFerias > 0) {
-    await insertMovimentoAvulso({ ...base, codigo: CODIGO_DESCONTO_SALDO_FERIAS, evento: "DESCONTO SALDO DE FÉRIAS", valor: -saldoFerias });
+    await upsertDescontoSaldo(colaborador.matricula, competenciaAtual, "ferias", -saldoFerias);
   }
   if (saldoUmTerco > 0) {
-    await insertMovimentoAvulso({ ...base, codigo: CODIGO_DESCONTO_SALDO_UM_TERCO, evento: "DESCONTO SALDO DE 1/3", valor: -saldoUmTerco });
+    await upsertDescontoSaldo(colaborador.matricula, competenciaAtual, "terco", -saldoUmTerco);
   }
 
   return competenciaAtual;

@@ -1,5 +1,6 @@
 import { getColaboradoresPorMatriculas } from "../repo/colaboradores";
 import { CHAVE_PLR_CELETISTA, getConfigNumero } from "../repo/configuracoes";
+import { listDescontosSaldoPorCompetencias } from "../repo/descontosSaldo";
 import { listEncargos } from "../repo/encargos";
 import { listInformativas } from "../repo/informativas";
 import { listTomadores } from "../repo/tomadores";
@@ -402,6 +403,7 @@ export async function runEngine(movimentos: Movimento[]): Promise<RunResult> {
   lines.push(...(await generateComplementaryCharges(movimentos, ctx, warnings)));
   lines.push(...generateProvisaoRescisaoCharges(movimentos, ctx));
   lines.push(...generatePlrCharges(movimentos, ctx));
+  lines.push(...(await generateDescontoSaldoFeriasCharges(movimentos, ctx)));
 
   return { lines, warnings };
 }
@@ -701,6 +703,77 @@ function generatePlrCharges(movimentos: Movimento[], ctx: EngineContext): Calcul
         nf,
       });
     }
+  }
+
+  return out;
+}
+
+/**
+ * Para cada competência presente em Movimentos, gera a linha de desconto de saldo de férias/1/3
+ * lançado manualmente na tela do colaborador (ver descontoSaldoFerias.ts), lendo de
+ * descontos_saldo em vez de esperar uma linha física em Movimentos — por isso o desconto
+ * continua sendo cobrado mesmo depois de reenviar o arquivo daquela competência (que substitui
+ * as linhas de Movimentos, mas não mexe em descontos_saldo). Mesma cadeia de cálculo do desconto
+ * de saldo cadastrado direto em Movimentos (ver o bloco de CODIGO_DESCONTO_SALDO_* em
+ * calculateLine, mantido por compatibilidade com lançamentos antigos): valor cheio (negativo) ->
+ * taxa administrativa -> fatura -> gross-up de NF, sem INSS/FGTS/provisões.
+ *
+ * Busca os colaboradores dos descontos separadamente de ctx.colaboradoresPorMatricula — que só
+ * cobre quem tem lançamento nesse upload — porque o desconto vale pra matrícula independente
+ * dela aparecer de novo no arquivo reenviado.
+ */
+async function generateDescontoSaldoFeriasCharges(movimentos: Movimento[], ctx: EngineContext): Promise<CalculatedLine[]> {
+  const competencias = [...new Set(movimentos.map((m) => m.competencia))];
+  if (competencias.length === 0) return [];
+
+  const descontos = (await listDescontosSaldoPorCompetencias(competencias)).filter((d) => d.valor !== 0);
+  if (descontos.length === 0) return [];
+
+  const colaboradoresPorMatricula = await getColaboradoresPorMatriculas(descontos.map((d) => d.matricula));
+
+  const out: CalculatedLine[] = [];
+  for (const d of descontos) {
+    const colaborador = colaboradoresPorMatricula.get(d.matricula);
+    if (!colaborador || colaborador.codServico == null) continue;
+    const tomador = ctx.tomadoresPorCodigo.get(colaborador.codServico);
+    if (!tomador || tomador.pendente) continue;
+    const ccusto = getCcusto(colaborador);
+
+    const codigo = d.tipo === "ferias" ? CODIGO_DESCONTO_SALDO_FERIAS : CODIGO_DESCONTO_SALDO_UM_TERCO;
+    const evento = d.tipo === "ferias" ? "DESCONTO SALDO DE FÉRIAS" : "DESCONTO SALDO DE 1/3";
+
+    const base = d.valor;
+    const taxaAdmValor = base * tomador.taxaAdm;
+    const fatura = base + taxaAdmValor;
+    const nf = calcularNf(fatura, tomador.grossUp, tomador.grossUpOperacao);
+    out.push({
+      matricula: colaborador.matricula,
+      nome: colaborador.nome,
+      codigo,
+      evento,
+      competencia: d.competencia,
+      tipo: "P",
+      tomadorCodigo: tomador.codigo,
+      tomadorNome: tomador.nome,
+      fpas: tomador.fpas,
+      tomadorGrossUp: tomador.grossUp,
+      tomadorGrossUpOperacao: tomador.grossUpOperacao,
+      ccustoCodigo: ccusto.codigo,
+      ccustoNome: ccusto.nome,
+      trilha: "encargos",
+      dre: base,
+      inss: 0,
+      fgts: 0,
+      provFerias: 0,
+      prov13: 0,
+      encInss: 0,
+      encFgts: 0,
+      base,
+      taxaAdmValor,
+      fatura,
+      impostos: nf - fatura,
+      nf,
+    });
   }
 
   return out;

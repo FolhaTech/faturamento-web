@@ -55,9 +55,10 @@ export function SaldoFeriasCard({
       <h2 className="text-sm font-semibold text-neutral-900">Desconto de saldo de férias e de 1/3</h2>
       <p className="text-xs text-neutral-500">
         Preencha um valor e salve para lançá-lo como desconto (crédito) na fatura da competência mais recente já
-        enviada — reduz o total cobrado do tomador exatamente pelo valor digitado, sem taxa administrativa nem
-        gross-up de NF em cima. É um lançamento único: depois de aplicado, o campo volta a 0 sozinho. Reenviar o
-        arquivo de Movimentos dessa competência depois apaga esse lançamento junto com o resto.
+        enviada — reduz o total cobrado do tomador exatamente pelo valor digitado (com taxa administrativa e
+        gross-up de NF proporcionais). O campo volta a 0 sozinho depois de aplicado, mas o desconto fica salvo
+        naquela competência pra sempre — mesmo reenviando o arquivo de Movimentos dela depois, ele continua sendo
+        cobrado.
       </p>
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-xs font-medium text-neutral-500">
