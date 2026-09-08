@@ -26,6 +26,19 @@ export const CCUSTO_SEM_CADASTRO = { codigo: "0", nome: "Sem centro de custo" };
 const CODIGOS_EVENTO_VALOR_SO_DEMONSTRATIVO = [8786];
 
 /**
+ * Eventos de falta que, ao contrário do resto do Tipo D/R (INSS empregado, IRRF, consignado
+ * etc.), reduzem de fato o valor cobrado do Tomador — o cliente não deve pagar pelo dia/hora que
+ * o colaborador não trabalhou. Decisão do usuário em 2026-09-08. Match pelo NOME do evento (não
+ * pelo Tipo cadastrado, que continua "D"/"R" em Encargos) — mesmo padrão de REEMBOLSO/EMP CRED
+ * TRAB logo abaixo em calculateLine.
+ */
+const EVENTOS_FALTA_DESCONTAM_FATURA = ["DIAS FALTAS", "DIAS FALTAS DSR", "HORAS FALTAS PARCIAL"];
+
+function ehFaltaQueDescontaFatura(evento: string): boolean {
+  return EVENTOS_FALTA_DESCONTAM_FATURA.includes(normalizaTexto(evento));
+}
+
+/**
  * Combina Fatura e Gross Up pra formar a Nota Fiscal, de acordo com o operador escolhido pelo
  * Tomador (ver Tomador.grossUpOperacao) — editável por Tomador na tela de Faturamento/Tomadores,
  * não é mais um caso especial fixo no código. '+' soma a tributação (fatura + fatura×grossUp,
@@ -235,6 +248,13 @@ export interface CalculateResult {
  * ao tomador. Mesma regra pro NOME conter "emp. cred. trab"/"emp cred trab" (empréstimo
  * consignado, ex.: "DESC. EMP. CRED. TRAB Nº ...") — dinheiro retido em favor do banco
  * consignante, também nunca repassado ao tomador.
+ *
+ * Exceção oposta: "DIAS FALTAS", "DIAS FALTAS DSR" e "HORAS FALTAS PARCIAL" (ver
+ * EVENTOS_FALTA_DESCONTAM_FATURA) são cadastrados como Tipo D/R igual a qualquer desconto, mas
+ * aqui o cliente realmente não deve pelo tempo não trabalhado — em vez de zerar, passam pela
+ * mesma cadeia de um provento (INSS/FGTS/provisões conforme Encargos) com o valor negativo,
+ * reduzindo Despesa/Fatura/NF de verdade e aparecendo em "Detalhamento por evento" em vez da
+ * tabela de Descontos.
  */
 export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResult {
   const colaborador = ctx.colaboradoresPorMatricula.get(mov.matricula);
@@ -289,7 +309,7 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
     return { line: zeroLine(mov, tomador, ccusto, "excluido", valorFace, tipo), warning: null };
   }
 
-  if (tipo === "FGTS" || tipo === "INSS" || tipo === "D" || tipo === "R") {
+  if ((tipo === "FGTS" || tipo === "INSS" || tipo === "D" || tipo === "R") && !ehFaltaQueDescontaFatura(mov.evento)) {
     return { line: zeroLine(mov, tomador, ccusto, "excluido", valorFace, tipo), warning: null };
   }
 
@@ -318,7 +338,7 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
     };
   }
 
-  // tipo "P" -> trilha de encargos
+  // tipo "P" -> trilha de encargos (também cai aqui a falta de EVENTOS_FALTA_DESCONTAM_FATURA, com valorFace negativo)
   const warning: string | null = encargo
     ? null
     : `Código de evento ${mov.codigo} ("${mov.evento}") não encontrado em Encargos — provento lançado sem encargos adicionais.`;

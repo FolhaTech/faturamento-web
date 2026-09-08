@@ -324,6 +324,67 @@ describe("calculateLine — desconto (Tipo D/R) não entra na soma do faturament
   });
 });
 
+describe("calculateLine — DIAS FALTAS / DIAS FALTAS DSR / HORAS FALTAS PARCIAL descontam a fatura de verdade", () => {
+  const EVENTOS_FALTA = ["DIAS FALTAS", "DIAS FALTAS DSR", "HORAS FALTAS PARCIAL"] as const;
+
+  it.each(EVENTOS_FALTA)("%s (Tipo R, cadastrado com as mesmas alíquotas de DIAS NORMAIS) reduz Despesa/Fatura/NF em vez de zerar", async (evento) => {
+    await upsertEncargo({
+      codigo: 8790,
+      evento,
+      tipo: "R",
+      inss655: 0.255,
+      inss515: 0.288,
+      fgts: 0.08,
+      provFerias: 0.11110833333333332,
+      prov13: 0.08333333333333333,
+      abateSaldo: null,
+    });
+    const mov: Movimento = {
+      id: "1",
+      codigo: 8790,
+      matricula: 90103392,
+      nome: "ADALBERTO ALVARES JUNIOR",
+      evento,
+      competencia: "01/2026",
+      valor: 100,
+      ref: 1,
+      tipo: "R",
+      forma: "Valor",
+    };
+    const ctx = await buildContext([mov]);
+    const { line, warning } = calculateLine(mov, ctx);
+    expect(warning).toBeNull();
+    const l = line!;
+
+    expect(l.trilha).toBe("encargos"); // não "excluido" — precisa aparecer em Detalhamento por evento
+    expect(l.dre).toBe(-100);
+    expect(l.inss).toBeCloseTo(-100 * 0.288, 6);
+    expect(l.fgts).toBeCloseTo(-100 * 0.08, 6);
+    expect(l.base).toBeLessThan(0); // reduz Despesa
+    expect(l.fatura).toBeLessThan(0); // reduz Fatura
+    expect(l.nf).toBeLessThan(0); // reduz Nota Fiscal
+  });
+
+  it("nome genérico (\"FALTAS\") continua excluído — só as 3 rubricas específicas descontam de verdade", async () => {
+    const mov: Movimento = {
+      id: "1",
+      codigo: 777,
+      matricula: 90103392,
+      nome: "ADALBERTO ALVARES JUNIOR",
+      evento: "FALTAS",
+      competencia: "01/2026",
+      valor: 50,
+      ref: 1,
+      tipo: "R",
+      forma: "Valor",
+    };
+    const ctx = await buildContext([mov]);
+    const { line } = calculateLine(mov, ctx);
+    expect(line!.trilha).toBe("excluido");
+    expect(line!.fatura).toBe(0);
+  });
+});
+
 describe("calculateLine — trilha de benefício em espécie (Tipo I)", () => {
   it("cobra vale-refeição fornecido pelo valor de face + taxa adm, sem encargos", async () => {
     const mov: Movimento = {
