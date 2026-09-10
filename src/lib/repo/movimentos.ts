@@ -110,6 +110,10 @@ export async function sumAbatimentoPorMatriculaETipo(
 /**
  * Substitui todos os lançamentos das competências presentes em `linhas` —
  * reenviar o arquivo do mês atualiza em vez de duplicar os lançamentos.
+ *
+ * Também apaga a fatura salva (ver faturasSalvas.ts) dessas competências, se houver: os dados de
+ * origem mudaram, então a foto congelada não reflete mais o arquivo atual — fica pendente de
+ * salvar de novo.
  */
 export async function replaceMovimentosPorCompetencia(linhas: MovimentoInput[]): Promise<number> {
   await ensureSchema();
@@ -119,6 +123,7 @@ export async function replaceMovimentosPorCompetencia(linhas: MovimentoInput[]):
   await sql.begin(async (tx) => {
     for (const comp of competencias) {
       await tx`DELETE FROM movimentos WHERE competencia = ${comp}`;
+      await tx`DELETE FROM faturas_salvas WHERE competencia = ${comp}`;
     }
     if (linhas.length > 0) {
       await tx`

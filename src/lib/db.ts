@@ -123,6 +123,20 @@ CREATE TABLE IF NOT EXISTS descontos_saldo (
   valor DOUBLE PRECISION NOT NULL DEFAULT 0,
   PRIMARY KEY (matricula, competencia, tipo)
 );
+
+-- Foto congelada do faturamento de uma competência (ver faturasSalvas.ts) — guarda o resultado
+-- inteiro do motor (CalculatedLine[] + warnings) já com os ajustes manuais em vigor no momento
+-- de salvar (checkboxes de INSS/FGTS/Provisões por evento, Gross Up, PLR, descontos de saldo).
+-- Sem isso, a tela de Faturamento recalcula tudo ao vivo a cada acesso e um mês passado muda
+-- retroativamente sempre que alguém mexe numa configuração global hoje — a foto salva aqui é o
+-- que fica de referência pra aquele mês, mesmo depois. Reenviar o arquivo de Movimentos daquela
+-- competência apaga a foto salva (os dados de origem mudaram — ver replaceMovimentosPorCompetencia).
+CREATE TABLE IF NOT EXISTS faturas_salvas (
+  competencia TEXT PRIMARY KEY,
+  lines TEXT NOT NULL,
+  warnings TEXT NOT NULL DEFAULT '[]',
+  salvo_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `;
 
 export type Sql = ReturnType<typeof postgres>;
@@ -175,6 +189,6 @@ export async function resetDbForTests(): Promise<void> {
   }
   await ensureSchema();
   const sql = getDb();
-  await sql`TRUNCATE tomadores, encargos, informativas, colaboradores, movimentos, descontos_saldo`;
+  await sql`TRUNCATE tomadores, encargos, informativas, colaboradores, movimentos, descontos_saldo, faturas_salvas`;
   await sql`UPDATE configuracoes SET valor = 29.32 WHERE chave = 'plr_celetista'`;
 }

@@ -1,13 +1,16 @@
 import Link from "next/link";
 import { aggregateByCcusto } from "@/lib/calc/aggregate";
+import type { CalculatedLine } from "@/lib/calc/engine";
 import { runEngine } from "@/lib/calc/engine";
 import { filtrarLinesPorColaborador } from "@/lib/calc/filtroColaboradores";
+import { getFaturaSalva, listCompetenciasComFaturaSalva } from "@/lib/repo/faturasSalvas";
 import { listCompetencias, listMovimentosByCompetencia } from "@/lib/repo/movimentos";
 import { listValoresDistintosDados } from "@/lib/repo/colaboradores";
 import { CHAVE_PLR_CELETISTA, getConfigNumero } from "@/lib/repo/configuracoes";
 import { listEncargos } from "@/lib/repo/encargos";
 import { FaturamentoViewer } from "./FaturamentoViewer";
 import { PlrConfigForm } from "./PlrConfigForm";
+import { SalvarFaturaBanner } from "./SalvarFaturaBanner";
 import { UploadMovimentosForm } from "./UploadMovimentosForm";
 
 export const dynamic = "force-dynamic";
@@ -32,22 +35,36 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   const fpas = regime ? (Number(regime) as 515 | 655) : undefined;
   const filtrosAtivos = Boolean(codEmp || descricaoCargo || descricaoDpto || regime);
 
-  const [codEmps, descricoesCargo, descricoesDpto, plrCeletista, encargos] = await Promise.all([
+  const [codEmps, descricoesCargo, descricoesDpto, plrCeletista, encargos, competenciasComFaturaSalva] = await Promise.all([
     listValoresDistintosDados("cod_emp"),
     listValoresDistintosDados("descricao_cargo"),
     listValoresDistintosDados("descricao_dpto"),
     getConfigNumero(CHAVE_PLR_CELETISTA, 29.32),
     listEncargos(),
+    listCompetenciasComFaturaSalva(competencias),
   ]);
 
   let resumos: ReturnType<typeof aggregateByCcusto> = [];
   let warnings: string[] = [];
+  let faturaSalvaEm: string | null = null;
   if (competenciaAtual) {
-    const movimentos = await listMovimentosByCompetencia(competenciaAtual);
-    const engineResult = await runEngine(movimentos);
-    warnings = engineResult.warnings;
+    // Competência já salva (ver faturasSalvas.ts): mostra a foto congelada em vez de recalcular
+    // ao vivo, pra não mudar retroativamente um mês fechado quando alguém edita uma configuração
+    // global (Encargos, Gross Up, PLR) hoje.
+    const salva = await getFaturaSalva(competenciaAtual);
+    let engineLines: CalculatedLine[];
+    if (salva) {
+      engineLines = salva.lines;
+      warnings = salva.warnings;
+      faturaSalvaEm = salva.salvoEm;
+    } else {
+      const movimentos = await listMovimentosByCompetencia(competenciaAtual);
+      const engineResult = await runEngine(movimentos);
+      engineLines = engineResult.lines;
+      warnings = engineResult.warnings;
+    }
 
-    const lines = await filtrarLinesPorColaborador(engineResult.lines, { codEmp, descricaoCargo, descricaoDpto, fpas });
+    const lines = await filtrarLinesPorColaborador(engineLines, { codEmp, descricaoCargo, descricaoDpto, fpas });
     resumos = aggregateByCcusto(lines, competenciaAtual);
   }
 
@@ -97,14 +114,22 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
               <Link
                 key={c}
                 href={filterHref({ competencia: c })}
+                title={competenciasComFaturaSalva.has(c) ? "Fatura salva (foto congelada)" : "Ainda não salva — mostra o cálculo ao vivo"}
                 className={`rounded-full px-3 py-1 text-sm ${
                   c === competenciaAtual ? "bg-emerald-700 text-white" : "border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
                 }`}
               >
                 {c}
+                {competenciasComFaturaSalva.has(c) && (
+                  <span className={`ml-1.5 text-[10px] uppercase tracking-wide ${c === competenciaAtual ? "text-emerald-200" : "text-emerald-600"}`}>
+                    salva
+                  </span>
+                )}
               </Link>
             ))}
           </div>
+
+          {competenciaAtual && <SalvarFaturaBanner competencia={competenciaAtual} salvoEm={faturaSalvaEm} />}
 
           <form method="GET" className="flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-4">
             {competenciaAtual && <input type="hidden" name="competencia" value={competenciaAtual} />}

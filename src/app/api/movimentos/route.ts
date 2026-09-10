@@ -6,6 +6,7 @@ import {
   upsertColaborador,
   upsertColaboradoresPendentes,
 } from "@/lib/repo/colaboradores";
+import { listCompetenciasComFaturaSalva } from "@/lib/repo/faturasSalvas";
 import {
   countMovimentos,
   countMovimentosPorCompetencia,
@@ -55,10 +56,13 @@ export async function POST(request: Request) {
   // existentes, em vez de substituir silenciosamente.
   const confirmar = formData.get("confirmar") === "true";
   if (!confirmar) {
-    const existentesPorCompetencia = await countMovimentosPorCompetencia(competencias);
+    const [existentesPorCompetencia, competenciasComFaturaSalva] = await Promise.all([
+      countMovimentosPorCompetencia(competencias),
+      listCompetenciasComFaturaSalva(competencias),
+    ]);
     const competenciasComDados = competencias
       .filter((c) => (existentesPorCompetencia.get(c) ?? 0) > 0)
-      .map((c) => ({ competencia: c, existentes: existentesPorCompetencia.get(c) ?? 0 }));
+      .map((c) => ({ competencia: c, existentes: existentesPorCompetencia.get(c) ?? 0, faturaSalva: competenciasComFaturaSalva.has(c) }));
     if (competenciasComDados.length > 0) {
       return NextResponse.json({ requerConfirmacao: true, competencias: competenciasComDados, novosLancamentos: linhas.length }, { status: 409 });
     }
