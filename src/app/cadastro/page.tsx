@@ -14,7 +14,6 @@ export default async function CadastroPage() {
       <header>
         <p className="text-sm font-medium uppercase tracking-wide text-emerald-700">Faturamento</p>
         <h1 className="mt-1 text-2xl font-semibold text-neutral-900">Criar conta</h1>
-        <p className="mt-2 text-sm text-neutral-600">Cadastro liberado só para e-mails @Genter, @ArantesArimura ou @FolhaTech.</p>
       </header>
 
       <CadastroForm />
