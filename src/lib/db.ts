@@ -137,6 +137,30 @@ CREATE TABLE IF NOT EXISTS faturas_salvas (
   warnings TEXT NOT NULL DEFAULT '[]',
   salvo_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Login do sistema (ver src/lib/auth/). Senha nunca gravada em texto puro: scrypt (Node
+-- built-in, sem dependência nem segredo externo) com salt por usuário — ver auth/senha.ts.
+-- Cadastro é liberado só pra e-mails de domínios específicos, checado em código (ver
+-- auth/dominios.ts), não por uma lista guardada aqui nem em variável de ambiente.
+CREATE TABLE IF NOT EXISTS usuarios (
+  email TEXT PRIMARY KEY,
+  nome TEXT NOT NULL,
+  senha_hash TEXT NOT NULL,
+  senha_salt TEXT NOT NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Sessão de login — token opaco aleatório guardado num cookie httpOnly, validado direto contra
+-- esta tabela a cada requisição (ver proxy.ts). Sem JWT/segredo de assinatura: como o Proxy
+-- deste Next.js roda em runtime Node.js (não Edge), dá pra consultar o Postgres direto, então
+-- não precisa de segredo nenhum fora do banco — nada disso fica em .env.
+CREATE TABLE IF NOT EXISTS sessoes (
+  token TEXT PRIMARY KEY,
+  usuario_email TEXT NOT NULL REFERENCES usuarios(email) ON DELETE CASCADE,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expira_em TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sessoes_expira_em ON sessoes(expira_em);
 `;
 
 export type Sql = ReturnType<typeof postgres>;
@@ -189,6 +213,6 @@ export async function resetDbForTests(): Promise<void> {
   }
   await ensureSchema();
   const sql = getDb();
-  await sql`TRUNCATE tomadores, encargos, informativas, colaboradores, movimentos, descontos_saldo, faturas_salvas`;
+  await sql`TRUNCATE tomadores, encargos, informativas, colaboradores, movimentos, descontos_saldo, faturas_salvas, usuarios, sessoes`;
   await sql`UPDATE configuracoes SET valor = 29.32 WHERE chave = 'plr_celetista'`;
 }
