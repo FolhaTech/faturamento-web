@@ -1,4 +1,5 @@
 import { getColaboradoresPorMatriculas } from "../repo/colaboradores";
+import { normalizaTexto } from "../text";
 import type { CalculatedLine } from "./engine";
 
 /** Filtros de colaborador aplicados ao faturamento (tela e export de PDF) — ver colaboradorFields.ts. */
@@ -9,18 +10,23 @@ export interface FiltrosColaborador {
   descricaoCcusto?: string;
   /** FPAS do Tomador — 515 (Terceiro/CLT) ou 655 (Temporário) — separa faturamento/PDF por regime. Vem direto de CalculatedLine.fpas, sem precisar consultar Colaboradores. */
   fpas?: 515 | 655;
+  /** Busca livre por nome (substring, sem acento/maiúsculas) ou matrícula (substring) — vem direto de CalculatedLine, sem precisar consultar Colaboradores. */
+  colaborador?: string;
 }
 
 export function temFiltroAtivo(f: FiltrosColaborador): boolean {
-  return Boolean(f.codEmp || f.descricaoCargo || f.descricaoDpto || f.descricaoCcusto || f.fpas);
+  return Boolean(f.codEmp || f.descricaoCargo || f.descricaoDpto || f.descricaoCcusto || f.fpas || f.colaborador?.trim());
 }
 
 /** Restringe as linhas calculadas aos colaboradores que batem com os filtros, antes de agregar por tomador. */
 export async function filtrarLinesPorColaborador(lines: CalculatedLine[], filtros: FiltrosColaborador): Promise<CalculatedLine[]> {
   if (!temFiltroAtivo(filtros)) return lines;
 
-  // Regime (fpas) já está na própria linha calculada — só busca Colaboradores quando algum
-  // outro filtro (que depende do cadastro) também está ativo.
+  const busca = filtros.colaborador?.trim();
+  const buscaNormalizada = busca ? normalizaTexto(busca) : null;
+
+  // Regime (fpas) e a busca por nome/matrícula já estão na própria linha calculada — só busca
+  // Colaboradores quando algum outro filtro (que depende do cadastro) também está ativo.
   const precisaColaborador = Boolean(filtros.codEmp || filtros.descricaoCargo || filtros.descricaoDpto || filtros.descricaoCcusto);
   const colaboradoresPorMatricula = precisaColaborador
     ? await getColaboradoresPorMatriculas([...new Set(lines.map((l) => l.matricula))])
@@ -28,6 +34,7 @@ export async function filtrarLinesPorColaborador(lines: CalculatedLine[], filtro
 
   return lines.filter((l) => {
     if (filtros.fpas && l.fpas !== filtros.fpas) return false;
+    if (buscaNormalizada && !normalizaTexto(l.nome).includes(buscaNormalizada) && !String(l.matricula).includes(busca!)) return false;
     if (!colaboradoresPorMatricula) return true;
     const colaborador = colaboradoresPorMatricula.get(l.matricula);
     if (!colaborador) return false;

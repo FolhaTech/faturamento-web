@@ -22,6 +22,8 @@ interface SearchParams {
   descricaoDpto?: string;
   /** FPAS do Tomador — "515" (Terceiro/CLT) ou "655" (Temporário) — ver FiltrosColaborador.fpas. */
   regime?: string;
+  /** Busca livre por nome ou matrícula — ver FiltrosColaborador.colaborador. */
+  colaborador?: string;
 }
 
 export default async function FaturamentoPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -36,7 +38,8 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   const descricaoDpto = sp.descricaoDpto ?? "";
   const regime = sp.regime === "515" || sp.regime === "655" ? sp.regime : "";
   const fpas = regime ? (Number(regime) as 515 | 655) : undefined;
-  const filtrosAtivos = Boolean(codEmp || descricaoCargo || descricaoDpto || regime);
+  const colaborador = sp.colaborador ?? "";
+  const filtrosAtivos = Boolean(codEmp || descricaoCargo || descricaoDpto || regime || colaborador);
 
   const [codEmps, descricoesCargo, descricoesDpto, plrCeletista, encargos, competenciasComFaturaSalva] = await Promise.all([
     listValoresDistintosDados("cod_emp"),
@@ -67,7 +70,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
       warnings = engineResult.warnings;
     }
 
-    const lines = await filtrarLinesPorColaborador(engineLines, { codEmp, descricaoCargo, descricaoDpto, fpas });
+    const lines = await filtrarLinesPorColaborador(engineLines, { codEmp, descricaoCargo, descricaoDpto, fpas, colaborador });
     resumos = aggregateByCcusto(lines, competenciaAtual);
   }
 
@@ -82,15 +85,17 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   if (descricaoCargo) filtrosQuery.set("descricaoCargo", descricaoCargo);
   if (descricaoDpto) filtrosQuery.set("descricaoDpto", descricaoDpto);
   if (regime) filtrosQuery.set("regime", regime);
+  if (colaborador) filtrosQuery.set("colaborador", colaborador);
 
   function filterHref(overrides: Partial<SearchParams>): string {
     const params = new URLSearchParams();
-    const merged = { competencia: competenciaAtual ?? undefined, codEmp, descricaoCargo, descricaoDpto, regime, ...overrides };
+    const merged = { competencia: competenciaAtual ?? undefined, codEmp, descricaoCargo, descricaoDpto, regime, colaborador, ...overrides };
     if (merged.competencia) params.set("competencia", merged.competencia);
     if (merged.codEmp) params.set("codEmp", merged.codEmp);
     if (merged.descricaoCargo) params.set("descricaoCargo", merged.descricaoCargo);
     if (merged.descricaoDpto) params.set("descricaoDpto", merged.descricaoDpto);
     if (merged.regime) params.set("regime", merged.regime);
+    if (merged.colaborador) params.set("colaborador", merged.colaborador);
     return `/faturamento?${params.toString()}`;
   }
 
@@ -142,6 +147,16 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
 
           <form method="GET" className="flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-4">
             {competenciaAtual && <input type="hidden" name="competencia" value={competenciaAtual} />}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-neutral-500">Colaborador</label>
+              <input
+                type="text"
+                name="colaborador"
+                defaultValue={colaborador}
+                placeholder="Nome ou matrícula"
+                className="min-w-48 rounded-md border border-neutral-300 px-3 py-1.5 text-sm"
+              />
+            </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-neutral-500">Cód Emp</label>
               <select name="codEmp" defaultValue={codEmp} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm">
@@ -196,7 +211,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
             </button>
             {filtrosAtivos && (
               <Link
-                href={filterHref({ codEmp: undefined, descricaoCargo: undefined, descricaoDpto: undefined, regime: undefined })}
+                href={filterHref({ codEmp: undefined, descricaoCargo: undefined, descricaoDpto: undefined, regime: undefined, colaborador: undefined })}
                 className="text-sm text-neutral-500 hover:underline"
               >
                 limpar
