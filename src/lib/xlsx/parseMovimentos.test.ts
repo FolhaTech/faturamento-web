@@ -25,6 +25,39 @@ describe("parseMovimentosFile — layout 'relatório' (exportação paginada)", 
     expect(linhas[0]).toMatchObject({ matricula: 90103507, nome: "EDUARDA CAROLINE OKAMURA", evento: "DIAS NORMAIS" });
   });
 
+  /** Monta uma linha de N colunas com valores em posições específicas (índice 0-based) — evita contar vírgulas à mão como as linhas literais acima. */
+  function linhaPorPosicao(valores: Record<number, unknown>, largura = 32): unknown[] {
+    const row = new Array(largura).fill(null);
+    for (const [i, v] of Object.entries(valores)) row[Number(i)] = v;
+    return row;
+  }
+
+  it("acha Referência/Valor/Tipo pelo texto do cabeçalho mesmo com uma coluna a mais deslocando tudo pra direita (caso real: export do Itaú Impressões)", async () => {
+    const buffer = bufferFromRows("Movimentos", [
+      ["Empresa:", null, null, null, null, null, "4 - GENTER SERVICOS EM RECURSOS HUMANOS LTDA"],
+      ["CNPJ:", null, null, null, null, null, "13.173.017/0001-92"],
+      ["Competência:", null, null, null, null, null, "09/2026"],
+      // cabeçalho 1 coluna à direita do "de referência" (Referência em 14, não 13; Valor
+      // calculado em 18, não 17; etc.) — mesmo padrão observado no arquivo real do Itaú.
+      linhaPorPosicao({ 0: "Código", 4: "Nome", 14: "Referência", 18: "Valor calculado", 21: "Valor informado", 25: "Tipo", 28: "Unidade" }),
+      linhaPorPosicao({ 2: "90103362 - ALISON FERNANDES SANTOS" }, 3),
+      linhaPorPosicao({ 0: 8781, 4: "DIAS NORMAIS", 16: "09/2026", 19: 2232.53, 22: 30, 25: "P", 28: "Dias" }),
+    ]);
+
+    const { linhas } = await parseMovimentosFile(buffer);
+    expect(linhas).toHaveLength(1);
+    expect(linhas[0]).toMatchObject({
+      matricula: 90103362,
+      nome: "ALISON FERNANDES SANTOS",
+      evento: "DIAS NORMAIS",
+      competencia: "09/2026", // antes do fix, lia a posição fixa (vazia aqui) e vinha ""
+      valor: 2232.53,
+      ref: 30,
+      tipo: "P",
+      forma: "Dias",
+    });
+  });
+
   it("extrai o Centro de Custo ('Local de trabalho') por matrícula, achando a coluna pelo cabeçalho", async () => {
     const buffer = bufferFromRows("Movimentos", [
       ["Empresa:", null, null, null, null, null, "4 - GENTER SERVICOS EM RECURSOS HUMANOS LTDA"],

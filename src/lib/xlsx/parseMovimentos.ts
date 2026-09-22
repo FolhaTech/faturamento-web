@@ -1,4 +1,5 @@
 import type { MovimentoInput } from "../repo/movimentos";
+import { normalizaTexto } from "../text";
 import type { TipoEvento } from "../types";
 import { readWorkbookGrid, type SheetGrid } from "./grid";
 import { asNumber, asString, detectHeaderRow, headerMap, iterateRows, requireHeaders } from "./readTable";
@@ -86,11 +87,15 @@ function isLayoutCru(sheet: SheetGrid): boolean {
  * linha de colunas se repetem a cada página impressa, o colaborador
  * ("matrícula - nome") aparece numa linha própria acima dos lançamentos
  * (não repetido em cada linha) e há linhas de subtotal ("Total do
- * Empregado:", "Total da empresa:") intercaladas. Colunas fixas por posição:
- * A(0) Código, E(4) Nome do evento, P(15) Referência/Comp, S(18) Valor
- * calculado, V(21) Valor informado, Y(24) Tipo, AB(27) Unidade. Uma coluna
- * "Local de trabalho" (achada pelo texto do cabeçalho, não por posição fixa —
- * ver acharColunaLocalTrabalho) carrega o Centro de Custo do colaborador.
+ * Empregado:", "Total da empresa:") intercaladas. A(0) Código e E(4) Nome do
+ * evento são fixos por posição; os demais campos (Referência/Comp, Valor
+ * calculado, Valor informado, Tipo, Unidade, Local de trabalho) são achados
+ * pelo texto do cabeçalho — ver acharColuna — porque exports diferentes do
+ * mesmo relatório (ex.: um Centro de Custo com uma coluna extra no meio)
+ * deslocam essas colunas pra direita mantendo a mesma distância entre o
+ * rótulo (geralmente mesclado sobre mais de uma coluna) e o valor de fato;
+ * confiar em posição fixa lia célula vazia nesses casos e o lançamento
+ * entrava com competência em branco.
  */
 function isLayoutRelatorio(sheet: SheetGrid): boolean {
   const first = sheet.rows[0]?.[0];
@@ -135,6 +140,28 @@ function acharColunaLocalTrabalho(sheet: SheetGrid): number {
   return COLUNA_LOCAL_TRABALHO_PADRAO;
 }
 
+/**
+ * Acha a coluna de um rótulo de cabeçalho (Referência, Valor calculado, Valor informado, Tipo,
+ * Unidade) pelo texto, só dentro de linhas que também têm "Código" — a linha de cabeçalho de
+ * verdade, que se repete a cada página impressa — em vez de casar o rótulo em qualquer célula
+ * solta da planilha. Cai no `fallback` (posição observada no arquivo de referência, Movimentos
+ * hospitau.xlsx) quando o rótulo não aparece em nenhuma linha de cabeçalho.
+ *
+ * Por que não fixar a posição, como o resto do layout "relatório" faz: exports diferentes do
+ * mesmo relatório (visto num Centro de Custo do Itaú) vêm com uma coluna extra no meio,
+ * deslocando Referência/Valor/Tipo pra direita — ler célula vazia na posição fixa fazia o
+ * lançamento entrar com competência em branco, sem avisar.
+ */
+function acharColuna(sheet: SheetGrid, rotulo: string, fallback: number): number {
+  for (const row of sheet.rows) {
+    if (!row) continue;
+    if (!row.some((v) => typeof v === "string" && normalizaTexto(v) === "CODIGO")) continue;
+    const idx = row.findIndex((v) => typeof v === "string" && normalizaTexto(v) === rotulo);
+    if (idx !== -1) return idx;
+  }
+  return fallback;
+}
+
 interface ParseRelatorioResult {
   linhas: MovimentoInput[];
   /** "Local de trabalho" (Centro de Custo) por matrícula, quando o arquivo traz essa coluna preenchida — usado pra completar automaticamente o cadastro de colaboradores sem Centro de Custo (ver /api/movimentos). Pega o primeiro valor não vazio encontrado por matrícula. */
@@ -143,6 +170,14 @@ interface ParseRelatorioResult {
 
 function parseRelatorio(sheet: SheetGrid): ParseRelatorioResult {
   const colLocalTrabalho = acharColunaLocalTrabalho(sheet);
+  // Offset (+2/+1/+0) é a distância entre o rótulo (geralmente mesclado sobre mais de uma
+  // coluna) e o valor de fato, medida no arquivo de referência — constante entre exports mesmo
+  // quando a posição absoluta muda.
+  const colReferencia = acharColuna(sheet, "REFERENCIA", 13) + 2;
+  const colValorCalculado = acharColuna(sheet, "VALOR CALCULADO", 17) + 1;
+  const colValorInformado = acharColuna(sheet, "VALOR INFORMADO", 20) + 1;
+  const colTipo = acharColuna(sheet, "TIPO", 24);
+  const colUnidade = acharColuna(sheet, "UNIDADE", 27);
   const out: MovimentoInput[] = [];
   const localTrabalhoPorMatricula = new Map<number, string>();
   let matricula: number | null = null;
@@ -181,11 +216,11 @@ function parseRelatorio(sheet: SheetGrid): ParseRelatorioResult {
       matricula,
       nome,
       evento,
-      competencia: asString(row[15]) ?? "",
-      valor: asNumber(row[18]),
-      ref: asNumber(row[21]),
-      tipo: toTipo(asString(row[24])),
-      forma: asString(row[27]),
+      competencia: asString(row[colReferencia]) ?? "",
+      valor: asNumber(row[colValorCalculado]),
+      ref: asNumber(row[colValorInformado]),
+      tipo: toTipo(asString(row[colTipo])),
+      forma: asString(row[colUnidade]),
     });
   }
 
