@@ -26,7 +26,10 @@ interface SearchParams {
 
 export default async function FaturamentoPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const sp = await searchParams;
-  const competencias = await listCompetencias();
+  // Competência em branco (upload antigo que caiu num bug de leitura de coluna, já corrigido —
+  // ver parseMovimentos.ts) não é uma competência de verdade: sem isso, virava um botão vazio
+  // e sem link funcional no seletor abaixo.
+  const competencias = (await listCompetencias()).filter((c) => c.trim() !== "");
   const competenciaAtual = sp.competencia ?? competencias[0] ?? null;
   const codEmp = sp.codEmp ?? "";
   const descricaoCargo = sp.descricaoCargo ?? "";
