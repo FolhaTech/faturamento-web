@@ -13,6 +13,7 @@ interface Row {
   dados: string;
   saldo_ferias: number;
   saldo_um_terco: number;
+  cc: string | null;
 }
 
 function toColaborador(row: Row): Colaborador {
@@ -28,6 +29,7 @@ function toColaborador(row: Row): Colaborador {
     dados: JSON.parse(row.dados) as DadosColaborador,
     saldoFerias: row.saldo_ferias,
     saldoUmTerco: row.saldo_um_terco,
+    cc: row.cc,
   };
 }
 
@@ -168,6 +170,15 @@ export async function updateSaldosFerias(matricula: number, saldoFerias: number,
   await getDb()`
     UPDATE colaboradores SET saldo_ferias = ${saldoFerias}, saldo_um_terco = ${saldoUmTerco} WHERE matricula = ${matricula}
   `;
+  const colaborador = await getColaborador(matricula);
+  if (!colaborador) throw new Error(`Colaborador ${matricula} não encontrado.`);
+  return colaborador;
+}
+
+/** Define o CC do colaborador (edição manual na tela de Faturamento — ver cc em db.ts). null/vazio limpa o campo. */
+export async function updateCc(matricula: number, cc: string | null): Promise<Colaborador> {
+  await ensureSchema();
+  await getDb()`UPDATE colaboradores SET cc = ${cc} WHERE matricula = ${matricula}`;
   const colaborador = await getColaborador(matricula);
   if (!colaborador) throw new Error(`Colaborador ${matricula} não encontrado.`);
   return colaborador;

@@ -5,6 +5,7 @@ import { aggregateByCcusto } from "@/lib/calc/aggregate";
 import { runEngine } from "@/lib/calc/engine";
 import { filtrarLinesPorColaborador } from "@/lib/calc/filtroColaboradores";
 import { FaturamentoPdf } from "@/lib/pdf/FaturamentoPdf";
+import { getColaboradoresPorMatriculas } from "@/lib/repo/colaboradores";
 import { listMovimentosByCompetencia } from "@/lib/repo/movimentos";
 
 export const runtime = "nodejs";
@@ -41,9 +42,13 @@ export async function GET(request: Request) {
   // sair um "Faturamento-X.pdf" idêntico ao da folha inteira, só com números diferentes.
   const regimeLabel = fpas === 515 ? "Terceiro (CLT)" : fpas === 655 ? "Temporário" : null;
 
+  // CC (não obrigatório, digitado na tela de Faturamento) não vem do motor de cálculo.
+  const colaboradoresPorMatricula = await getColaboradoresPorMatriculas(resumo.colaboradores.map((c) => c.matricula));
+  const ccPorMatricula = new Map([...colaboradoresPorMatricula].map(([matricula, colaborador]) => [matricula, colaborador.cc]));
+
   // @react-pdf/renderer tipa renderToBuffer esperando um <Document> literal; FaturamentoPdf
   // retorna um, mas o elemento em si é tipado pelas próprias props do componente.
-  const pdfElement = createElement(FaturamentoPdf, { resumo, warnings, regimeLabel }) as Parameters<typeof renderToBuffer>[0];
+  const pdfElement = createElement(FaturamentoPdf, { resumo, warnings, regimeLabel, ccPorMatricula }) as Parameters<typeof renderToBuffer>[0];
   const buffer = await renderToBuffer(pdfElement);
 
   const filename = `Faturamento-${resumo.ccustoNome}-${competencia.replace("/", "-")}${regimeLabel ? `-${regimeLabel}` : ""}.pdf`.replace(

@@ -80,4 +80,6 @@ export interface Colaborador {
   saldoFerias: number;
   /** Saldo de 1/3 constitucional já provisionado/cobrado do tomador, editado manualmente — separado do saldo de férias. */
   saldoUmTerco: number;
+  /** CC do colaborador — digitado manualmente na tela de Faturamento (não vem de importação/upload), aparece no PDF. Ver cc em db.ts. */
+  cc: string | null;
 }

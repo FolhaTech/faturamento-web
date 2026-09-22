@@ -18,6 +18,7 @@ export function FaturamentoViewer({
   filtrosQuery,
   regimeLabel = null,
   encargos,
+  colaboradoresCc,
 }: {
   resumos: CcustoResumo[];
   warnings: string[];
@@ -33,10 +34,13 @@ export function FaturamentoViewer({
   regimeLabel?: string | null;
   /** Cadastro completo de Encargos — usado pelos checkboxes de INSS/FGTS/Provisões por evento (ver EncargoComponentesToggle). */
   encargos: Encargo[];
+  /** CC (não obrigatório) de cada colaborador mostrado — ver ColaboradoresTable/CcInput. Array (não Map) pelo mesmo motivo de filtrosQuery acima. */
+  colaboradoresCc: { matricula: number; cc: string | null }[];
 }) {
   const [ccustoCodigo, setCcustoCodigo] = useState<string | null>(resumos[0]?.ccustoCodigo ?? null);
   const resumo = useMemo(() => resumos.find((r) => r.ccustoCodigo === ccustoCodigo) ?? resumos[0] ?? null, [resumos, ccustoCodigo]);
   const encargosPorCodigo = useMemo(() => new Map(encargos.map((e) => [e.codigo, e])), [encargos]);
+  const ccPorMatricula = useMemo(() => new Map(colaboradoresCc.map((c) => [c.matricula, c.cc])), [colaboradoresCc]);
 
   if (resumos.length === 0) {
     return <p className="text-sm text-neutral-500">Nenhum centro de custo com lançamentos nessa competência.</p>;
@@ -79,7 +83,7 @@ export function FaturamentoViewer({
           <TotalsCard resumo={resumo} regimeLabel={regimeLabel} />
           <RubricasTable rubricas={resumo.rubricas} encargosPorCodigo={encargosPorCodigo} />
           <DescontosTable rubricas={resumo.rubricas} />
-          <ColaboradoresTable colaboradores={resumo.colaboradores} encargosPorCodigo={encargosPorCodigo} />
+          <ColaboradoresTable colaboradores={resumo.colaboradores} encargosPorCodigo={encargosPorCodigo} ccPorMatricula={ccPorMatricula} />
         </>
       )}
     </div>
@@ -358,18 +362,28 @@ function DescontosTable({ rubricas }: { rubricas: RubricaSomada[] }) {
 }
 
 /** Cada linha abre o detalhamento por evento (rubricas) daquele colaborador — mesmas colunas da tabela de rubricas do centro de custo inteiro, só que restrita a ele. */
-function ColaboradoresTable({ colaboradores, encargosPorCodigo }: { colaboradores: ColaboradorResumo[]; encargosPorCodigo: Map<number, Encargo> }) {
+function ColaboradoresTable({
+  colaboradores,
+  encargosPorCodigo,
+  ccPorMatricula,
+}: {
+  colaboradores: ColaboradorResumo[];
+  encargosPorCodigo: Map<number, Encargo>;
+  /** CC (não obrigatório) de cada colaborador — ver CcInput. */
+  ccPorMatricula: Map<number, string | null>;
+}) {
   const [expandida, setExpandida] = useState<number | null>(null);
 
   return (
     <div className="flex flex-col gap-2">
       <h3 className="px-1 text-sm font-semibold text-neutral-700">Detalhamento por colaborador — clique numa linha pra ver o detalhamento por evento dele</h3>
       <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-        <table className="w-full min-w-[760px] text-sm">
+        <table className="w-full min-w-[860px] text-sm">
           <thead className="bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
             <tr>
               <Th>Matrícula</Th>
               <Th>Nome</Th>
+              <Th>CC</Th>
               <Th right>Despesa</Th>
               <Th right>Taxa Adm</Th>
               <Th right>Fatura</Th>
@@ -392,6 +406,9 @@ function ColaboradoresTable({ colaboradores, encargosPorCodigo }: { colaboradore
                       <span className="mr-1 inline-block w-3 text-neutral-400">{aberta ? "▾" : "▸"}</span>
                       {c.nome}
                     </Td>
+                    <Td onClick={(e) => e.stopPropagation()}>
+                      <CcInput matricula={c.matricula} ccInicial={ccPorMatricula.get(c.matricula) ?? null} />
+                    </Td>
                     <Td right mono>
                       {fmt(c.despesa)}
                     </Td>
@@ -410,7 +427,7 @@ function ColaboradoresTable({ colaboradores, encargosPorCodigo }: { colaboradore
                   </tr>
                   {aberta && (
                     <tr>
-                      <td colSpan={7} className="bg-neutral-50 p-3">
+                      <td colSpan={8} className="bg-neutral-50 p-3">
                         <div className="flex flex-col gap-3">
                           <RubricasTable rubricas={c.rubricas} encargosPorCodigo={encargosPorCodigo} />
                           <DescontosTable rubricas={c.rubricas} />
@@ -428,10 +445,57 @@ function ColaboradoresTable({ colaboradores, encargosPorCodigo }: { colaboradore
   );
 }
 
+/** Campo livre, não obrigatório, digitado direto nessa tela — salva ao sair do campo (blur). Ver /api/colaboradores/[matricula]/cc. */
+function CcInput({ matricula, ccInicial }: { matricula: number; ccInicial: string | null }) {
+  const router = useRouter();
+  const [valor, setValor] = useState(ccInicial ?? "");
+  const [busy, setBusy] = useState(false);
+
+  async function salvar() {
+    if (valor === (ccInicial ?? "")) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/colaboradores/${matricula}/cc`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cc: valor }),
+      });
+      if (res.ok) router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <input
+      value={valor}
+      onChange={(e) => setValor(e.target.value)}
+      onBlur={salvar}
+      disabled={busy}
+      placeholder="—"
+      className="w-24 rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-900"
+    />
+  );
+}
+
 function Th({ children, right }: { children: React.ReactNode; right?: boolean }) {
   return <th className={`px-4 py-2 font-medium ${right ? "text-right" : "text-left"}`}>{children}</th>;
 }
 
-function Td({ children, right, mono }: { children: React.ReactNode; right?: boolean; mono?: boolean }) {
-  return <td className={`px-4 py-2 ${right ? "text-right" : "text-left"} ${mono ? "font-mono tabular-nums" : ""}`}>{children}</td>;
+function Td({
+  children,
+  right,
+  mono,
+  onClick,
+}: {
+  children: React.ReactNode;
+  right?: boolean;
+  mono?: boolean;
+  onClick?: React.MouseEventHandler<HTMLTableCellElement>;
+}) {
+  return (
+    <td onClick={onClick} className={`px-4 py-2 ${right ? "text-right" : "text-left"} ${mono ? "font-mono tabular-nums" : ""}`}>
+      {children}
+    </td>
+  );
 }

@@ -284,31 +284,39 @@ function DescontosSection({ resumo }: { resumo: CcustoResumo }) {
 }
 
 const COLAB_COLS: { key: keyof ColaboradorResumo; label: string; width: string }[] = [
-  { key: "matricula", label: "Matrícula", width: "13%" },
-  { key: "nome", label: "Nome", width: "35%" },
+  { key: "matricula", label: "Matrícula", width: "10%" },
+  { key: "nome", label: "Nome", width: "29%" },
   { key: "despesa", label: "Despesa", width: "10%" },
   { key: "taxaAdm", label: "Taxa Adm", width: "10%" },
   { key: "fatura", label: "Fatura", width: "10%" },
   { key: "impostos", label: "Tributação", width: "11%" },
   { key: "nf", label: "Nota Fiscal", width: "11%" },
 ];
+const COLAB_CC_WIDTH = "9%";
 
-function ColaboradoresSection({ resumo }: { resumo: CcustoResumo }) {
+function ColaboradoresSection({ resumo, ccPorMatricula }: { resumo: CcustoResumo; ccPorMatricula: Map<number, string | null> }) {
   return (
     <View break>
       <Text style={styles.sectionTitle}>Detalhamento por colaborador ({resumo.qtdColaboradores})</Text>
       <View style={styles.table}>
         <View style={styles.tHeadRow} fixed>
-          {COLAB_COLS.map((c) => (
-            <Text key={c.key} style={[styles.tHeadCell, { width: c.width, textAlign: c.key === "matricula" || c.key === "nome" ? "left" : "right" }]}>
+          {COLAB_COLS.slice(0, 2).map((c) => (
+            <Text key={c.key} style={[styles.tHeadCell, { width: c.width, textAlign: "left" }]}>
+              {c.label}
+            </Text>
+          ))}
+          <Text style={[styles.tHeadCell, { width: COLAB_CC_WIDTH, textAlign: "left" }]}>CC</Text>
+          {COLAB_COLS.slice(2).map((c) => (
+            <Text key={c.key} style={[styles.tHeadCell, { width: c.width, textAlign: "right" }]}>
               {c.label}
             </Text>
           ))}
         </View>
         {resumo.colaboradores.map((c, i) => (
           <View key={c.matricula} style={i % 2 === 1 ? styles.tRowAlt : styles.tRow} wrap={false}>
-            <Text style={[styles.tCell, { width: "13%" }]}>{c.matricula}</Text>
-            <Text style={[styles.tCell, { width: "35%" }]}>{c.nome}</Text>
+            <Text style={[styles.tCell, { width: "10%" }]}>{c.matricula}</Text>
+            <Text style={[styles.tCell, { width: "29%" }]}>{c.nome}</Text>
+            <Text style={[styles.tCell, { width: COLAB_CC_WIDTH }]}>{ccPorMatricula.get(c.matricula) ?? ""}</Text>
             <Text style={[styles.tCellRight, { width: "10%" }]}>{fmt(c.despesa)}</Text>
             <Text style={[styles.tCellRight, { width: "10%" }]}>{fmt(c.taxaAdm)}</Text>
             <Text style={[styles.tCellRight, { width: "10%" }]}>{fmt(c.fatura)}</Text>
@@ -317,7 +325,7 @@ function ColaboradoresSection({ resumo }: { resumo: CcustoResumo }) {
           </View>
         ))}
         <View style={styles.totalsRow}>
-          <Text style={[styles.totalsCell, { width: "48%" }]}>Total</Text>
+          <Text style={[styles.totalsCell, { width: `${39 + 9}%` }]}>Total</Text>
           <Text style={[styles.totalsCellRight, { width: "10%" }]}>{fmt(resumo.totalDespesas)}</Text>
           <Text style={[styles.totalsCellRight, { width: "10%" }]}>{fmt(resumo.taxaAdministrativa)}</Text>
           <Text style={[styles.totalsCellRight, { width: "10%" }]}>{fmt(resumo.totalFaturaSemEncargos)}</Text>
@@ -333,11 +341,14 @@ export function FaturamentoPdf({
   resumo,
   warnings,
   regimeLabel = null,
+  ccPorMatricula,
 }: {
   resumo: CcustoResumo;
   warnings: string[];
   /** "Terceiro (CLT)" ou "Temporário" quando o export foi filtrado por regime (ver /api/faturamento/export) — null pra fatura sem esse filtro (mistura os dois regimes). */
   regimeLabel?: string | null;
+  /** CC (não obrigatório) de cada colaborador — ver ColaboradoresSection. */
+  ccPorMatricula: Map<number, string | null>;
 }) {
   const geradoEm = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date());
 
@@ -374,7 +385,7 @@ export function FaturamentoPdf({
 
         <RubricasSection resumo={resumo} />
         <DescontosSection resumo={resumo} />
-        <ColaboradoresSection resumo={resumo} />
+        <ColaboradoresSection resumo={resumo} ccPorMatricula={ccPorMatricula} />
 
         <Footer resumo={resumo} regimeLabel={regimeLabel} />
       </Page>

@@ -5,7 +5,7 @@ import { runEngine } from "@/lib/calc/engine";
 import { filtrarLinesPorColaborador } from "@/lib/calc/filtroColaboradores";
 import { getFaturaSalva, listCompetenciasComFaturaSalva } from "@/lib/repo/faturasSalvas";
 import { listCompetencias, listMovimentosByCompetencia } from "@/lib/repo/movimentos";
-import { listValoresDistintosDados } from "@/lib/repo/colaboradores";
+import { getColaboradoresPorMatriculas, listValoresDistintosDados } from "@/lib/repo/colaboradores";
 import { CHAVE_PLR_CELETISTA, getConfigNumero } from "@/lib/repo/configuracoes";
 import { listEncargos } from "@/lib/repo/encargos";
 import { FaturamentoViewer } from "./FaturamentoViewer";
@@ -67,6 +67,12 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
     const lines = await filtrarLinesPorColaborador(engineLines, { codEmp, descricaoCargo, descricaoDpto, fpas });
     resumos = aggregateByCcusto(lines, competenciaAtual);
   }
+
+  // CC (não obrigatório, digitado na própria tela de Faturamento — ver ColaboradoresTable em
+  // FaturamentoViewer.tsx) não vem do motor de cálculo, então busca à parte por matrícula.
+  const matriculasNaTela = [...new Set(resumos.flatMap((r) => r.colaboradores.map((c) => c.matricula)))];
+  const colaboradoresPorMatricula = await getColaboradoresPorMatriculas(matriculasNaTela);
+  const colaboradoresCc = matriculasNaTela.map((matricula) => ({ matricula, cc: colaboradoresPorMatricula.get(matricula)?.cc ?? null }));
 
   const filtrosQuery = new URLSearchParams();
   if (codEmp) filtrosQuery.set("codEmp", codEmp);
@@ -206,6 +212,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
             filtrosQuery={filtrosQuery.toString()}
             regimeLabel={fpas === 515 ? "Terceiro (CLT)" : fpas === 655 ? "Temporário" : null}
             encargos={encargos}
+            colaboradoresCc={colaboradoresCc}
           />
         </>
       )}

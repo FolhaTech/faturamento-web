@@ -78,6 +78,10 @@ CREATE INDEX IF NOT EXISTS idx_colaboradores_cod_servico ON colaboradores(cod_se
 -- essa coluna inteira, o que apagaria os saldos se eles morassem lá.
 ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS saldo_ferias DOUBLE PRECISION NOT NULL DEFAULT 0;
 ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS saldo_um_terco DOUBLE PRECISION NOT NULL DEFAULT 0;
+-- CC do colaborador — não obrigatório, digitado manualmente na tela de Faturamento (ver
+-- FaturamentoViewer.tsx) e mostrado no PDF. Fora da coluna dados pelo mesmo motivo dos saldos
+-- acima: um reimport da base de Colaboradores não pode apagar o que foi digitado aqui.
+ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS cc TEXT;
 
 CREATE TABLE IF NOT EXISTS movimentos (
   id TEXT PRIMARY KEY,

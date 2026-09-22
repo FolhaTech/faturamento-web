@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { resetDbForTests } from "../db";
-import { getColaborador, getTomadoresPorCcusto, listColaboradores, upsertColaborador } from "./colaboradores";
+import { getColaborador, getTomadoresPorCcusto, listColaboradores, updateCc, upsertColaborador } from "./colaboradores";
 
 beforeEach(async () => {
   await resetDbForTests();
@@ -94,5 +94,33 @@ describe("getTomadoresPorCcusto — descobre o Tomador de um Centro de Custo pel
   it("não retorna nada pra um Centro de Custo sem nenhum colaborador cadastrado", async () => {
     const resultado = await getTomadoresPorCcusto(["CENTRO INEXISTENTE"]);
     expect(resultado.has("CENTRO INEXISTENTE")).toBe(false);
+  });
+});
+
+describe("colaboradores repo — CC (campo opcional digitado na tela de Faturamento)", () => {
+  it("começa null e updateCc grava/lê de volta", async () => {
+    await upsertColaborador({ matricula: 1, dados: { cod_epr: 1, nome: "FULANO" } });
+    expect((await getColaborador(1))!.cc).toBeNull();
+
+    await updateCc(1, "CC-42");
+    expect((await getColaborador(1))!.cc).toBe("CC-42");
+  });
+
+  it("updateCc com null limpa o campo de volta", async () => {
+    await upsertColaborador({ matricula: 1, dados: { cod_epr: 1, nome: "FULANO" } });
+    await updateCc(1, "CC-42");
+    await updateCc(1, null);
+    expect((await getColaborador(1))!.cc).toBeNull();
+  });
+
+  it("sobrevive a um reimport de Colaboradores (upsertColaborador não mexe em cc, igual aos saldos de férias)", async () => {
+    await upsertColaborador({ matricula: 1, dados: { cod_epr: 1, nome: "FULANO" } });
+    await updateCc(1, "CC-42");
+
+    await upsertColaborador({ matricula: 1, dados: { cod_epr: 1, nome: "FULANO DA SILVA", salario: 2000 } });
+
+    const c = (await getColaborador(1))!;
+    expect(c.nome).toBe("FULANO DA SILVA");
+    expect(c.cc).toBe("CC-42");
   });
 });
