@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { getUsuarioAtual } from "@/lib/auth/sessao";
 import { LogoutButton } from "./LogoutButton";
@@ -17,6 +17,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Cadastros — Terceirização",
   description: "Cadastro editável de Colaboradores, Encargos, Informativas e Tomadores.",
+};
+
+/** Força claro sempre, em qualquer navegador/SO — mesmo com modo escuro ligado no sistema (ver também globals.css). */
+export const viewport: Viewport = {
+  colorScheme: "light",
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
