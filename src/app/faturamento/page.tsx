@@ -22,7 +22,7 @@ interface SearchParams {
   descricaoDpto?: string;
   /** FPAS do Tomador — "515" (Terceiro/CLT) ou "655" (Temporário) — ver FiltrosColaborador.fpas. */
   regime?: string;
-  /** Busca livre por nome ou matrícula — ver FiltrosColaborador.colaborador. */
+  /** Matrícula escolhida na lista de colaboradores da tela — ver FiltrosColaborador.colaborador. */
   colaborador?: string;
 }
 
@@ -53,6 +53,10 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   let resumos: ReturnType<typeof aggregateByCcusto> = [];
   let warnings: string[] = [];
   let faturaSalvaEm: string | null = null;
+  // Opções do filtro "Colaborador" — todo mundo com lançamento nessa competência, ANTES de
+  // aplicar esse mesmo filtro (senão escolher um colaborador faria os demais desaparecerem da
+  // lista). Não muda com os outros filtros ativos, igual aos selects de Cargo/Dpto abaixo.
+  let colaboradoresParaFiltro: { matricula: number; nome: string }[] = [];
   if (competenciaAtual) {
     // Competência já salva (ver faturasSalvas.ts): mostra a foto congelada em vez de recalcular
     // ao vivo, pra não mudar retroativamente um mês fechado quando alguém edita uma configuração
@@ -69,6 +73,9 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
       engineLines = engineResult.lines;
       warnings = engineResult.warnings;
     }
+
+    const porMatricula = new Map(engineLines.map((l) => [l.matricula, l.nome]));
+    colaboradoresParaFiltro = [...porMatricula.entries()].map(([matricula, nome]) => ({ matricula, nome })).sort((a, b) => a.nome.localeCompare(b.nome));
 
     const lines = await filtrarLinesPorColaborador(engineLines, { codEmp, descricaoCargo, descricaoDpto, fpas, colaborador });
     resumos = aggregateByCcusto(lines, competenciaAtual);
@@ -149,13 +156,14 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
             {competenciaAtual && <input type="hidden" name="competencia" value={competenciaAtual} />}
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-neutral-500">Colaborador</label>
-              <input
-                type="text"
-                name="colaborador"
-                defaultValue={colaborador}
-                placeholder="Nome ou matrícula"
-                className="min-w-48 rounded-md border border-neutral-300 px-3 py-1.5 text-sm"
-              />
+              <select name="colaborador" defaultValue={colaborador} className="min-w-56 rounded-md border border-neutral-300 px-3 py-1.5 text-sm">
+                <option value="">Todos</option>
+                {colaboradoresParaFiltro.map((c) => (
+                  <option key={c.matricula} value={c.matricula}>
+                    {c.matricula} — {c.nome}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-neutral-500">Cód Emp</label>

@@ -56,31 +56,24 @@ describe("filtrarLinesPorColaborador — regime (fpas)", () => {
   });
 });
 
-describe("filtrarLinesPorColaborador — busca por colaborador (nome ou matrícula)", () => {
-  it("filtra por nome, sem diferenciar maiúsculas/acento — não precisa consultar Colaboradores, nome já vem na linha calculada", async () => {
-    const linhas = [linha({ matricula: 1, nome: "José da Silva" }), linha({ matricula: 2, nome: "Maria Souza" })];
-    const resultado = await filtrarLinesPorColaborador(linhas, { colaborador: "jose" });
-    expect(resultado).toHaveLength(1);
-    expect(resultado[0].matricula).toBe(1);
-  });
-
-  it("filtra por parte do nome (substring), não só o nome inteiro", async () => {
-    const linhas = [linha({ matricula: 1, nome: "CARLOS EDUARDO DE ASSIS" }), linha({ matricula: 2, nome: "MARIA SOUZA" })];
-    const resultado = await filtrarLinesPorColaborador(linhas, { colaborador: "eduardo" });
-    expect(resultado).toHaveLength(1);
-    expect(resultado[0].matricula).toBe(1);
-  });
-
-  it("filtra por matrícula (substring) quando o nome não bate", async () => {
+describe("filtrarLinesPorColaborador — filtro por colaborador (matrícula escolhida na lista da tela)", () => {
+  it("filtra só as linhas da matrícula escolhida — não precisa consultar Colaboradores, matrícula já vem na linha calculada", async () => {
     const linhas = [linha({ matricula: 90103362, nome: "ALISON FERNANDES" }), linha({ matricula: 90103398, nome: "CARLOS EDUARDO" })];
     const resultado = await filtrarLinesPorColaborador(linhas, { colaborador: "90103362" });
     expect(resultado).toHaveLength(1);
     expect(resultado[0].matricula).toBe(90103362);
   });
 
-  it("combina com o filtro de regime — mesmo colaborador em dois regimes, só bate o filtrado", async () => {
-    const linhas = [linha({ matricula: 1, nome: "FULANO", fpas: 515 }), linha({ matricula: 1, nome: "FULANO", fpas: 655 })];
-    const resultado = await filtrarLinesPorColaborador(linhas, { colaborador: "fulano", fpas: 655 });
+  it("não faz match parcial de matrícula — precisa ser a matrícula inteira", async () => {
+    const linhas = [linha({ matricula: 90103362 }), linha({ matricula: 9010336 })];
+    const resultado = await filtrarLinesPorColaborador(linhas, { colaborador: "90103362" });
+    expect(resultado).toHaveLength(1);
+    expect(resultado[0].matricula).toBe(90103362);
+  });
+
+  it("combina com o filtro de regime — mesma matrícula em dois regimes, só bate o filtrado", async () => {
+    const linhas = [linha({ matricula: 1, fpas: 515 }), linha({ matricula: 1, fpas: 655 })];
+    const resultado = await filtrarLinesPorColaborador(linhas, { colaborador: "1", fpas: 655 });
     expect(resultado).toHaveLength(1);
     expect(resultado[0].fpas).toBe(655);
   });
