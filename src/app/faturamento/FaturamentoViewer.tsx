@@ -19,6 +19,7 @@ export function FaturamentoViewer({
   regimeLabel = null,
   encargos,
   colaboradoresCc,
+  previaTotalFaturaPorCcusto,
 }: {
   resumos: CcustoResumo[];
   warnings: string[];
@@ -36,11 +37,14 @@ export function FaturamentoViewer({
   encargos: Encargo[];
   /** CC (não obrigatório) de cada colaborador mostrado — ver ColaboradoresTable/CcInput. Array (não Map) pelo mesmo motivo de filtrosQuery acima. */
   colaboradoresCc: { matricula: number; cc: string | null }[];
+  /** Total fatura (NF) já cobrado na Prévia do mesmo mês, por Centro de Custo — vazio quando a competência atual não é uma Folha ou não tem Prévia correspondente. Ver page.tsx. */
+  previaTotalFaturaPorCcusto: { ccustoCodigo: string; totalFatura: number }[];
 }) {
   const [ccustoCodigo, setCcustoCodigo] = useState<string | null>(resumos[0]?.ccustoCodigo ?? null);
   const resumo = useMemo(() => resumos.find((r) => r.ccustoCodigo === ccustoCodigo) ?? resumos[0] ?? null, [resumos, ccustoCodigo]);
   const encargosPorCodigo = useMemo(() => new Map(encargos.map((e) => [e.codigo, e])), [encargos]);
   const ccPorMatricula = useMemo(() => new Map(colaboradoresCc.map((c) => [c.matricula, c.cc])), [colaboradoresCc]);
+  const previaPorCcusto = useMemo(() => new Map(previaTotalFaturaPorCcusto.map((p) => [p.ccustoCodigo, p.totalFatura])), [previaTotalFaturaPorCcusto]);
 
   if (resumos.length === 0) {
     return <p className="text-sm text-neutral-500">Nenhum centro de custo com lançamentos nessa competência.</p>;
@@ -80,7 +84,7 @@ export function FaturamentoViewer({
 
       {resumo && (
         <>
-          <TotalsCard resumo={resumo} regimeLabel={regimeLabel} />
+          <TotalsCard resumo={resumo} regimeLabel={regimeLabel} previaTotalFatura={previaPorCcusto.get(resumo.ccustoCodigo) ?? null} />
           <RubricasTable rubricas={resumo.rubricas} encargosPorCodigo={encargosPorCodigo} />
           <DescontosTable rubricas={resumo.rubricas} />
           <ColaboradoresTable colaboradores={resumo.colaboradores} encargosPorCodigo={encargosPorCodigo} ccPorMatricula={ccPorMatricula} />
@@ -111,7 +115,16 @@ function WarningsPanel({ warnings }: { warnings: string[] }) {
   );
 }
 
-function TotalsCard({ resumo, regimeLabel }: { resumo: CcustoResumo; regimeLabel: string | null }) {
+function TotalsCard({
+  resumo,
+  regimeLabel,
+  previaTotalFatura,
+}: {
+  resumo: CcustoResumo;
+  regimeLabel: string | null;
+  /** Total fatura (NF) já cobrado na Prévia do mesmo mês — null quando não há Prévia correspondente pra comparar (ver FaturamentoViewer). */
+  previaTotalFatura: number | null;
+}) {
   const rows: [string, number, boolean?][] = [
     ["Total de despesas", resumo.totalDespesas],
     ["Taxa administrativa", resumo.taxaAdministrativa],
@@ -121,6 +134,7 @@ function TotalsCard({ resumo, regimeLabel }: { resumo: CcustoResumo; regimeLabel
     ["Retenções na fonte", -resumo.retencoes.total],
     ["Valor líquido a receber", resumo.valorLiquido, true],
   ];
+  const complementar = previaTotalFatura == null ? null : resumo.totalFatura - previaTotalFatura;
   return (
     <div className="rounded-lg border border-neutral-200 bg-white p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -149,6 +163,21 @@ function TotalsCard({ resumo, regimeLabel }: { resumo: CcustoResumo; regimeLabel
           </div>
         ))}
       </dl>
+      {complementar != null && (
+        <div className="mt-4 rounded-md border border-sky-200 bg-sky-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">Comparação com a Prévia</p>
+          <dl className="mt-2 grid grid-cols-1 gap-x-8 gap-y-1 sm:grid-cols-2">
+            <div className="flex items-baseline justify-between py-0.5">
+              <dt className="text-sky-800">Total fatura já cobrado na Prévia</dt>
+              <dd className="font-mono tabular-nums text-sky-900">{fmt(previaTotalFatura!)}</dd>
+            </div>
+            <div className="flex items-baseline justify-between py-0.5">
+              <dt className="font-medium text-sky-900">{complementar >= 0 ? "Complementar a cobrar" : "Complementar a creditar"} (Folha − Prévia)</dt>
+              <dd className={`font-mono font-semibold tabular-nums ${complementar >= 0 ? "text-sky-900" : "text-amber-700"}`}>{fmt(complementar)}</dd>
+            </div>
+          </dl>
+        </div>
+      )}
     </div>
   );
 }

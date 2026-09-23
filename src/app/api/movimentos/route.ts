@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { aplicarAbatimentoFerias } from "@/lib/calc/abatimentoFerias";
+import { aplicarTipoNaCompetencia } from "@/lib/calc/tipoCompetencia";
 import {
   getColaboradoresPorMatriculas,
   getTomadoresPorCcusto,
@@ -17,20 +18,6 @@ import { getTomadorPorNome, listTomadores, upsertTomadoresPendentes } from "@/li
 import { parseMovimentosFile } from "@/lib/xlsx/parseMovimentos";
 
 export const runtime = "nodejs";
-
-/**
- * Sufixo aplicado à competência lida do arquivo (ex.: "09/2026" -> "09/2026 (Prévia)") — Prévia
- * (cálculo no meio do mês) e Folha (fechamento) da mesma competência ficam como duas
- * "competências" distintas em Movimentos/faturas_salvas/descontos_saldo, sem precisar de coluna
- * nova em lugar nenhum: reenviar Prévia substitui só a Prévia, reenviar Folha substitui só a
- * Folha, e as duas convivem e aparecem separadas no seletor da tela de Faturamento.
- */
-const SUFIXO_TIPO: Record<"previa" | "folha", string> = { previa: " (Prévia)", folha: " (Folha)" };
-
-function aplicarTipoNaCompetencia(competencia: string, tipo: "previa" | "folha"): string {
-  const base = competencia.trim();
-  return base === "" ? competencia : `${base}${SUFIXO_TIPO[tipo]}`;
-}
 
 export async function GET() {
   const [competencias, total] = await Promise.all([listCompetencias(), countMovimentos()]);
