@@ -72,10 +72,10 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   // naquele momento em vez de recalcular — senão editar a Prévia depois mudaria sozinho um
   // complementar que já devia estar fechado.
   let previaTotalFaturaPorCcusto: PreviaTotalPorCcusto[] = [];
-  // Eventos excluídos manualmente da fatura, por Centro de Custo (ver eventosExcluidos.ts) — já
+  // Eventos excluídos manualmente da fatura, por colaborador (ver eventosExcluidos.ts) — já
   // somem do cálculo ao vivo (carregarEngineLines abaixo aplica o filtro), essa lista aqui é só
   // pra mostrar o painel de "excluídos" com opção de restaurar (ver FaturamentoViewer.tsx).
-  let eventosExcluidos: { ccustoCodigo: string; evento: string }[] = [];
+  let eventosExcluidos: { matricula: number; evento: string }[] = [];
   if (competenciaAtual) {
     // Competência já salva (ver faturasSalvas.ts): mostra a foto congelada em vez de recalcular
     // ao vivo, pra não mudar retroativamente um mês fechado quando alguém edita uma configuração

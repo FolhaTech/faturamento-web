@@ -171,18 +171,24 @@ CREATE INDEX IF NOT EXISTS idx_faturas_salvas_usuario ON faturas_salvas (compete
 -- correspondente (ou a competência é a própria Prévia, ou é antiga e nunca teve esse campo).
 ALTER TABLE faturas_salvas ADD COLUMN IF NOT EXISTS previa_total_fatura TEXT NOT NULL DEFAULT '[]';
 
--- Evento excluído manualmente da fatura de um Centro de Custo inteiro numa competência (ver
--- eventosExcluidos.ts) — some da tabela de eventos e do total faturado pra TODOS os colaboradores
--- daquele Ccusto, não só um. Separado de Movimentos de propósito, igual descontos_saldo acima:
--- reenviar o arquivo da competência não traz o evento de volta sozinho — fica excluído até
--- alguém restaurar manualmente (ver restaurarEvento).
+-- Evento excluído manualmente da fatura de UM colaborador numa competência (ver
+-- eventosExcluidos.ts) — some da tabela de eventos e do total faturado só pra ele, não afeta os
+-- demais colaboradores do mesmo Centro de Custo. Separado de Movimentos de propósito, igual
+-- descontos_saldo acima: reenviar o arquivo da competência não traz o evento de volta sozinho —
+-- fica excluído até alguém restaurar manualmente (ver restaurarEvento).
 CREATE TABLE IF NOT EXISTS eventos_excluidos (
-  ccusto_codigo TEXT NOT NULL,
   competencia TEXT NOT NULL,
   evento TEXT NOT NULL,
-  excluido_em TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY (ccusto_codigo, competencia, evento)
+  excluido_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Migração: exclusão deixa de ser por Centro de Custo inteiro e vira por colaborador — o recurso
+-- tinha acabado de sair, sem uso real ainda, então linhas da chave antiga (ccusto_codigo em vez
+-- de matricula) não precisam de backfill, só descartar a coluna velha.
+ALTER TABLE eventos_excluidos DROP CONSTRAINT IF EXISTS eventos_excluidos_pkey;
+ALTER TABLE eventos_excluidos DROP COLUMN IF EXISTS ccusto_codigo;
+ALTER TABLE eventos_excluidos ADD COLUMN IF NOT EXISTS matricula INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE eventos_excluidos ALTER COLUMN matricula DROP DEFAULT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_eventos_excluidos_pk ON eventos_excluidos (matricula, competencia, evento);
 
 -- Login do sistema (ver src/lib/auth/). Senha nunca gravada em texto puro: scrypt (Node
 -- built-in, sem dependência nem segredo externo) com salt por usuário — ver auth/senha.ts.

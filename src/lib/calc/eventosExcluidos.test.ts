@@ -35,31 +35,32 @@ function linha(overrides: Partial<CalculatedLine> = {}): CalculatedLine {
   };
 }
 
-describe("filtrarEventosExcluidos — remove eventos excluídos manualmente por Centro de Custo", () => {
+describe("filtrarEventosExcluidos — remove eventos excluídos manualmente por colaborador", () => {
   it("sem exclusões, não mexe nas linhas", () => {
     const lines = [linha(), linha({ matricula: 2, evento: "HORAS EXTRAS 50%" })];
     expect(filtrarEventosExcluidos(lines, new Set())).toBe(lines);
   });
 
-  it("remove todas as linhas do evento excluído nesse Ccusto, de qualquer colaborador", () => {
+  it("remove só as linhas do evento excluído desse colaborador, não dos demais", () => {
     const lines = [
       linha({ matricula: 1, evento: "HORAS EXTRAS 50%" }),
       linha({ matricula: 2, evento: "HORAS EXTRAS 50%" }),
       linha({ matricula: 1, evento: "DIAS NORMAIS" }),
     ];
-    const excluidos = new Set([chaveEventoExcluido("10", "HORAS EXTRAS 50%")]);
+    const excluidos = new Set([chaveEventoExcluido(1, "HORAS EXTRAS 50%")]);
 
     const resultado = filtrarEventosExcluidos(lines, excluidos);
-    expect(resultado).toHaveLength(1);
-    expect(resultado[0].evento).toBe("DIAS NORMAIS");
+    expect(resultado).toHaveLength(2);
+    expect(resultado.some((l) => l.matricula === 2 && l.evento === "HORAS EXTRAS 50%")).toBe(true);
+    expect(resultado.some((l) => l.matricula === 1 && l.evento === "DIAS NORMAIS")).toBe(true);
   });
 
-  it("não afeta o mesmo evento em outro Centro de Custo", () => {
-    const lines = [linha({ ccustoCodigo: "10", evento: "HORAS EXTRAS 50%" }), linha({ ccustoCodigo: "20", evento: "HORAS EXTRAS 50%" })];
-    const excluidos = new Set([chaveEventoExcluido("10", "HORAS EXTRAS 50%")]);
+  it("não afeta o mesmo evento de outro colaborador, mesmo no mesmo Centro de Custo", () => {
+    const lines = [linha({ matricula: 1, evento: "HORAS EXTRAS 50%" }), linha({ matricula: 2, evento: "HORAS EXTRAS 50%" })];
+    const excluidos = new Set([chaveEventoExcluido(1, "HORAS EXTRAS 50%")]);
 
     const resultado = filtrarEventosExcluidos(lines, excluidos);
     expect(resultado).toHaveLength(1);
-    expect(resultado[0].ccustoCodigo).toBe("20");
+    expect(resultado[0].matricula).toBe(2);
   });
 });
