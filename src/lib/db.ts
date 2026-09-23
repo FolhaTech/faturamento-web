@@ -133,14 +133,37 @@ CREATE TABLE IF NOT EXISTS descontos_saldo (
 -- de salvar (checkboxes de INSS/FGTS/Provisões por evento, Gross Up, PLR, descontos de saldo).
 -- Sem isso, a tela de Faturamento recalcula tudo ao vivo a cada acesso e um mês passado muda
 -- retroativamente sempre que alguém mexe numa configuração global hoje — a foto salva aqui é o
--- que fica de referência pra aquele mês, mesmo depois. Reenviar o arquivo de Movimentos daquela
--- competência apaga a foto salva (os dados de origem mudaram — ver replaceMovimentosPorCompetencia).
+-- que fica de referência pra aquele mês, mesmo depois.
+--
+-- Cada "Salvar Fatura" INSERE uma linha nova (nunca sobrescreve) — é um log, não mais uma linha
+-- por competência: dois usuários salvando a mesma competência não apagam a foto um do outro, e
+-- cada usuário vê como "ativa" a própria entrada mais recente (não descartada), não a de outro
+-- (ver getFaturaSalvaDoUsuario em faturasSalvas.ts). A coluna descartada marca uma entrada que
+-- não vale mais como ativa — por um "Descartar" manual do próprio usuário, ou porque o arquivo de
+-- Movimentos daquela competência foi reenviado (dados de origem mudaram — ver
+-- replaceMovimentosPorCompetencia); em nenhum dos casos a linha é apagada, só marcada, pra sobrar
+-- registro na timeline de quem salvou o quê.
 CREATE TABLE IF NOT EXISTS faturas_salvas (
-  competencia TEXT PRIMARY KEY,
+  competencia TEXT NOT NULL,
   lines TEXT NOT NULL,
   warnings TEXT NOT NULL DEFAULT '[]',
   salvo_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Migração: a chave primária deixa de ser só competencia (uma linha por mês, compartilhada
+-- entre todo mundo) pra virar um log com id próprio por save, dono (usuario_email/nome) e uma
+-- coluna descartada que substitui o antigo DELETE. Linhas de antes dessa migração (sem dono
+-- conhecido) ganham um id sintético (a própria competência, que já era única) e ficam atribuídas
+-- a "sistema".
+ALTER TABLE faturas_salvas DROP CONSTRAINT IF EXISTS faturas_salvas_pkey;
+ALTER TABLE faturas_salvas ADD COLUMN IF NOT EXISTS id TEXT;
+UPDATE faturas_salvas SET id = competencia WHERE id IS NULL;
+ALTER TABLE faturas_salvas ALTER COLUMN id SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_faturas_salvas_id ON faturas_salvas (id);
+ALTER TABLE faturas_salvas ADD COLUMN IF NOT EXISTS usuario_email TEXT NOT NULL DEFAULT 'sistema';
+ALTER TABLE faturas_salvas ADD COLUMN IF NOT EXISTS usuario_nome TEXT NOT NULL DEFAULT 'Versão salva antes do login por usuário';
+ALTER TABLE faturas_salvas ADD COLUMN IF NOT EXISTS descartada BOOLEAN NOT NULL DEFAULT false;
+CREATE INDEX IF NOT EXISTS idx_faturas_salvas_competencia_salvo_em ON faturas_salvas (competencia, salvo_em DESC);
+CREATE INDEX IF NOT EXISTS idx_faturas_salvas_usuario ON faturas_salvas (competencia, usuario_email, salvo_em DESC);
 -- Total fatura (NF) já cobrado na Prévia correspondente, por Centro de Custo, congelado no
 -- momento de salvar uma Folha (ver tipoCompetencia.ts/faturaCompetencia.ts) — pra que o
 -- "complementar a cobrar" (Folha − Prévia) mostrado na tela e no PDF não mude sozinho se a

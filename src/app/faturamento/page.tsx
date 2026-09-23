@@ -1,12 +1,14 @@
 import Link from "next/link";
+import { getUsuarioAtual } from "@/lib/auth/sessao";
 import { aggregateByCcusto } from "@/lib/calc/aggregate";
 import { calcularPreviaTotalFaturaPorCcusto, carregarEngineLines, type PreviaTotalPorCcusto } from "@/lib/calc/faturaCompetencia";
 import { filtrarLinesPorColaborador, type FiltrosColaborador } from "@/lib/calc/filtroColaboradores";
-import { listCompetenciasComFaturaSalva } from "@/lib/repo/faturasSalvas";
+import { listMinhasCompetenciasComFaturaSalva } from "@/lib/repo/faturasSalvas";
 import { listCompetencias } from "@/lib/repo/movimentos";
 import { getColaboradoresPorMatriculas, listValoresDistintosDados } from "@/lib/repo/colaboradores";
 import { CHAVE_PLR_CELETISTA, getConfigNumero } from "@/lib/repo/configuracoes";
 import { listEncargos } from "@/lib/repo/encargos";
+import { FaturaTimeline } from "./FaturaTimeline";
 import { FaturamentoViewer } from "./FaturamentoViewer";
 import { PlrConfigForm } from "./PlrConfigForm";
 import { SalvarFaturaBanner } from "./SalvarFaturaBanner";
@@ -40,13 +42,18 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   const colaborador = sp.colaborador ?? "";
   const filtrosAtivos = Boolean(codEmp || descricaoCargo || descricaoDpto || regime || colaborador);
 
-  const [codEmps, descricoesCargo, descricoesDpto, plrCeletista, encargos, competenciasComFaturaSalva] = await Promise.all([
+  // Cada usuário vê a própria fatura salva, não a de outro (ver faturasSalvas.ts) — sem usuário
+  // logado (sessão expirada bem no meio da requisição) tudo cai no cálculo ao vivo.
+  const usuario = await getUsuarioAtual();
+  const usuarioEmail = usuario?.email ?? null;
+
+  const [codEmps, descricoesCargo, descricoesDpto, plrCeletista, encargos, minhasCompetenciasComFaturaSalva] = await Promise.all([
     listValoresDistintosDados("cod_emp"),
     listValoresDistintosDados("descricao_cargo"),
     listValoresDistintosDados("descricao_dpto"),
     getConfigNumero(CHAVE_PLR_CELETISTA, 29.32),
     listEncargos(),
-    listCompetenciasComFaturaSalva(competencias),
+    listMinhasCompetenciasComFaturaSalva(competencias, usuarioEmail ?? ""),
   ]);
 
   let resumos: ReturnType<typeof aggregateByCcusto> = [];
@@ -73,7 +80,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
       warnings: engineWarnings,
       salvoEm,
       previaTotalFaturaPorCcusto: previaCongelada,
-    } = await carregarEngineLines(competenciaAtual);
+    } = await carregarEngineLines(competenciaAtual, usuarioEmail);
     warnings = engineWarnings;
     faturaSalvaEm = salvoEm;
 
@@ -84,7 +91,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
     const lines = await filtrarLinesPorColaborador(engineLines, filtros);
     resumos = aggregateByCcusto(lines, competenciaAtual);
 
-    previaTotalFaturaPorCcusto = previaCongelada ?? (await calcularPreviaTotalFaturaPorCcusto(competenciaAtual));
+    previaTotalFaturaPorCcusto = previaCongelada ?? (await calcularPreviaTotalFaturaPorCcusto(competenciaAtual, usuarioEmail));
   }
 
   // CC (não obrigatório, digitado na própria tela de Faturamento — ver ColaboradoresTable em
@@ -141,13 +148,13 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
               <Link
                 key={c}
                 href={filterHref({ competencia: c })}
-                title={competenciasComFaturaSalva.has(c) ? "Fatura salva (foto congelada)" : "Ainda não salva — mostra o cálculo ao vivo"}
+                title={minhasCompetenciasComFaturaSalva.has(c) ? "Você salvou uma fatura pra essa competência" : "Ainda não salva por você — mostra o cálculo ao vivo"}
                 className={`rounded-full px-3 py-1 text-sm ${
                   c === competenciaAtual ? "bg-emerald-700 text-white" : "border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
                 }`}
               >
                 {c}
-                {competenciasComFaturaSalva.has(c) && (
+                {minhasCompetenciasComFaturaSalva.has(c) && (
                   <span className={`ml-1.5 text-[10px] uppercase tracking-wide ${c === competenciaAtual ? "text-emerald-200" : "text-emerald-600"}`}>
                     salva
                   </span>
@@ -157,6 +164,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
           </div>
 
           {competenciaAtual && <SalvarFaturaBanner competencia={competenciaAtual} salvoEm={faturaSalvaEm} />}
+          {competenciaAtual && <FaturaTimeline competencia={competenciaAtual} usuarioEmail={usuarioEmail} />}
 
           <form method="GET" className="flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-4">
             {competenciaAtual && <input type="hidden" name="competencia" value={competenciaAtual} />}

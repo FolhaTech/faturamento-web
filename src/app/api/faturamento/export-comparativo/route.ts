@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { NextResponse } from "next/server";
+import { getUsuarioAtual } from "@/lib/auth/sessao";
 import { aggregateByCcusto } from "@/lib/calc/aggregate";
 import { calcularPreviaTotalFaturaPorCcusto, carregarEngineLines } from "@/lib/calc/faturaCompetencia";
 import { trocarTipoCompetencia } from "@/lib/calc/tipoCompetencia";
@@ -23,7 +24,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Essa competência não é uma Folha — só dá pra comparar Prévia × Folha a partir de uma Folha." }, { status: 400 });
   }
 
-  const { lines, previaTotalFaturaPorCcusto: previaCongelada } = await carregarEngineLines(competenciaFolha);
+  const usuario = await getUsuarioAtual();
+  const { lines, previaTotalFaturaPorCcusto: previaCongelada } = await carregarEngineLines(competenciaFolha, usuario?.email ?? null);
   if (lines.length === 0) {
     return NextResponse.json({ error: `Nenhum lançamento encontrado para a competência ${competenciaFolha}.` }, { status: 404 });
   }
@@ -34,7 +36,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Centro de custo não encontrado nessa competência." }, { status: 404 });
   }
 
-  const previaTotalFaturaPorCcusto = previaCongelada ?? (await calcularPreviaTotalFaturaPorCcusto(competenciaFolha));
+  const previaTotalFaturaPorCcusto = previaCongelada ?? (await calcularPreviaTotalFaturaPorCcusto(competenciaFolha, usuario?.email ?? null));
   const totalFaturaPrevia = previaTotalFaturaPorCcusto.find((p) => p.ccustoCodigo === resumo.ccustoCodigo)?.totalFatura;
   if (totalFaturaPrevia === undefined) {
     return NextResponse.json({ error: `Não há Prévia correspondente (${competenciaPrevia}) pra esse Centro de Custo.` }, { status: 404 });

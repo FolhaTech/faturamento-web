@@ -57,8 +57,9 @@ export function SalvarFaturaBanner({ competencia, salvoEm }: { competencia: stri
     return (
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-900">
         <span>
-          <strong>Fatura salva</strong> em {fmtData(salvoEm)} — os valores abaixo estão congelados desse jeito e não mudam sozinhos se você
-          editar checkboxes de INSS/FGTS/Provisões, Gross Up ou PLR depois (isso só afeta competências ainda não salvas).
+          <strong>Você salvou esta fatura</strong> em {fmtData(salvoEm)} — os valores abaixo estão congelados desse jeito, só pra você, e não
+          mudam sozinhos se editar checkboxes de INSS/FGTS/Provisões, Gross Up ou PLR depois. Se outro usuário também salvou essa competência,
+          a versão dele é independente da sua — veja a timeline abaixo.
         </span>
         <div className="ml-auto flex gap-2">
           <button
@@ -85,7 +86,10 @@ export function SalvarFaturaBanner({ competencia, salvoEm }: { competencia: stri
 
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm text-neutral-700">
-      <span>Mostrando o cálculo ao vivo dessa competência (ainda não salva) — edições em Encargos, Gross Up, PLR ou descontos mudam esses números na hora.</span>
+      <span>
+        Mostrando o cálculo ao vivo dessa competência (você ainda não salvou uma versão sua) — edições em Encargos, Gross Up, PLR ou descontos
+        mudam esses números na hora.
+      </span>
       <button
         type="button"
         onClick={salvar}

@@ -1,4 +1,4 @@
-import { getFaturaSalva } from "../repo/faturasSalvas";
+import { getFaturaSalvaDoUsuario } from "../repo/faturasSalvas";
 import { listMovimentosByCompetencia } from "../repo/movimentos";
 import { aggregateByCcusto } from "./aggregate";
 import type { CalculatedLine } from "./engine";
@@ -24,9 +24,15 @@ export interface EngineLinesCarregadas {
   previaTotalFaturaPorCcusto: PreviaTotalPorCcusto[] | null;
 }
 
-/** Linhas calculadas de uma competência — foto salva se existir, senão calcula ao vivo (ver SalvarFaturaBanner/faturasSalvas.ts). Reaproveitado pela tela de Faturamento e pelo export de PDF, pra nunca divergir. */
-export async function carregarEngineLines(competencia: string): Promise<EngineLinesCarregadas> {
-  const salva = await getFaturaSalva(competencia);
+/**
+ * Linhas calculadas de uma competência — foto salva do PRÓPRIO usuário (`usuarioEmail`) se
+ * existir, senão calcula ao vivo (ver SalvarFaturaBanner/faturasSalvas.ts). Cada usuário só vê a
+ * própria foto: dois usuários vendo a mesma competência podem ver números diferentes se só um
+ * deles salvou. `usuarioEmail` null (sessão sem usuário) sempre cai no cálculo ao vivo.
+ * Reaproveitado pela tela de Faturamento e pelo export de PDF, pra nunca divergir.
+ */
+export async function carregarEngineLines(competencia: string, usuarioEmail: string | null): Promise<EngineLinesCarregadas> {
+  const salva = usuarioEmail ? await getFaturaSalvaDoUsuario(competencia, usuarioEmail) : null;
   if (salva) {
     return { lines: salva.lines, warnings: salva.warnings, salvoEm: salva.salvoEm, previaTotalFaturaPorCcusto: salva.previaTotalFaturaPorCcusto };
   }
@@ -46,11 +52,11 @@ export async function carregarEngineLines(competencia: string): Promise<EngineLi
  * `competencia` pode ser Folha ou Prévia — só calcula algo quando é uma Folha com Prévia
  * correspondente já enviada; nos demais casos retorna [].
  */
-export async function calcularPreviaTotalFaturaPorCcusto(competencia: string): Promise<PreviaTotalPorCcusto[]> {
+export async function calcularPreviaTotalFaturaPorCcusto(competencia: string, usuarioEmail: string | null): Promise<PreviaTotalPorCcusto[]> {
   const competenciaPrevia = trocarTipoCompetencia(competencia, "folha", "previa");
   if (!competenciaPrevia) return [];
 
-  const { lines } = await carregarEngineLines(competenciaPrevia);
+  const { lines } = await carregarEngineLines(competenciaPrevia, usuarioEmail);
   if (lines.length === 0) return [];
 
   const resumosPrevia = aggregateByCcusto(lines, competenciaPrevia);

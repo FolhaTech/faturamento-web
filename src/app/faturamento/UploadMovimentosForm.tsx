@@ -7,7 +7,7 @@ import { useRef, useState } from "react";
 interface CompetenciaComDados {
   competencia: string;
   existentes: number;
-  /** true = essa competência tem fatura salva (foto congelada) que também será apagada — ver faturasSalvas.ts. */
+  /** true = essa competência tem fatura ativa salva (de algum usuário) que também será descartada — ver faturasSalvas.ts. */
   faturaSalva: boolean;
 }
 
@@ -144,7 +144,11 @@ export function UploadMovimentosForm() {
               <li key={c.competencia}>
                 {c.competencia}: {c.existentes} lançamento(s) salvo(s) hoje serão apagados e substituídos pelo conteúdo do arquivo novo.
                 {c.faturaSalva && (
-                  <strong className="text-amber-950"> Essa competência tem uma fatura salva (foto congelada) — ela também será apagada.</strong>
+                  <strong className="text-amber-950">
+                    {" "}
+                    Essa competência tem fatura salva (foto congelada) de algum usuário — ela também será descartada (continua na timeline, mas
+                    quem salvou volta a ver o cálculo ao vivo).
+                  </strong>
                 )}
               </li>
             ))}

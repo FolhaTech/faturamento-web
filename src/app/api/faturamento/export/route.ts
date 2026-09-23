@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { NextResponse } from "next/server";
+import { getUsuarioAtual } from "@/lib/auth/sessao";
 import { aggregateByCcusto } from "@/lib/calc/aggregate";
 import { carregarEngineLines } from "@/lib/calc/faturaCompetencia";
 import { filtrarLinesPorColaborador } from "@/lib/calc/filtroColaboradores";
@@ -23,10 +24,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Informe a competência (?competencia=MM/AAAA)." }, { status: 400 });
   }
 
-  // Competência já salva (ver faturasSalvas.ts): usa a foto congelada em vez de recalcular ao
-  // vivo, pra o PDF exportado nunca divergir do que está (ou estava, se algo mudou depois) na
-  // tela — mesma fonte de dados de src/app/faturamento/page.tsx.
-  const { lines: allLines, warnings } = await carregarEngineLines(competencia);
+  // Competência já salva PELO USUÁRIO LOGADO (ver faturasSalvas.ts): usa a foto congelada em vez
+  // de recalcular ao vivo, pra o PDF exportado nunca divergir do que está (ou estava, se algo
+  // mudou depois) na tela desse usuário — mesma fonte de dados de src/app/faturamento/page.tsx.
+  const usuario = await getUsuarioAtual();
+  const { lines: allLines, warnings } = await carregarEngineLines(competencia, usuario?.email ?? null);
   if (allLines.length === 0) {
     return NextResponse.json({ error: `Nenhum lançamento encontrado para a competência ${competencia}.` }, { status: 404 });
   }
