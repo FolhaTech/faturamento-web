@@ -78,6 +78,14 @@ export function FaturamentoViewer({
             Exportar PDF
           </a>
         )}
+        {resumo && previaPorCcusto.has(resumo.ccustoCodigo) && (
+          <a
+            href={`/api/faturamento/export-comparativo?competencia=${encodeURIComponent(resumo.competencia)}&ccusto=${encodeURIComponent(resumo.ccustoCodigo)}`}
+            className="flex items-center gap-2 rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-800"
+          >
+            Exportar comparativo Prévia × Folha
+          </a>
+        )}
       </div>
 
       {warnings.length > 0 && <WarningsPanel warnings={warnings} />}

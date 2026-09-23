@@ -17,10 +17,6 @@ const ACCENT = "#0f6b4c";
 const ACCENT_SOFT = "#e4f2ec";
 const LINE = "#d7ded9";
 const HEADER_BG = "#0f6b4c";
-const COMPARE_BG = "#eff6ff";
-const COMPARE_BORDER = "#93c5fd";
-const COMPARE_TEXT = "#1e3a5f";
-const CREDIT_TEXT = "#92400e";
 
 const styles = StyleSheet.create({
   page: { paddingTop: 28, paddingBottom: 36, paddingHorizontal: 28, fontSize: 8.5, fontFamily: "Helvetica", color: INK },
@@ -100,13 +96,6 @@ const styles = StyleSheet.create({
     paddingTop: 6,
   },
   footnote: { fontSize: 7, color: INK_SOFT, marginTop: 6 },
-
-  compareBox: { marginTop: 10, borderWidth: 0.5, borderColor: COMPARE_BORDER, backgroundColor: COMPARE_BG, borderRadius: 2, padding: 8 },
-  compareTitle: { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: COMPARE_TEXT, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 },
-  compareRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 2 },
-  compareLabel: { fontSize: 8.5, color: COMPARE_TEXT },
-  compareValue: { fontSize: 8.5, fontFamily: "Helvetica-Bold", color: COMPARE_TEXT },
-  compareLabelStrong: { fontSize: 9, fontFamily: "Helvetica-Bold", color: COMPARE_TEXT },
 });
 
 function Footer({ resumo, regimeLabel }: { resumo: CcustoResumo; regimeLabel: string | null }) {
@@ -121,8 +110,7 @@ function Footer({ resumo, regimeLabel }: { resumo: CcustoResumo; regimeLabel: st
   );
 }
 
-function SummarySection({ resumo, previaTotalFatura }: { resumo: CcustoResumo; previaTotalFatura: number | null }) {
-  const complementar = previaTotalFatura == null ? null : resumo.totalFatura - previaTotalFatura;
+function SummarySection({ resumo }: { resumo: CcustoResumo }) {
   return (
     <View>
       <Text style={styles.sectionTitle}>Resumo</Text>
@@ -180,19 +168,6 @@ function SummarySection({ resumo, previaTotalFatura }: { resumo: CcustoResumo; p
           </View>
         </View>
       </View>
-      {complementar != null && (
-        <View style={styles.compareBox}>
-          <Text style={styles.compareTitle}>Comparação com a Prévia</Text>
-          <View style={styles.compareRow}>
-            <Text style={styles.compareLabel}>Total fatura já cobrado na Prévia</Text>
-            <Text style={styles.compareValue}>{fmt(previaTotalFatura!)}</Text>
-          </View>
-          <View style={styles.compareRow}>
-            <Text style={styles.compareLabelStrong}>{complementar >= 0 ? "Complementar a cobrar" : "Complementar a creditar"} (Folha - Prévia)</Text>
-            <Text style={[styles.compareValue, { fontSize: 9.5, color: complementar >= 0 ? COMPARE_TEXT : CREDIT_TEXT }]}>{fmt(complementar)}</Text>
-          </View>
-        </View>
-      )}
     </View>
   );
 }
@@ -367,7 +342,6 @@ export function FaturamentoPdf({
   warnings,
   regimeLabel = null,
   ccPorMatricula,
-  previaTotalFatura,
 }: {
   resumo: CcustoResumo;
   warnings: string[];
@@ -375,8 +349,6 @@ export function FaturamentoPdf({
   regimeLabel?: string | null;
   /** CC (não obrigatório) de cada colaborador — ver ColaboradoresSection. */
   ccPorMatricula: Map<number, string | null>;
-  /** Total fatura (NF) já cobrado na Prévia correspondente, pro Ccusto deste PDF — null quando não há Prévia pra comparar (ver SummarySection). */
-  previaTotalFatura: number | null;
 }) {
   const geradoEm = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date());
 
@@ -397,7 +369,7 @@ export function FaturamentoPdf({
           </View>
         </View>
 
-        <SummarySection resumo={resumo} previaTotalFatura={previaTotalFatura} />
+        <SummarySection resumo={resumo} />
 
         {warnings.length > 0 && (
           <View>

@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { NextResponse } from "next/server";
 import { aggregateByCcusto } from "@/lib/calc/aggregate";
-import { calcularPreviaTotalFaturaPorCcusto, carregarEngineLines } from "@/lib/calc/faturaCompetencia";
+import { carregarEngineLines } from "@/lib/calc/faturaCompetencia";
 import { filtrarLinesPorColaborador } from "@/lib/calc/filtroColaboradores";
 import { FaturamentoPdf } from "@/lib/pdf/FaturamentoPdf";
 import { getColaboradoresPorMatriculas } from "@/lib/repo/colaboradores";
@@ -26,7 +26,7 @@ export async function GET(request: Request) {
   // Competência já salva (ver faturasSalvas.ts): usa a foto congelada em vez de recalcular ao
   // vivo, pra o PDF exportado nunca divergir do que está (ou estava, se algo mudou depois) na
   // tela — mesma fonte de dados de src/app/faturamento/page.tsx.
-  const { lines: allLines, warnings, previaTotalFaturaPorCcusto: previaCongelada } = await carregarEngineLines(competencia);
+  const { lines: allLines, warnings } = await carregarEngineLines(competencia);
   if (allLines.length === 0) {
     return NextResponse.json({ error: `Nenhum lançamento encontrado para a competência ${competencia}.` }, { status: 404 });
   }
@@ -43,11 +43,6 @@ export async function GET(request: Request) {
   // sair um "Faturamento-X.pdf" idêntico ao da folha inteira, só com números diferentes.
   const regimeLabel = fpas === 515 ? "Terceiro (CLT)" : fpas === 655 ? "Temporário" : null;
 
-  // Total já cobrado na Prévia correspondente, pro Ccusto deste PDF — congelado se a Folha foi
-  // salva, senão ao vivo (ver page.tsx, mesma lógica). Aparece como "complementar" no resumo.
-  const previaTotalFaturaPorCcusto = previaCongelada ?? (await calcularPreviaTotalFaturaPorCcusto(competencia));
-  const previaTotalFatura = previaTotalFaturaPorCcusto.find((p) => p.ccustoCodigo === resumo.ccustoCodigo)?.totalFatura ?? null;
-
   // CC (não obrigatório, digitado na tela de Faturamento) não vem do motor de cálculo.
   const colaboradoresPorMatricula = await getColaboradoresPorMatriculas(resumo.colaboradores.map((c) => c.matricula));
   const ccPorMatricula = new Map([...colaboradoresPorMatricula].map(([matricula, colaborador]) => [matricula, colaborador.cc]));
@@ -59,7 +54,6 @@ export async function GET(request: Request) {
     warnings,
     regimeLabel,
     ccPorMatricula,
-    previaTotalFatura,
   }) as Parameters<typeof renderToBuffer>[0];
   const buffer = await renderToBuffer(pdfElement);
 
