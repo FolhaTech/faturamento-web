@@ -20,6 +20,7 @@ interface PendingConfirm {
 export function UploadMovimentosForm() {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
+  const [tipo, setTipo] = useState<"previa" | "folha">("previa");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -35,6 +36,7 @@ export function UploadMovimentosForm() {
   async function enviarArquivo(file: File, confirmar: boolean): Promise<boolean> {
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("tipo", tipo);
     if (confirmar) formData.append("confirmar", "true");
 
     setBusy(true);
@@ -93,6 +95,24 @@ export function UploadMovimentosForm() {
 
   return (
     <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-3 rounded-lg border border-neutral-200 bg-white p-5">
+      <div>
+        <span className="block text-sm font-medium text-neutral-700 mb-1">Esse cálculo é Prévia ou Folha?</span>
+        <p className="mb-2 text-xs text-neutral-500">
+          Prévia e Folha da mesma competência ficam salvas separadas — subir uma não apaga a outra, só substitui se
+          reenviar o mesmo tipo de novo.
+        </p>
+        <div className="flex gap-4">
+          <label className="flex items-center gap-1.5 text-sm text-neutral-700">
+            <input type="radio" name="tipoRadio" checked={tipo === "previa"} onChange={() => setTipo("previa")} />
+            Prévia (meio do mês)
+          </label>
+          <label className="flex items-center gap-1.5 text-sm text-neutral-700">
+            <input type="radio" name="tipoRadio" checked={tipo === "folha"} onChange={() => setTipo("folha")} />
+            Folha (fechamento)
+          </label>
+        </div>
+      </div>
+
       <div>
         <label htmlFor="file" className="block text-sm font-medium text-neutral-700 mb-1">
           Arquivo de Movimentos do mês (.xlsx ou .xls)

@@ -18,6 +18,20 @@ import { parseMovimentosFile } from "@/lib/xlsx/parseMovimentos";
 
 export const runtime = "nodejs";
 
+/**
+ * Sufixo aplicado à competência lida do arquivo (ex.: "09/2026" -> "09/2026 (Prévia)") — Prévia
+ * (cálculo no meio do mês) e Folha (fechamento) da mesma competência ficam como duas
+ * "competências" distintas em Movimentos/faturas_salvas/descontos_saldo, sem precisar de coluna
+ * nova em lugar nenhum: reenviar Prévia substitui só a Prévia, reenviar Folha substitui só a
+ * Folha, e as duas convivem e aparecem separadas no seletor da tela de Faturamento.
+ */
+const SUFIXO_TIPO: Record<"previa" | "folha", string> = { previa: " (Prévia)", folha: " (Folha)" };
+
+function aplicarTipoNaCompetencia(competencia: string, tipo: "previa" | "folha"): string {
+  const base = competencia.trim();
+  return base === "" ? competencia : `${base}${SUFIXO_TIPO[tipo]}`;
+}
+
 export async function GET() {
   const [competencias, total] = await Promise.all([listCompetencias(), countMovimentos()]);
   return NextResponse.json({ competencias, total });
@@ -35,6 +49,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Formato inválido — envie um arquivo .xlsx ou .xls." }, { status: 400 });
   }
 
+  const tipoRaw = formData.get("tipo");
+  const tipo: "previa" | "folha" = tipoRaw === "folha" ? "folha" : "previa";
+
   const buffer = Buffer.from(await file.arrayBuffer());
 
   let linhas, tomadorNomeArquivo, localTrabalhoPorMatricula;
@@ -48,6 +65,8 @@ export async function POST(request: Request) {
   if (linhas.length === 0) {
     return NextResponse.json({ error: "Nenhum lançamento reconhecido no arquivo." }, { status: 422 });
   }
+
+  linhas = linhas.map((l) => ({ ...l, competencia: aplicarTipoNaCompetencia(l.competencia, tipo) }));
 
   const competencias = [...new Set(linhas.map((l) => l.competencia))];
 
