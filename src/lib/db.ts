@@ -141,6 +141,12 @@ CREATE TABLE IF NOT EXISTS faturas_salvas (
   warnings TEXT NOT NULL DEFAULT '[]',
   salvo_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Total fatura (NF) já cobrado na Prévia correspondente, por Centro de Custo, congelado no
+-- momento de salvar uma Folha (ver tipoCompetencia.ts/faturaCompetencia.ts) — pra que o
+-- "complementar a cobrar" (Folha − Prévia) mostrado na tela e no PDF não mude sozinho se a
+-- Prévia for editada/reenviada depois de a Folha já ter sido salva. '[]' quando não há Prévia
+-- correspondente (ou a competência é a própria Prévia, ou é antiga e nunca teve esse campo).
+ALTER TABLE faturas_salvas ADD COLUMN IF NOT EXISTS previa_total_fatura TEXT NOT NULL DEFAULT '[]';
 
 -- Login do sistema (ver src/lib/auth/). Senha nunca gravada em texto puro: scrypt (Node
 -- built-in, sem dependência nem segredo externo) com salt por usuário — ver auth/senha.ts.

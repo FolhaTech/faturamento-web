@@ -49,7 +49,7 @@ describe("faturasSalvas repo — foto congelada do faturamento por competência"
     const lines = [linha(), linha({ matricula: 2, evento: "HORAS EXTRAS 50%", nf: 42.5 })];
     const warnings = ["aviso 1", "aviso 2"];
 
-    await salvarFatura("01/2026", lines, warnings);
+    await salvarFatura("01/2026", lines, warnings, []);
     const salva = await getFaturaSalva("01/2026");
 
     expect(salva).not.toBeNull();
@@ -57,30 +57,38 @@ describe("faturasSalvas repo — foto congelada do faturamento por competência"
     expect(salva!.lines[1].evento).toBe("HORAS EXTRAS 50%");
     expect(salva!.lines[1].nf).toBeCloseTo(42.5, 6);
     expect(salva!.warnings).toEqual(warnings);
+    expect(salva!.previaTotalFaturaPorCcusto).toEqual([]);
     expect(new Date(salva!.salvoEm).getTime()).not.toBeNaN();
   });
 
+  it("salva e lê de volta o total da Prévia congelado por Ccusto", async () => {
+    await salvarFatura("01/2026 (Folha)", [linha()], [], [{ ccustoCodigo: "10", totalFatura: 2035.54 }]);
+    const salva = await getFaturaSalva("01/2026 (Folha)");
+    expect(salva!.previaTotalFaturaPorCcusto).toEqual([{ ccustoCodigo: "10", totalFatura: 2035.54 }]);
+  });
+
   it("salvar de novo pra mesma competência substitui (não duplica) e atualiza salvo_em", async () => {
-    await salvarFatura("01/2026", [linha()], []);
+    await salvarFatura("01/2026", [linha()], [], []);
     const primeira = await getFaturaSalva("01/2026");
 
     await new Promise((r) => setTimeout(r, 5));
-    await salvarFatura("01/2026", [linha(), linha({ matricula: 2 })], ["novo aviso"]);
+    await salvarFatura("01/2026", [linha(), linha({ matricula: 2 })], ["novo aviso"], [{ ccustoCodigo: "10", totalFatura: 500 }]);
     const segunda = await getFaturaSalva("01/2026");
 
     expect(segunda!.lines).toHaveLength(2);
     expect(segunda!.warnings).toEqual(["novo aviso"]);
+    expect(segunda!.previaTotalFaturaPorCcusto).toEqual([{ ccustoCodigo: "10", totalFatura: 500 }]);
     expect(new Date(segunda!.salvoEm).getTime()).toBeGreaterThanOrEqual(new Date(primeira!.salvoEm).getTime());
   });
 
   it("descartarFaturaSalva remove a foto — volta a não ter nada salvo", async () => {
-    await salvarFatura("01/2026", [linha()], []);
+    await salvarFatura("01/2026", [linha()], [], []);
     await descartarFaturaSalva("01/2026");
     expect(await getFaturaSalva("01/2026")).toBeNull();
   });
 
   it("listCompetenciasComFaturaSalva só retorna as que têm foto salva", async () => {
-    await salvarFatura("01/2026", [linha()], []);
+    await salvarFatura("01/2026", [linha()], [], []);
     const resultado = await listCompetenciasComFaturaSalva(["01/2026", "02/2026"]);
     expect(resultado.has("01/2026")).toBe(true);
     expect(resultado.has("02/2026")).toBe(false);
@@ -99,7 +107,7 @@ describe("faturasSalvas repo — foto congelada do faturamento por competência"
       forma: "Dias",
     };
     await replaceMovimentosPorCompetencia([mov]);
-    await salvarFatura("01/2026", [linha()], []);
+    await salvarFatura("01/2026", [linha()], [], []);
     expect(await getFaturaSalva("01/2026")).not.toBeNull();
 
     // Reenvio: substitui as linhas de Movimentos da mesma competência.
@@ -108,7 +116,7 @@ describe("faturasSalvas repo — foto congelada do faturamento por competência"
   });
 
   it("reenviar Movimentos de OUTRA competência não mexe na fatura salva desta", async () => {
-    await salvarFatura("01/2026", [linha()], []);
+    await salvarFatura("01/2026", [linha()], [], []);
     await replaceMovimentosPorCompetencia([
       {
         codigo: 8781,

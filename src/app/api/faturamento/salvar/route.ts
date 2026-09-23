@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
+import { calcularPreviaTotalFaturaPorCcusto } from "@/lib/calc/faturaCompetencia";
 import { runEngine } from "@/lib/calc/engine";
 import { descartarFaturaSalva, salvarFatura } from "@/lib/repo/faturasSalvas";
 import { listMovimentosByCompetencia } from "@/lib/repo/movimentos";
 
 export const runtime = "nodejs";
 
-/** Congela o cálculo ao vivo da competência (ver faturasSalvas.ts) — a tela de Faturamento passa a mostrar essa foto em vez de recalcular. */
+/**
+ * Congela o cálculo ao vivo da competência (ver faturasSalvas.ts) — a tela de Faturamento passa
+ * a mostrar essa foto em vez de recalcular. Quando `competencia` é uma Folha, também congela o
+ * total já cobrado na Prévia correspondente (ver calcularPreviaTotalFaturaPorCcusto) — o
+ * "complementar a cobrar" mostrado depois não muda mais se a Prévia for editada/reenviada.
+ */
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const competencia = typeof body?.competencia === "string" ? body.competencia : null;
@@ -18,8 +24,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: `Nenhum lançamento encontrado para a competência ${competencia}.` }, { status: 404 });
   }
 
-  const { lines, warnings } = await runEngine(movimentos);
-  const fatura = await salvarFatura(competencia, lines, warnings);
+  const [{ lines, warnings }, previaTotalFaturaPorCcusto] = await Promise.all([
+    runEngine(movimentos),
+    calcularPreviaTotalFaturaPorCcusto(competencia),
+  ]);
+  const fatura = await salvarFatura(competencia, lines, warnings, previaTotalFaturaPorCcusto);
 
   return NextResponse.json({ salvoEm: fatura.salvoEm });
 }

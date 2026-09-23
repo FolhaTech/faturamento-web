@@ -1,11 +1,9 @@
 import Link from "next/link";
 import { aggregateByCcusto } from "@/lib/calc/aggregate";
-import type { CalculatedLine } from "@/lib/calc/engine";
-import { runEngine } from "@/lib/calc/engine";
+import { calcularPreviaTotalFaturaPorCcusto, carregarEngineLines, type PreviaTotalPorCcusto } from "@/lib/calc/faturaCompetencia";
 import { filtrarLinesPorColaborador, type FiltrosColaborador } from "@/lib/calc/filtroColaboradores";
-import { trocarTipoCompetencia } from "@/lib/calc/tipoCompetencia";
-import { getFaturaSalva, listCompetenciasComFaturaSalva } from "@/lib/repo/faturasSalvas";
-import { listCompetencias, listMovimentosByCompetencia } from "@/lib/repo/movimentos";
+import { listCompetenciasComFaturaSalva } from "@/lib/repo/faturasSalvas";
+import { listCompetencias } from "@/lib/repo/movimentos";
 import { getColaboradoresPorMatriculas, listValoresDistintosDados } from "@/lib/repo/colaboradores";
 import { CHAVE_PLR_CELETISTA, getConfigNumero } from "@/lib/repo/configuracoes";
 import { listEncargos } from "@/lib/repo/encargos";
@@ -13,15 +11,6 @@ import { FaturamentoViewer } from "./FaturamentoViewer";
 import { PlrConfigForm } from "./PlrConfigForm";
 import { SalvarFaturaBanner } from "./SalvarFaturaBanner";
 import { UploadMovimentosForm } from "./UploadMovimentosForm";
-
-/** Linhas calculadas de uma competência — foto salva se existir, senão calcula ao vivo (ver SalvarFaturaBanner/faturasSalvas.ts). */
-async function carregarEngineLines(competencia: string): Promise<{ lines: CalculatedLine[]; warnings: string[]; salvoEm: string | null }> {
-  const salva = await getFaturaSalva(competencia);
-  if (salva) return { lines: salva.lines, warnings: salva.warnings, salvoEm: salva.salvoEm };
-  const movimentos = await listMovimentosByCompetencia(competencia);
-  const { lines, warnings } = await runEngine(movimentos);
-  return { lines, warnings, salvoEm: null };
-}
 
 export const dynamic = "force-dynamic";
 
@@ -69,16 +58,22 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   let colaboradoresParaFiltro: { matricula: number; nome: string }[] = [];
   // Total fatura (NF) já cobrado na Prévia correspondente, por Centro de Custo — só quando a
   // competência atual é uma Folha (fechamento) E existe a Prévia do mesmo mês (ver
-  // tipoCompetencia.ts). Mostrado na tela como "complementar a cobrar" (Folha − Prévia): a
+  // faturaCompetencia.ts). Mostrado na tela como "complementar a cobrar" (Folha − Prévia): a
   // Prévia já foi cobrada do cliente antes, só a diferença falta faturar agora que a Folha
-  // fechou. Aplica os mesmos filtros ativos (colaborador, cargo etc.) pra comparar igual pra
-  // igual com o que está sendo mostrado.
-  let previaTotalFaturaPorCcusto: { ccustoCodigo: string; totalFatura: number }[] = [];
+  // fechou. Se a Folha já foi salva (fatura congelada), usa o valor da Prévia CONGELADO
+  // naquele momento em vez de recalcular — senão editar a Prévia depois mudaria sozinho um
+  // complementar que já devia estar fechado.
+  let previaTotalFaturaPorCcusto: PreviaTotalPorCcusto[] = [];
   if (competenciaAtual) {
     // Competência já salva (ver faturasSalvas.ts): mostra a foto congelada em vez de recalcular
     // ao vivo, pra não mudar retroativamente um mês fechado quando alguém edita uma configuração
     // global (Encargos, Gross Up, PLR) hoje.
-    const { lines: engineLines, warnings: engineWarnings, salvoEm } = await carregarEngineLines(competenciaAtual);
+    const {
+      lines: engineLines,
+      warnings: engineWarnings,
+      salvoEm,
+      previaTotalFaturaPorCcusto: previaCongelada,
+    } = await carregarEngineLines(competenciaAtual);
     warnings = engineWarnings;
     faturaSalvaEm = salvoEm;
 
@@ -89,13 +84,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
     const lines = await filtrarLinesPorColaborador(engineLines, filtros);
     resumos = aggregateByCcusto(lines, competenciaAtual);
 
-    const competenciaPrevia = trocarTipoCompetencia(competenciaAtual, "folha", "previa");
-    if (competenciaPrevia && competencias.includes(competenciaPrevia)) {
-      const { lines: previaEngineLines } = await carregarEngineLines(competenciaPrevia);
-      const previaLines = await filtrarLinesPorColaborador(previaEngineLines, filtros);
-      const previaResumos = aggregateByCcusto(previaLines, competenciaPrevia);
-      previaTotalFaturaPorCcusto = previaResumos.map((r) => ({ ccustoCodigo: r.ccustoCodigo, totalFatura: r.totalFatura }));
-    }
+    previaTotalFaturaPorCcusto = previaCongelada ?? (await calcularPreviaTotalFaturaPorCcusto(competenciaAtual));
   }
 
   // CC (não obrigatório, digitado na própria tela de Faturamento — ver ColaboradoresTable em

@@ -1,3 +1,4 @@
+import type { PreviaTotalPorCcusto } from "../calc/faturaCompetencia";
 import type { CalculatedLine } from "../calc/engine";
 import { ensureSchema, getDb } from "../db";
 
@@ -6,6 +7,8 @@ export interface FaturaSalva {
   lines: CalculatedLine[];
   warnings: string[];
   salvoEm: string;
+  /** Total já cobrado na Prévia correspondente, por Ccusto, congelado no momento de salvar — ver calcularPreviaTotalFaturaPorCcusto em faturaCompetencia.ts. Array vazio quando não havia Prévia (ou é a própria Prévia, ou a foto é antiga). */
+  previaTotalFaturaPorCcusto: PreviaTotalPorCcusto[];
 }
 
 interface Row {
@@ -13,6 +16,7 @@ interface Row {
   lines: string;
   warnings: string;
   salvo_em: string;
+  previa_total_fatura: string;
 }
 
 function toFaturaSalva(row: Row): FaturaSalva {
@@ -21,6 +25,7 @@ function toFaturaSalva(row: Row): FaturaSalva {
     lines: JSON.parse(row.lines) as CalculatedLine[],
     warnings: JSON.parse(row.warnings) as string[],
     salvoEm: row.salvo_em,
+    previaTotalFaturaPorCcusto: JSON.parse(row.previa_total_fatura) as PreviaTotalPorCcusto[],
   };
 }
 
@@ -31,13 +36,19 @@ export async function getFaturaSalva(competencia: string): Promise<FaturaSalva |
   return rows[0] ? toFaturaSalva(rows[0]) : null;
 }
 
-/** Salva (ou substitui) a foto da competência — quem chama decide o que vai em `lines`/`warnings` (normalmente o runEngine mais recente). */
-export async function salvarFatura(competencia: string, lines: CalculatedLine[], warnings: string[]): Promise<FaturaSalva> {
+/** Salva (ou substitui) a foto da competência — quem chama decide o que vai em `lines`/`warnings` (normalmente o runEngine mais recente) e em `previaTotalFaturaPorCcusto` (ver calcularPreviaTotalFaturaPorCcusto). */
+export async function salvarFatura(
+  competencia: string,
+  lines: CalculatedLine[],
+  warnings: string[],
+  previaTotalFaturaPorCcusto: PreviaTotalPorCcusto[],
+): Promise<FaturaSalva> {
   await ensureSchema();
   await getDb()`
-    INSERT INTO faturas_salvas (competencia, lines, warnings, salvo_em)
-    VALUES (${competencia}, ${JSON.stringify(lines)}, ${JSON.stringify(warnings)}, now())
-    ON CONFLICT (competencia) DO UPDATE SET lines = excluded.lines, warnings = excluded.warnings, salvo_em = excluded.salvo_em
+    INSERT INTO faturas_salvas (competencia, lines, warnings, salvo_em, previa_total_fatura)
+    VALUES (${competencia}, ${JSON.stringify(lines)}, ${JSON.stringify(warnings)}, now(), ${JSON.stringify(previaTotalFaturaPorCcusto)})
+    ON CONFLICT (competencia) DO UPDATE SET
+      lines = excluded.lines, warnings = excluded.warnings, salvo_em = excluded.salvo_em, previa_total_fatura = excluded.previa_total_fatura
   `;
   return (await getFaturaSalva(competencia))!;
 }
