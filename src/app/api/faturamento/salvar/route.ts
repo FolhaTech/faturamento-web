@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getUsuarioAtual } from "@/lib/auth/sessao";
-import { calcularPreviaTotalFaturaPorCcusto } from "@/lib/calc/faturaCompetencia";
-import { runEngine } from "@/lib/calc/engine";
+import { calcularLinesAoVivo, calcularPreviaTotalFaturaPorCcusto } from "@/lib/calc/faturaCompetencia";
 import { descartarFaturaSalva, salvarFatura } from "@/lib/repo/faturasSalvas";
 import { listMovimentosByCompetencia } from "@/lib/repo/movimentos";
 
@@ -33,7 +32,7 @@ export async function POST(request: Request) {
   }
 
   const [{ lines, warnings }, previaTotalFaturaPorCcusto] = await Promise.all([
-    runEngine(movimentos),
+    calcularLinesAoVivo(competencia),
     calcularPreviaTotalFaturaPorCcusto(competencia, usuario.email),
   ]);
   const fatura = await salvarFatura(competencia, usuario, lines, warnings, previaTotalFaturaPorCcusto);

@@ -171,6 +171,19 @@ CREATE INDEX IF NOT EXISTS idx_faturas_salvas_usuario ON faturas_salvas (compete
 -- correspondente (ou a competência é a própria Prévia, ou é antiga e nunca teve esse campo).
 ALTER TABLE faturas_salvas ADD COLUMN IF NOT EXISTS previa_total_fatura TEXT NOT NULL DEFAULT '[]';
 
+-- Evento excluído manualmente da fatura de um Centro de Custo inteiro numa competência (ver
+-- eventosExcluidos.ts) — some da tabela de eventos e do total faturado pra TODOS os colaboradores
+-- daquele Ccusto, não só um. Separado de Movimentos de propósito, igual descontos_saldo acima:
+-- reenviar o arquivo da competência não traz o evento de volta sozinho — fica excluído até
+-- alguém restaurar manualmente (ver restaurarEvento).
+CREATE TABLE IF NOT EXISTS eventos_excluidos (
+  ccusto_codigo TEXT NOT NULL,
+  competencia TEXT NOT NULL,
+  evento TEXT NOT NULL,
+  excluido_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (ccusto_codigo, competencia, evento)
+);
+
 -- Login do sistema (ver src/lib/auth/). Senha nunca gravada em texto puro: scrypt (Node
 -- built-in, sem dependência nem segredo externo) com salt por usuário — ver auth/senha.ts.
 -- Cadastro é liberado só pra e-mails de domínios específicos, checado em código (ver
@@ -246,6 +259,6 @@ export async function resetDbForTests(): Promise<void> {
   }
   await ensureSchema();
   const sql = getDb();
-  await sql`TRUNCATE tomadores, encargos, informativas, colaboradores, movimentos, descontos_saldo, faturas_salvas, usuarios, sessoes`;
+  await sql`TRUNCATE tomadores, encargos, informativas, colaboradores, movimentos, descontos_saldo, faturas_salvas, eventos_excluidos, usuarios, sessoes`;
   await sql`UPDATE configuracoes SET valor = 29.32 WHERE chave = 'plr_celetista'`;
 }

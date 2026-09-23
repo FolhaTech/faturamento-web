@@ -20,6 +20,7 @@ export function FaturamentoViewer({
   encargos,
   colaboradoresCc,
   previaTotalFaturaPorCcusto,
+  eventosExcluidos,
 }: {
   resumos: CcustoResumo[];
   warnings: string[];
@@ -39,12 +40,50 @@ export function FaturamentoViewer({
   colaboradoresCc: { matricula: number; cc: string | null }[];
   /** Total fatura (NF) já cobrado na Prévia do mesmo mês, por Centro de Custo — vazio quando a competência atual não é uma Folha ou não tem Prévia correspondente. Ver page.tsx. */
   previaTotalFaturaPorCcusto: { ccustoCodigo: string; totalFatura: number }[];
+  /** Eventos excluídos manualmente da fatura, por Centro de Custo (ver eventosExcluidos.ts) — usado só pro painel de restaurar, o cálculo já vem sem eles. */
+  eventosExcluidos: { ccustoCodigo: string; evento: string }[];
 }) {
+  const router = useRouter();
   const [ccustoCodigo, setCcustoCodigo] = useState<string | null>(resumos[0]?.ccustoCodigo ?? null);
+  const [busyExclusao, setBusyExclusao] = useState(false);
   const resumo = useMemo(() => resumos.find((r) => r.ccustoCodigo === ccustoCodigo) ?? resumos[0] ?? null, [resumos, ccustoCodigo]);
   const encargosPorCodigo = useMemo(() => new Map(encargos.map((e) => [e.codigo, e])), [encargos]);
   const ccPorMatricula = useMemo(() => new Map(colaboradoresCc.map((c) => [c.matricula, c.cc])), [colaboradoresCc]);
   const previaPorCcusto = useMemo(() => new Map(previaTotalFaturaPorCcusto.map((p) => [p.ccustoCodigo, p.totalFatura])), [previaTotalFaturaPorCcusto]);
+  const eventosExcluidosDoCcusto = useMemo(
+    () => (resumo ? eventosExcluidos.filter((e) => e.ccustoCodigo === resumo.ccustoCodigo) : []),
+    [eventosExcluidos, resumo],
+  );
+
+  async function excluirEvento(evento: string) {
+    if (!resumo) return;
+    if (!window.confirm(`Excluir "${evento}" da fatura de ${resumo.ccustoNome}?\n\nIsso remove esse evento de TODOS os colaboradores desse Centro de Custo nessa competência — dá pra restaurar depois.`)) {
+      return;
+    }
+    setBusyExclusao(true);
+    try {
+      const res = await fetch("/api/faturamento/eventos-excluidos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ccustoCodigo: resumo.ccustoCodigo, competencia: resumo.competencia, evento }),
+      });
+      if (res.ok) router.refresh();
+    } finally {
+      setBusyExclusao(false);
+    }
+  }
+
+  async function restaurarEvento(evento: string) {
+    if (!resumo) return;
+    setBusyExclusao(true);
+    try {
+      const params = new URLSearchParams({ ccustoCodigo: resumo.ccustoCodigo, competencia: resumo.competencia, evento });
+      const res = await fetch(`/api/faturamento/eventos-excluidos?${params.toString()}`, { method: "DELETE" });
+      if (res.ok) router.refresh();
+    } finally {
+      setBusyExclusao(false);
+    }
+  }
 
   if (resumos.length === 0) {
     return <p className="text-sm text-neutral-500">Nenhum centro de custo com lançamentos nessa competência.</p>;
@@ -93,7 +132,14 @@ export function FaturamentoViewer({
       {resumo && (
         <>
           <TotalsCard resumo={resumo} regimeLabel={regimeLabel} previaTotalFatura={previaPorCcusto.get(resumo.ccustoCodigo) ?? null} />
-          <RubricasTable rubricas={resumo.rubricas} encargosPorCodigo={encargosPorCodigo} />
+          <RubricasTable
+            rubricas={resumo.rubricas}
+            encargosPorCodigo={encargosPorCodigo}
+            excluir={{ ccustoNome: resumo.ccustoNome, onExcluir: excluirEvento, busy: busyExclusao }}
+          />
+          {eventosExcluidosDoCcusto.length > 0 && (
+            <EventosExcluidosPanel eventos={eventosExcluidosDoCcusto} onRestaurar={restaurarEvento} busy={busyExclusao} />
+          )}
           <DescontosTable rubricas={resumo.rubricas} />
           <ColaboradoresTable colaboradores={resumo.colaboradores} encargosPorCodigo={encargosPorCodigo} ccPorMatricula={ccPorMatricula} />
         </>
@@ -190,7 +236,16 @@ function TotalsCard({
   );
 }
 
-function RubricasTable({ rubricas, encargosPorCodigo }: { rubricas: RubricaSomada[]; encargosPorCodigo: Map<number, Encargo> }) {
+function RubricasTable({
+  rubricas,
+  encargosPorCodigo,
+  excluir,
+}: {
+  rubricas: RubricaSomada[];
+  encargosPorCodigo: Map<number, Encargo>;
+  /** Presente só na tabela do RESUMO do Centro de Custo inteiro (não na do detalhamento por colaborador) — dá um botão de excluir por linha, que tira o evento da fatura de todo mundo daquele Ccusto (ver excluirEvento em FaturamentoViewer). */
+  excluir?: { ccustoNome: string; onExcluir: (evento: string) => void | Promise<void>; busy: boolean };
+}) {
   const rubricasComImpacto = rubricas.filter((r) => r.trilha !== "excluido");
   const ocultas = rubricas.length - rubricasComImpacto.length;
 
@@ -214,6 +269,7 @@ function RubricasTable({ rubricas, encargosPorCodigo }: { rubricas: RubricaSomad
               <Th right>Fatura</Th>
               <Th right>Tributação</Th>
               <Th right>Nota Fiscal</Th>
+              {excluir && <Th right>{""}</Th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100">
@@ -262,6 +318,19 @@ function RubricasTable({ rubricas, encargosPorCodigo }: { rubricas: RubricaSomad
                 <Td right mono>
                   <span className="font-semibold text-neutral-900">{fmt(r.nf)}</span>
                 </Td>
+                {excluir && (
+                  <Td right>
+                    <button
+                      type="button"
+                      disabled={excluir.busy}
+                      onClick={() => excluir.onExcluir(r.evento)}
+                      title={`Excluir "${r.evento}" da fatura de ${excluir.ccustoNome} (todos os colaboradores)`}
+                      className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      Excluir
+                    </button>
+                  </Td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -272,6 +341,38 @@ function RubricasTable({ rubricas, encargosPorCodigo }: { rubricas: RubricaSomad
           {ocultas} evento(s) do tipo Desconto/FGTS/INSS não entram na soma do faturamento — veja a tabela de descontos abaixo.
         </p>
       )}
+    </div>
+  );
+}
+
+/** Lista os eventos excluídos manualmente da fatura desse Centro de Custo, com opção de restaurar (ver excluirEvento/restaurarEvento em FaturamentoViewer). */
+function EventosExcluidosPanel({
+  eventos,
+  onRestaurar,
+  busy,
+}: {
+  eventos: { ccustoCodigo: string; evento: string }[];
+  onRestaurar: (evento: string) => void | Promise<void>;
+  busy: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+      <p className="font-medium">{eventos.length} evento(s) excluído(s) manualmente dessa fatura — não entram no total, pra nenhum colaborador desse Centro de Custo:</p>
+      <ul className="mt-1.5 flex flex-wrap gap-2">
+        {eventos.map((e) => (
+          <li key={e.evento} className="flex items-center gap-2 rounded-md border border-amber-300 bg-white px-2.5 py-1">
+            <span>{e.evento}</span>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onRestaurar(e.evento)}
+              className="text-xs font-medium text-amber-800 underline hover:no-underline disabled:opacity-50"
+            >
+              Restaurar
+            </button>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

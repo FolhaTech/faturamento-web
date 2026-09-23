@@ -3,6 +3,7 @@ import { getUsuarioAtual } from "@/lib/auth/sessao";
 import { aggregateByCcusto } from "@/lib/calc/aggregate";
 import { calcularPreviaTotalFaturaPorCcusto, carregarEngineLines, type PreviaTotalPorCcusto } from "@/lib/calc/faturaCompetencia";
 import { filtrarLinesPorColaborador, type FiltrosColaborador } from "@/lib/calc/filtroColaboradores";
+import { listEventosExcluidos } from "@/lib/repo/eventosExcluidos";
 import { listMinhasCompetenciasComFaturaSalva } from "@/lib/repo/faturasSalvas";
 import { listCompetencias } from "@/lib/repo/movimentos";
 import { getColaboradoresPorMatriculas, listValoresDistintosDados } from "@/lib/repo/colaboradores";
@@ -71,6 +72,10 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   // naquele momento em vez de recalcular — senão editar a Prévia depois mudaria sozinho um
   // complementar que já devia estar fechado.
   let previaTotalFaturaPorCcusto: PreviaTotalPorCcusto[] = [];
+  // Eventos excluídos manualmente da fatura, por Centro de Custo (ver eventosExcluidos.ts) — já
+  // somem do cálculo ao vivo (carregarEngineLines abaixo aplica o filtro), essa lista aqui é só
+  // pra mostrar o painel de "excluídos" com opção de restaurar (ver FaturamentoViewer.tsx).
+  let eventosExcluidos: { ccustoCodigo: string; evento: string }[] = [];
   if (competenciaAtual) {
     // Competência já salva (ver faturasSalvas.ts): mostra a foto congelada em vez de recalcular
     // ao vivo, pra não mudar retroativamente um mês fechado quando alguém edita uma configuração
@@ -92,6 +97,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
     resumos = aggregateByCcusto(lines, competenciaAtual);
 
     previaTotalFaturaPorCcusto = previaCongelada ?? (await calcularPreviaTotalFaturaPorCcusto(competenciaAtual, usuarioEmail));
+    eventosExcluidos = await listEventosExcluidos(competenciaAtual);
   }
 
   // CC (não obrigatório, digitado na própria tela de Faturamento — ver ColaboradoresTable em
@@ -254,6 +260,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
             encargos={encargos}
             colaboradoresCc={colaboradoresCc}
             previaTotalFaturaPorCcusto={previaTotalFaturaPorCcusto}
+            eventosExcluidos={eventosExcluidos}
           />
         </>
       )}

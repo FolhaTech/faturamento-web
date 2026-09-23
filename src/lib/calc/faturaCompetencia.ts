@@ -1,8 +1,10 @@
 import { getFaturaSalvaDoUsuario } from "../repo/faturasSalvas";
+import { listEventosExcluidosKeys } from "../repo/eventosExcluidos";
 import { listMovimentosByCompetencia } from "../repo/movimentos";
 import { aggregateByCcusto } from "./aggregate";
 import type { CalculatedLine } from "./engine";
 import { runEngine } from "./engine";
+import { filtrarEventosExcluidos } from "./eventosExcluidos";
 import { trocarTipoCompetencia } from "./tipoCompetencia";
 
 /** Total fatura (NF) de um Centro de Custo — usado pra comparar Prévia x Folha (ver calcularPreviaTotalFaturaPorCcusto). */
@@ -25,6 +27,19 @@ export interface EngineLinesCarregadas {
 }
 
 /**
+ * Cálculo AO VIVO de uma competência (sem foto salva) — já com os eventos excluídos manualmente
+ * por Centro de Custo removidos (ver eventosExcluidos.ts/repo/eventosExcluidos.ts). Usado tanto
+ * pra mostrar na tela (carregarEngineLines) quanto pra virar uma foto salva (ver
+ * /api/faturamento/salvar), pra uma exclusão feita antes de salvar entrar na foto também.
+ */
+export async function calcularLinesAoVivo(competencia: string): Promise<{ lines: CalculatedLine[]; warnings: string[] }> {
+  const movimentos = await listMovimentosByCompetencia(competencia);
+  const { lines, warnings } = await runEngine(movimentos);
+  const excluidos = await listEventosExcluidosKeys(competencia);
+  return { lines: filtrarEventosExcluidos(lines, excluidos), warnings };
+}
+
+/**
  * Linhas calculadas de uma competência — foto salva do PRÓPRIO usuário (`usuarioEmail`) se
  * existir, senão calcula ao vivo (ver SalvarFaturaBanner/faturasSalvas.ts). Cada usuário só vê a
  * própria foto: dois usuários vendo a mesma competência podem ver números diferentes se só um
@@ -36,8 +51,7 @@ export async function carregarEngineLines(competencia: string, usuarioEmail: str
   if (salva) {
     return { lines: salva.lines, warnings: salva.warnings, salvoEm: salva.salvoEm, previaTotalFaturaPorCcusto: salva.previaTotalFaturaPorCcusto };
   }
-  const movimentos = await listMovimentosByCompetencia(competencia);
-  const { lines, warnings } = await runEngine(movimentos);
+  const { lines, warnings } = await calcularLinesAoVivo(competencia);
   return { lines, warnings, salvoEm: null, previaTotalFaturaPorCcusto: null };
 }
 
