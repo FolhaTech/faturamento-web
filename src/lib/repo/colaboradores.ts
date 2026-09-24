@@ -220,6 +220,9 @@ export async function ajustarSaldos(tipo: TipoSaldoFerias, deltas: Map<number, n
 /** Situação usada para marcar colaboradores criados automaticamente a partir de um upload de Movimentos, quando a matrícula não é encontrada no cadastro. */
 export const SITUACAO_CADASTRO_PENDENTE = "Cadastro pendente";
 
+/** Situação de colaborador ativo, vinda normalmente da planilha de referência (Colaboradores) — usada em engine.ts para liberar PLR/provisões/informativas fixas. Um colaborador "Cadastro pendente" que ganha Cód Serviço automaticamente (ver /api/movimentos) também vira isso, pra não ficar travado sem essas cobranças pra sempre. */
+export const SITUACAO_TRABALHANDO = "Trabalhando";
+
 /**
  * Cria um cadastro mínimo (matrícula + nome, sem Tomador) para cada matrícula de
  * `entradas` que ainda não existe em Colaboradores — em vez de só descartar o

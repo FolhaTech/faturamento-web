@@ -4,6 +4,8 @@ import { aplicarTipoNaCompetencia } from "@/lib/calc/tipoCompetencia";
 import {
   getColaboradoresPorMatriculas,
   getTomadoresPorCcusto,
+  SITUACAO_CADASTRO_PENDENTE,
+  SITUACAO_TRABALHANDO,
   upsertColaborador,
   upsertColaboradoresPendentes,
 } from "@/lib/repo/colaboradores";
@@ -161,6 +163,13 @@ export async function POST(request: Request) {
       if (tomadorResolvido) {
         patch.cod_servico = tomadorResolvido.codigo;
         patch.descricao_servico = tomadorResolvido.nome;
+        // Cadastro mínimo (ver upsertColaboradoresPendentes) que acabou de ganhar Cód Serviço
+        // sozinho: sai do limbo "Cadastro pendente" — senão ficava travado ali pra sempre e
+        // nunca entrava em PLR/provisões/informativas fixas (ver engine.ts, que exige
+        // situacao === "Trabalhando" pra gerar essas cobranças).
+        if (c.situacao === SITUACAO_CADASTRO_PENDENTE) {
+          patch.situacao = SITUACAO_TRABALHANDO;
+        }
       }
     }
 
