@@ -78,6 +78,52 @@ describe("parseMovimentosFile — layout 'relatório' (exportação paginada)", 
     const { localTrabalhoPorMatricula } = await parseMovimentosFile(buffer);
     expect(localTrabalhoPorMatricula.get(90103398)).toBe("HOSPITAL SAO LUCAS");
   });
+
+  it("extrai o Centro de Custo do cabeçalho de seção 'Centro de Custo:' quando a coluna 'Local de trabalho' vem vazia por lançamento (caso real: Prévia 0926 - Gilbarco)", async () => {
+    const buffer = bufferFromRows("Movimentos", [
+      ["Empresa:", null, null, null, null, null, "4 - GENTER SERVICOS EM RECURSOS HUMANOS LTDA"],
+      ["CNPJ:", null, null, null, null, null, "13.173.017/0001-92"],
+      ["Competência:", null, null, null, null, null, "09/2026"],
+      [
+        "Código", null, null, null, "Nome", null, null, null, null, null, null, null, null, "Referência", null, null, null,
+        "Valor calculado", null, null, "Valor informado", null, null, null, "Tipo", null, null, "Unidade", null, "Local de trabalho",
+      ],
+      // "Centro de Custo:" anunciado uma vez por bloco, em vez da coluna "Local de trabalho"
+      // preenchida por lançamento (que vem vazia abaixo, "").
+      ["Centro de Custo:", null, null, null, null, null, null, null, "20 - GILBARCO"],
+      [null, null, "90103520 - CAIO HENRIQUE LUGUE"],
+      [
+        8781, null, null, null, "DIAS NORMAIS", null, null, null, null, null, null, null, null, null, null, "09/2026", null, null,
+        2499.64, null, null, 30, null, null, "P", null, null, "Dias", null, "",
+      ],
+    ]);
+
+    const { linhas, localTrabalhoPorMatricula } = await parseMovimentosFile(buffer);
+    expect(localTrabalhoPorMatricula.get(90103520)).toBe("GILBARCO");
+    expect(linhas).toHaveLength(1);
+    expect(linhas[0]).toMatchObject({ matricula: 90103520, evento: "DIAS NORMAIS", valor: 2499.64 });
+  });
+
+  it("coluna 'Local de trabalho' preenchida por lançamento tem prioridade sobre o cabeçalho 'Centro de Custo:' do bloco", async () => {
+    const buffer = bufferFromRows("Movimentos", [
+      ["Empresa:", null, null, null, null, null, "4 - GENTER SERVICOS EM RECURSOS HUMANOS LTDA"],
+      ["CNPJ:", null, null, null, null, null, "13.173.017/0001-92"],
+      ["Competência:", null, null, null, null, null, "09/2026"],
+      [
+        "Código", null, null, null, "Nome", null, null, null, null, null, null, null, null, "Referência", null, null, null,
+        "Valor calculado", null, null, "Valor informado", null, null, null, "Tipo", null, null, "Unidade", null, "Local de trabalho",
+      ],
+      ["Centro de Custo:", null, null, null, null, null, null, null, "20 - GILBARCO"],
+      [null, null, "90103520 - CAIO HENRIQUE LUGUE"],
+      [
+        8781, null, null, null, "DIAS NORMAIS", null, null, null, null, null, null, null, null, null, null, "09/2026", null, null,
+        2499.64, null, null, 30, null, null, "P", null, null, "Dias", null, "OUTRO CCUSTO",
+      ],
+    ]);
+
+    const { localTrabalhoPorMatricula } = await parseMovimentosFile(buffer);
+    expect(localTrabalhoPorMatricula.get(90103520)).toBe("OUTRO CCUSTO");
+  });
 });
 
 describe("parseMovimentosFile — layout 'rico' (planilha-modelo com cabeçalho textual)", () => {

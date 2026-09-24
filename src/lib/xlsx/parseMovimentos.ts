@@ -182,9 +182,29 @@ function parseRelatorio(sheet: SheetGrid): ParseRelatorioResult {
   const localTrabalhoPorMatricula = new Map<number, string>();
   let matricula: number | null = null;
   let nome = "";
+  // Alguns exports desse relatório não preenchem a coluna "Local de trabalho" por lançamento —
+  // em vez disso, anunciam o Centro de Custo uma vez por bloco numa linha própria ("Centro de
+  // Custo: 20 - GILBARCO"), igual ao cabeçalho "Empresa:" (ver extractEmpresaNome), só que
+  // repetido a cada bloco de colaboradores em vez de uma vez só no topo (ver Prévia 0926 -
+  // Gilbarco.xlsx — sem isso, o Centro de Custo desses colaboradores nunca é resolvido pelo
+  // upload, e um colaborador que já tinha outro Ccusto cadastrado antes fica preso nele).
+  let ccustoAnunciado: string | null = null;
 
   for (const row of sheet.rows) {
     if (!row || row.length === 0) continue;
+
+    const labelCcusto = asString(row[0]);
+    if (labelCcusto && labelCcusto.toUpperCase() === "CENTRO DE CUSTO:") {
+      for (let i = 1; i < row.length; i++) {
+        const v = asString(row[i]);
+        const m = v?.match(CODIGO_NOME_RE);
+        if (m) {
+          ccustoAnunciado = m[1];
+          break;
+        }
+      }
+      continue;
+    }
 
     // Linha de identificação do colaborador ("90103398 - CARLOS EDUARDO DE ASSIS"),
     // vale para todos os lançamentos seguintes até a próxima ocorrência (inclusive
@@ -206,7 +226,7 @@ function parseRelatorio(sheet: SheetGrid): ParseRelatorioResult {
     const evento = asString(row[4]);
     if (!evento) continue;
 
-    const localTrabalho = asString(row[colLocalTrabalho]);
+    const localTrabalho = asString(row[colLocalTrabalho]) ?? ccustoAnunciado;
     if (localTrabalho && !localTrabalhoPorMatricula.has(matricula)) {
       localTrabalhoPorMatricula.set(matricula, localTrabalho);
     }
