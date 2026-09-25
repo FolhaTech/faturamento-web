@@ -64,7 +64,15 @@ export function UploadMovimentosForm() {
       setCcustoCompletado(data.ccustoCompletado ?? []);
       setCcustoCorrigido(data.ccustoCorrigido ?? []);
       setFileName(null);
-      router.refresh();
+      // Depois de importar, vai direto pra tela de Movimentos (ver Ver Lançamentos) na
+      // competência que acabou de subir — confirma na hora que ficou salvo de verdade, em vez de
+      // voltar pra essa mesma tela de upload.
+      const competenciaAlvo: string | undefined = data.competencias?.[0];
+      if (competenciaAlvo) {
+        router.push(`/movimentos?competencia=${encodeURIComponent(competenciaAlvo)}`);
+      } else {
+        router.refresh();
+      }
       return true;
     } catch {
       setError("Falha de rede ao enviar o arquivo.");
