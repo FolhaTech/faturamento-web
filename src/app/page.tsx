@@ -71,6 +71,19 @@ export default async function HomePage() {
         <span className="shrink-0 rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white">Calcular →</span>
       </Link>
 
+      <Link
+        href="/movimentos"
+        className="flex items-center justify-between gap-4 rounded-lg border border-sky-200 bg-sky-50 p-5 hover:border-sky-400 hover:shadow-sm"
+      >
+        <div>
+          <h2 className="text-lg font-semibold text-sky-900">Movimentos</h2>
+          <p className="mt-1 text-sm text-sky-800">
+            Veja todos os lançamentos já importados, separados por competência — pra conferir se um upload realmente entrou.
+          </p>
+        </div>
+        <span className="shrink-0 rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white">Ver lançamentos →</span>
+      </Link>
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {cards.map((c) => (
           <Link
