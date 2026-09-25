@@ -29,6 +29,7 @@ export function UploadMovimentosForm() {
   const [vinculadosAoArquivo, setVinculadosAoArquivo] = useState<{ matricula: number; nome: string }[]>([]);
   const [avisoTomadorArquivo, setAvisoTomadorArquivo] = useState<string | null>(null);
   const [ccustoCompletado, setCcustoCompletado] = useState<{ matricula: number; nome: string; ccusto: string }[]>([]);
+  const [ccustoCorrigido, setCcustoCorrigido] = useState<{ matricula: number; nome: string; ccustoAntigo: string; ccustoNovo: string }[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
 
@@ -61,6 +62,7 @@ export function UploadMovimentosForm() {
       setVinculadosAoArquivo(data.vinculadosAoArquivo ?? []);
       setAvisoTomadorArquivo(data.avisoTomadorArquivo ?? null);
       setCcustoCompletado(data.ccustoCompletado ?? []);
+      setCcustoCorrigido(data.ccustoCorrigido ?? []);
       setFileName(null);
       router.refresh();
       return true;
@@ -81,6 +83,7 @@ export function UploadMovimentosForm() {
     setVinculadosAoArquivo([]);
     setAvisoTomadorArquivo(null);
     setCcustoCompletado([]);
+    setCcustoCorrigido([]);
     setPendingConfirm(null);
     const form = event.currentTarget;
     const input = form.elements.namedItem("file") as HTMLInputElement;
@@ -205,6 +208,22 @@ export function UploadMovimentosForm() {
             {ccustoCompletado.map((c) => (
               <li key={c.matricula}>
                 {c.matricula} — {c.nome} → {c.ccusto}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {ccustoCorrigido.length > 0 && (
+        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800">
+          <p className="font-medium">
+            {ccustoCorrigido.length} colaborador(es) tiveram o Centro de Custo corrigido — o arquivo diz outro diferente do que já estava cadastrado
+            (colaborador mudou de obra):
+          </p>
+          <ul className="mt-1 list-disc pl-5">
+            {ccustoCorrigido.map((c) => (
+              <li key={c.matricula}>
+                {c.matricula} — {c.nome}: {c.ccustoAntigo} → {c.ccustoNovo}
               </li>
             ))}
           </ul>

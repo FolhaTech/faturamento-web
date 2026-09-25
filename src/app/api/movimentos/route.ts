@@ -119,27 +119,37 @@ export async function POST(request: Request) {
   }
 
   // 1ª passada: resolve o Centro de Custo de cada colaborador do arquivo (na ordem em que
-  // aparecem nos Movimentos), sem gravar nada ainda. Quando o arquivo não traz "Local de
-  // trabalho" preenchido por colaborador (comum na prática — a coluna existe mas costuma vir
-  // vazia), herda do colaborador ANTERIOR no arquivo: um relatório de folha normalmente vem
-  // agrupado por local de trabalho, e quem está logo acima de um colaborador sem Ccusto é o
-  // sinal mais confiável de com quem ele deve ficar junto. Só propaga um valor que já existe
-  // (do próprio cadastro ou de "Local de trabalho"); o primeiro colaborador do arquivo sem
-  // nenhum dos dois fica sem herdar nada.
-  const ccustoPorMatricula = new Map<number, { codigo: string; nome: string }>();
-  let ultimoCcusto: { codigo: string; nome: string } | null = null;
+  // aparecem nos Movimentos), sem gravar nada ainda.
+  //
+  // `explicito: true` = o PRÓPRIO arquivo diz esse Ccusto pra essa matrícula (coluna "Local de
+  // trabalho" preenchida na linha dela, ou bloco "Centro de Custo:" que cobre ela — ver
+  // parseMovimentos.ts) — sinal atual e confiável o bastante pra CORRIGIR um Ccusto já
+  // cadastrado, quando o colaborador mudou de obra desde o último upload (senão ele ficava
+  // preso pra sempre no Ccusto antigo, mesmo com arquivos novos dizendo outro).
+  //
+  // `explicito: false` = herdado do cadastro atual ou do colaborador ANTERIOR no arquivo, sem o
+  // arquivo confirmar nada pra essa matrícula especificamente — só um palpite (um relatório de
+  // folha normalmente vem agrupado por local de trabalho, e quem está logo acima de um
+  // colaborador sem Ccusto é o sinal mais confiável disponível nesse caso), nunca sobrescreve um
+  // cadastro já preenchido (ver 2ª passada).
+  const ccustoPorMatricula = new Map<number, { codigo: string; nome: string; explicito: boolean }>();
+  let ultimoCcusto: { codigo: string; nome: string; explicito: boolean } | null = null;
   for (const matricula of matriculasEmOrdem) {
     const c = colaboradoresDoArquivo.get(matricula);
     if (!c) continue;
     const ccustoVazio = c.dados.cod_ccusto === null || c.dados.cod_ccusto === undefined || String(c.dados.cod_ccusto).trim() === "";
     const localTrabalho = localTrabalhoPorMatricula.get(matricula);
-    let ccusto: { codigo: string; nome: string } | null = null;
-    if (!ccustoVazio) {
-      ccusto = { codigo: String(c.dados.cod_ccusto), nome: c.dados.descricao_ccusto ? String(c.dados.descricao_ccusto) : String(c.dados.cod_ccusto) };
-    } else if (localTrabalho) {
-      ccusto = { codigo: localTrabalho, nome: localTrabalho };
+    let ccusto: { codigo: string; nome: string; explicito: boolean } | null = null;
+    if (localTrabalho) {
+      ccusto = { codigo: localTrabalho, nome: localTrabalho, explicito: true };
+    } else if (!ccustoVazio) {
+      ccusto = {
+        codigo: String(c.dados.cod_ccusto),
+        nome: c.dados.descricao_ccusto ? String(c.dados.descricao_ccusto) : String(c.dados.cod_ccusto),
+        explicito: false,
+      };
     } else if (ultimoCcusto) {
-      ccusto = ultimoCcusto;
+      ccusto = { codigo: ultimoCcusto.codigo, nome: ultimoCcusto.nome, explicito: false };
     }
     if (ccusto) {
       ccustoPorMatricula.set(matricula, ccusto);
@@ -154,10 +164,13 @@ export async function POST(request: Request) {
   const tomadorPorCcusto = await getTomadoresPorCcusto([...ccustoPorMatricula.values()].map((c) => c.nome));
   const tomadoresPorCodigo = new Map((await listTomadores()).map((t) => [t.codigo, t]));
 
-  // 2ª passada: aplica os dois vínculos — Cód Serviço (Tomador) e Centro de Custo — em quem
-  // ainda estiver vazio. Nunca sobrescreve um cadastro já preenchido.
+  // 2ª passada: aplica os dois vínculos — Cód Serviço (Tomador) e Centro de Custo. Cód Serviço
+  // só é preenchido quando ainda estiver vazio (nunca sobrescrito). Centro de Custo é preenchido
+  // quando vazio OU corrigido quando o arquivo diz explicitamente outro Ccusto pra essa matrícula
+  // (colaborador mudou de obra) — um Ccusto só herdado (não explícito) nunca sobrescreve.
   const vinculadosAoArquivo: { matricula: number; nome: string }[] = [];
   const ccustoCompletado: { matricula: number; nome: string; ccusto: string }[] = [];
+  const ccustoCorrigido: { matricula: number; nome: string; ccustoAntigo: string; ccustoNovo: string }[] = [];
   for (const matricula of matriculasEmOrdem) {
     const c = colaboradoresDoArquivo.get(matricula);
     if (!c) continue;
@@ -181,21 +194,23 @@ export async function POST(request: Request) {
       }
     }
 
-    const ccustoVazio = c.dados.cod_ccusto === null || c.dados.cod_ccusto === undefined || String(c.dados.cod_ccusto).trim() === "";
-    if (ccustoVazio) {
-      const ccustoResolvido = ccustoPorMatricula.get(matricula);
-      if (ccustoResolvido) {
-        patch.cod_ccusto = ccustoResolvido.codigo;
-        patch.descricao_ccusto = ccustoResolvido.nome;
+    const ccustoAtual =
+      c.dados.cod_ccusto !== null && c.dados.cod_ccusto !== undefined && String(c.dados.cod_ccusto).trim() !== "" ? String(c.dados.cod_ccusto) : null;
+    const ccustoResolvido = ccustoPorMatricula.get(matricula);
+    if (ccustoResolvido && (ccustoAtual === null || (ccustoResolvido.explicito && ccustoResolvido.codigo !== ccustoAtual))) {
+      patch.cod_ccusto = ccustoResolvido.codigo;
+      patch.descricao_ccusto = ccustoResolvido.nome;
+      if (ccustoAtual !== null) {
+        ccustoCorrigido.push({ matricula: c.matricula, nome: c.nome, ccustoAntigo: ccustoAtual, ccustoNovo: ccustoResolvido.nome });
       }
     }
     if (Object.keys(patch).length === 0) continue;
 
     await upsertColaborador({ matricula: c.matricula, dados: { ...c.dados, ...patch } });
     if (patch.cod_servico) vinculadosAoArquivo.push({ matricula: c.matricula, nome: c.nome });
-    if (patch.cod_ccusto) ccustoCompletado.push({ matricula: c.matricula, nome: c.nome, ccusto: String(patch.descricao_ccusto) });
+    if (patch.cod_ccusto && ccustoAtual === null) ccustoCompletado.push({ matricula: c.matricula, nome: c.nome, ccusto: String(patch.descricao_ccusto) });
   }
-  if (vinculadosAoArquivo.length > 0 || ccustoCompletado.length > 0) {
+  if (vinculadosAoArquivo.length > 0 || ccustoCompletado.length > 0 || ccustoCorrigido.length > 0) {
     colaboradoresDoArquivo = await getColaboradoresPorMatriculas(matriculasDoArquivo);
   }
 
@@ -224,6 +239,7 @@ export async function POST(request: Request) {
     vinculadosAoArquivo,
     avisoTomadorArquivo,
     ccustoCompletado,
+    ccustoCorrigido,
     tomadoresNovos: tomadoresNovos.map((t) => ({ codigo: t.codigo, nome: t.nome })),
   });
 }
