@@ -41,3 +41,20 @@ export async function listDescontosSaldoPorCompetencias(competencias: string[]):
   const rows = await sql<Row[]>`SELECT * FROM descontos_saldo WHERE competencia = ANY(${competencias})`;
   return rows.map(toDescontoSaldo);
 }
+
+/**
+ * Quanto já foi lançado como desconto (férias e 13° salário, separados) dessa matrícula NESSA
+ * competência específica — cada mês tem seu próprio valor, sem se misturar com outros meses (ver
+ * tela do colaborador). Valor sempre positivo pra exibição (o que fica gravado em
+ * `descontos_saldo` é negativo, um crédito). 0 quando nada foi lançado ainda nesse mês.
+ */
+export async function getDescontoSaldoPorMatriculaECompetencia(matricula: number, competencia: string): Promise<{ ferias: number; terco: number }> {
+  await ensureSchema();
+  const rows = await getDb()<Row[]>`SELECT * FROM descontos_saldo WHERE matricula = ${matricula} AND competencia = ${competencia}`;
+  const porTipo = { ferias: 0, terco: 0 };
+  for (const row of rows) {
+    const d = toDescontoSaldo(row);
+    porTipo[d.tipo] = Math.abs(d.valor);
+  }
+  return porTipo;
+}

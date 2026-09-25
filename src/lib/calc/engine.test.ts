@@ -650,8 +650,8 @@ describe("runEngine — desconto de saldo de férias/1/3 sobrevive a reenvio de 
   it("continua descontando a fatura mesmo depois do arquivo daquela competência ser reenviado (substituído)", async () => {
     await replaceMovimentosPorCompetencia(movimentosCompetencia);
 
-    const competenciaAplicada = await lancarDescontoSaldoFerias({ matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" }, 200, 0);
-    expect(competenciaAplicada).toBe("08/2026");
+    const lancou = await lancarDescontoSaldoFerias({ matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" }, "08/2026", 200, 0);
+    expect(lancou).toBe(true);
 
     // Reenvio: replaceMovimentosPorCompetencia apaga e recria as linhas de Movimentos da competência,
     // igual a subir o arquivo de novo — não deve apagar o desconto lançado acima.
@@ -668,8 +668,8 @@ describe("runEngine — desconto de saldo de férias/1/3 sobrevive a reenvio de 
 
   it("salvar de novo pra mesma competência acumula (soma) em vez de substituir", async () => {
     await replaceMovimentosPorCompetencia(movimentosCompetencia);
-    await lancarDescontoSaldoFerias({ matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" }, 100, 0);
-    await lancarDescontoSaldoFerias({ matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" }, 50, 0);
+    await lancarDescontoSaldoFerias({ matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" }, "08/2026", 100, 0);
+    await lancarDescontoSaldoFerias({ matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" }, "08/2026", 50, 0);
 
     const { lines } = await runEngine(movimentosCompetencia);
     const desconto = lines.find((l) => l.evento === "DESCONTO SALDO DE FÉRIAS");

@@ -1,6 +1,5 @@
 import { upsertDescontoSaldo } from "../repo/descontosSaldo";
 import { upsertEncargo } from "../repo/encargos";
-import { listCompetencias } from "../repo/movimentos";
 import type { Colaborador } from "../types";
 
 /** Códigos reservados (fora da faixa usada pelo sistema de folha real) para os descontos sintéticos de saldo. */
@@ -33,35 +32,34 @@ async function garantirEncargosDeDesconto(): Promise<void> {
 }
 
 /**
- * Lança saldoFerias/saldoUmTerco (quando > 0) como desconto — valor NEGATIVO gravado em
- * descontos_saldo (matrícula + competência mais recente já enviada + tipo), reduzindo de
- * verdade o total cobrado do tomador daquele colaborador (ver generateDescontoSaldoFeriasCharges
- * em engine.ts: gerado a cada cálculo a partir dessa tabela, não de uma linha em Movimentos —
- * por isso sobrevive a reenvios do arquivo daquela competência, diferente do antigo lançamento
- * avulso em Movimentos).
+ * Lança saldoFerias/saldoUmTerco (quando > 0) como desconto NA COMPETÊNCIA ESCOLHIDA (não mais
+ * "a mais recente do sistema" — quem chama decide, ver tela do colaborador) — valor NEGATIVO
+ * gravado em descontos_saldo (matrícula + competência + tipo), reduzindo de verdade o total
+ * cobrado do tomador daquele colaborador NAQUELE MÊS específico (ver
+ * generateDescontoSaldoFeriasCharges em engine.ts: gerado a cada cálculo a partir dessa tabela,
+ * não de uma linha em Movimentos — por isso sobrevive a reenvios do arquivo daquela competência).
+ * Cada competência acumula seu próprio valor lançado, sem replicar pras outras (ver
+ * upsertDescontoSaldo).
  *
- * Não mexe nos saldos em si — quem chama decide se/como zera depois (ver route.ts). Retorna a
- * competência usada, ou null se não havia nenhuma ainda (nada a lançar).
+ * Não mexe nos saldos em si — quem chama decide se/como zera depois (ver route.ts). Retorna true
+ * se algo foi lançado (false quando os dois valores são <= 0, nada a fazer).
  */
 export async function lancarDescontoSaldoFerias(
   colaborador: Pick<Colaborador, "matricula" | "nome">,
+  competenciaAlvo: string,
   saldoFerias: number,
   saldoUmTerco: number,
-): Promise<string | null> {
-  if (saldoFerias <= 0 && saldoUmTerco <= 0) return null;
-
-  const competencias = await listCompetencias();
-  const competenciaAtual = competencias[0];
-  if (!competenciaAtual) return null;
+): Promise<boolean> {
+  if (saldoFerias <= 0 && saldoUmTerco <= 0) return false;
 
   await garantirEncargosDeDesconto();
 
   if (saldoFerias > 0) {
-    await upsertDescontoSaldo(colaborador.matricula, competenciaAtual, "ferias", -saldoFerias);
+    await upsertDescontoSaldo(colaborador.matricula, competenciaAlvo, "ferias", -saldoFerias);
   }
   if (saldoUmTerco > 0) {
-    await upsertDescontoSaldo(colaborador.matricula, competenciaAtual, "terco", -saldoUmTerco);
+    await upsertDescontoSaldo(colaborador.matricula, competenciaAlvo, "terco", -saldoUmTerco);
   }
 
-  return competenciaAtual;
+  return true;
 }
