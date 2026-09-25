@@ -740,7 +740,7 @@ async function generateDescontoSaldoFeriasCharges(movimentos: Movimento[], ctx: 
     const ccusto = getCcusto(colaborador);
 
     const codigo = d.tipo === "ferias" ? CODIGO_DESCONTO_SALDO_FERIAS : CODIGO_DESCONTO_SALDO_UM_TERCO;
-    const evento = d.tipo === "ferias" ? "DESCONTO SALDO DE FÉRIAS" : "DESCONTO SALDO DE 1/3";
+    const evento = d.tipo === "ferias" ? "DESCONTO SALDO DE FÉRIAS" : "DESCONTO SALDO DE 13° SALÁRIO";
 
     const base = d.valor;
     const taxaAdmValor = base * tomador.taxaAdm;

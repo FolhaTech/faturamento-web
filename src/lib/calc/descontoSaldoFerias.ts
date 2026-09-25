@@ -21,7 +21,7 @@ async function garantirEncargosDeDesconto(): Promise<void> {
   });
   await upsertEncargo({
     codigo: CODIGO_DESCONTO_SALDO_UM_TERCO,
-    evento: "DESCONTO SALDO DE 1/3",
+    evento: "DESCONTO SALDO DE 13° SALÁRIO",
     tipo: "P",
     inss655: 0,
     inss515: 0,

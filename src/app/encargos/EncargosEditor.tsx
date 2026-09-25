@@ -5,7 +5,7 @@ import type { Encargo, TipoEvento, TipoSaldoFerias } from "@/lib/types";
 
 const TIPOS: TipoEvento[] = ["P", "D", "I", "R", "FGTS", "INSS"];
 
-const ABATE_SALDO_LABEL: Record<"" | TipoSaldoFerias, string> = { "": "—", ferias: "Férias", terco: "1/3" };
+const ABATE_SALDO_LABEL: Record<"" | TipoSaldoFerias, string> = { "": "—", ferias: "Férias", terco: "13° salário" };
 
 interface FormState {
   codigo: string;
@@ -162,7 +162,7 @@ export function EncargosEditor({ initial }: { initial: Encargo[] }) {
               <th className="px-3 py-2 text-right font-medium">Prov. 13º</th>
               <th
                 className="px-3 py-2 text-center font-medium"
-                title="Marca o pagamento real de férias ou de 1/3 — abate o saldo correspondente do colaborador em vez de cobrar de novo."
+                title="Marca o pagamento real de férias ou de 13° salário — abate o saldo correspondente do colaborador em vez de cobrar de novo."
               >
                 Abate saldo
               </th>
@@ -286,7 +286,7 @@ function EditRow({
         >
           <option value="">—</option>
           <option value="ferias">Férias</option>
-          <option value="terco">1/3</option>
+          <option value="terco">13° salário</option>
         </select>
       </td>
       <td className="px-3 py-2 text-right whitespace-nowrap">

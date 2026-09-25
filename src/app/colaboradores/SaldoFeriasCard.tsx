@@ -52,7 +52,7 @@ export function SaldoFeriasCard({
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 bg-white p-4">
-      <h2 className="text-sm font-semibold text-neutral-900">Desconto de saldo de férias e de 1/3</h2>
+      <h2 className="text-sm font-semibold text-neutral-900">Desconto de saldo de férias e de 13° salário</h2>
       <p className="text-xs text-neutral-500">
         Preencha um valor e salve para lançá-lo como desconto (crédito) na fatura da competência mais recente já
         enviada — reduz o total cobrado do tomador exatamente pelo valor digitado (com taxa administrativa e
@@ -70,7 +70,7 @@ export function SaldoFeriasCard({
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-neutral-500">
-          Desconto de 1/3
+          Desconto de 13° salário
           <input
             value={valorUmTerco}
             onChange={(e) => setValorUmTerco(e.target.value)}
