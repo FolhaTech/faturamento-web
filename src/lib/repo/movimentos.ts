@@ -54,7 +54,7 @@ export async function countMovimentos(): Promise<number> {
   return n;
 }
 
-/** Quantos lançamentos já existem hoje para cada competência — usado para avisar antes de substituir (ver replaceMovimentosPorCompetencia). */
+/** Quantos lançamentos já existem hoje para cada competência — usado na tela de Movimentos (visão geral, todo mundo). */
 export async function countMovimentosPorCompetencia(competencias: string[]): Promise<Map<string, number>> {
   await ensureSchema();
   if (competencias.length === 0) return new Map();
@@ -62,6 +62,30 @@ export async function countMovimentosPorCompetencia(competencias: string[]): Pro
     SELECT competencia, COUNT(*)::int as n FROM movimentos WHERE competencia = ANY(${competencias}) GROUP BY competencia
   `;
   return new Map(rows.map((r) => [r.competencia, r.n]));
+}
+
+/**
+ * Quantos lançamentos já existem hoje pra cada competência, mas contando só as matrículas dadas
+ * — usado pra avisar antes de um upload substituir (ver replaceMovimentosPorCompetencia, que só
+ * mexe nos lançamentos das matrículas do arquivo novo, não na competência inteira). Um arquivo
+ * de um cliente que ainda não tinha nada importado nessa competência dá 0 aqui, mesmo que a
+ * competência já tenha lançamentos de OUTROS clientes.
+ */
+export async function countMovimentosPorCompetenciaEMatriculas(pares: { competencia: string; matriculas: number[] }[]): Promise<Map<string, number>> {
+  await ensureSchema();
+  const sql = getDb();
+  const resultado = new Map<string, number>();
+  for (const { competencia, matriculas } of pares) {
+    if (matriculas.length === 0) {
+      resultado.set(competencia, 0);
+      continue;
+    }
+    const [{ n }] = await sql<{ n: number }[]>`
+      SELECT COUNT(*)::int as n FROM movimentos WHERE competencia = ${competencia} AND matricula = ANY(${matriculas})
+    `;
+    resultado.set(competencia, n);
+  }
+  return resultado;
 }
 
 export interface MovimentoInput {
@@ -108,22 +132,35 @@ export async function sumAbatimentoPorMatriculaETipo(
 }
 
 /**
- * Substitui todos os lançamentos das competências presentes em `linhas` —
- * reenviar o arquivo do mês atualiza em vez de duplicar os lançamentos.
+ * Substitui os lançamentos das matrículas presentes em `linhas`, dentro de cada competência —
+ * reenviar o arquivo de um colaborador/cliente atualiza os lançamentos DELE em vez de duplicar.
  *
- * Também descarta as faturas salvas ATIVAS (de qualquer usuário, ver faturasSalvas.ts) dessas
- * competências, se houver: os dados de origem mudaram, então nenhuma foto congelada reflete mais
- * o arquivo atual — cada usuário que tinha uma volta a ver o cálculo ao vivo, pendente de salvar
- * de novo. Não apaga nada: as entradas ficam na timeline, só marcadas como descartadas.
+ * NÃO apaga a competência inteira: os arquivos de origem costumam vir segmentados por cliente
+ * (um Centro de Custo por arquivo, ver parseMovimentos.ts) — um cliente diferente pode subir o
+ * arquivo dele pra mesma competência depois, e isso não pode apagar o que já tinha sido
+ * importado de outro cliente. Só as matrículas que aparecem em `linhas` são substituídas; quem
+ * não aparece no arquivo novo fica intacto.
+ *
+ * Também descarta as faturas salvas ATIVAS (de qualquer usuário, ver faturasSalvas.ts) das
+ * competências tocadas, se houver: os dados de origem mudaram, então nenhuma foto congelada
+ * reflete mais o estado atual — cada usuário que tinha uma volta a ver o cálculo ao vivo,
+ * pendente de salvar de novo. Não apaga nada: as entradas ficam na timeline, só marcadas como
+ * descartadas.
  */
 export async function replaceMovimentosPorCompetencia(linhas: MovimentoInput[]): Promise<number> {
   await ensureSchema();
   const sql = getDb();
-  const competencias = [...new Set(linhas.map((l) => l.competencia))];
+
+  const matriculasPorCompetencia = new Map<string, Set<number>>();
+  for (const l of linhas) {
+    const set = matriculasPorCompetencia.get(l.competencia) ?? new Set<number>();
+    set.add(l.matricula);
+    matriculasPorCompetencia.set(l.competencia, set);
+  }
 
   await sql.begin(async (tx) => {
-    for (const comp of competencias) {
-      await tx`DELETE FROM movimentos WHERE competencia = ${comp}`;
+    for (const [comp, matriculas] of matriculasPorCompetencia) {
+      await tx`DELETE FROM movimentos WHERE competencia = ${comp} AND matricula = ANY(${[...matriculas]})`;
       await tx`UPDATE faturas_salvas SET descartada = true WHERE competencia = ${comp} AND descartada = false`;
     }
     if (linhas.length > 0) {

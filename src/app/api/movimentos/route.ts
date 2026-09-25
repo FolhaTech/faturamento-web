@@ -12,7 +12,7 @@ import {
 import { listCompetenciasComFaturaSalva } from "@/lib/repo/faturasSalvas";
 import {
   countMovimentos,
-  countMovimentosPorCompetencia,
+  countMovimentosPorCompetenciaEMatriculas,
   listCompetencias,
   replaceMovimentosPorCompetencia,
 } from "@/lib/repo/movimentos";
@@ -58,14 +58,22 @@ export async function POST(request: Request) {
   linhas = linhas.map((l) => ({ ...l, competencia: aplicarTipoNaCompetencia(l.competencia, tipo) }));
 
   const competencias = [...new Set(linhas.map((l) => l.competencia))];
+  const matriculasPorCompetencia = new Map<string, Set<number>>();
+  for (const l of linhas) {
+    const set = matriculasPorCompetencia.get(l.competencia) ?? new Set<number>();
+    set.add(l.matricula);
+    matriculasPorCompetencia.set(l.competencia, set);
+  }
+  const paresCompetenciaMatriculas = [...matriculasPorCompetencia].map(([competencia, matriculas]) => ({ competencia, matriculas: [...matriculas] }));
 
-  // Subir um arquivo para uma competência que já tem lançamentos salvos SUBSTITUI esses lançamentos
-  // (ver replaceMovimentosPorCompetencia) — avisa e pede confirmação explícita antes de apagar dados
-  // existentes, em vez de substituir silenciosamente.
+  // Subir um arquivo SUBSTITUI só os lançamentos das matrículas que estão nele (ver
+  // replaceMovimentosPorCompetencia — não mexe em outro cliente já importado nessa mesma
+  // competência) — avisa e pede confirmação só quando isso realmente vai apagar algo que já
+  // existia pra essas matrículas, em vez de substituir silenciosamente.
   const confirmar = formData.get("confirmar") === "true";
   if (!confirmar) {
     const [existentesPorCompetencia, competenciasComFaturaSalva] = await Promise.all([
-      countMovimentosPorCompetencia(competencias),
+      countMovimentosPorCompetenciaEMatriculas(paresCompetenciaMatriculas),
       listCompetenciasComFaturaSalva(competencias),
     ]);
     const competenciasComDados = competencias

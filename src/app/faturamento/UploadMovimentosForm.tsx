@@ -118,9 +118,10 @@ export function UploadMovimentosForm() {
           Arquivo de Movimentos do mês (.xlsx ou .xls)
         </label>
         <p className="mb-2 text-xs text-neutral-500">
-          Reenviar um arquivo de uma competência que já tem lançamentos salvos pede confirmação antes de substituir
-          (não duplica, nem substitui sem avisar). Usa os Colaboradores, Encargos e Tomadores já cadastrados para
-          calcular o faturamento.
+          Cada upload só substitui os lançamentos dos colaboradores que estão NESSE arquivo — arquivos de outros
+          clientes já importados pra mesma competência continuam intactos, então dá pra subir um arquivo por cliente
+          sem apagar os demais. Se algum desses colaboradores já tiver lançamento salvo, pede confirmação antes de
+          substituir. Usa os Colaboradores, Encargos e Tomadores já cadastrados para calcular o faturamento.
         </p>
         <input
           id="file"
@@ -138,11 +139,12 @@ export function UploadMovimentosForm() {
 
       {pendingConfirm && (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          <p className="font-medium">Essas competências já têm lançamentos salvos e serão substituídas:</p>
+          <p className="font-medium">Alguns colaboradores desse arquivo já têm lançamento salvo nessas competências e serão substituídos:</p>
           <ul className="mt-1 list-disc pl-5">
             {pendingConfirm.competencias.map((c) => (
               <li key={c.competencia}>
-                {c.competencia}: {c.existentes} lançamento(s) salvo(s) hoje serão apagados e substituídos pelo conteúdo do arquivo novo.
+                {c.competencia}: {c.existentes} lançamento(s) desses colaboradores serão substituídos pelo conteúdo do arquivo novo (o resto da
+                competência, de outros clientes, não é afetado).
                 {c.faturaSalva && (
                   <strong className="text-amber-950">
                     {" "}
