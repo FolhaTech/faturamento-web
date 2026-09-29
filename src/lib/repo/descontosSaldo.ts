@@ -43,6 +43,18 @@ export async function listDescontosSaldoPorCompetencias(competencias: string[]):
 }
 
 /**
+ * Todo desconto de saldo já lançado pra essa matrícula, em qualquer competência — usado pra
+ * abater da Rescisão (ver RescisaoCard.tsx): esse valor já foi pago/quitado com o colaborador
+ * (reduziu a fatura do tomador naquele mês), então tem que sair do acumulado de Prov
+ * Férias/13º, senão a Rescisão mostraria como "ainda devendo" um valor que já foi pago.
+ */
+export async function listDescontosSaldoPorMatricula(matricula: number): Promise<DescontoSaldo[]> {
+  await ensureSchema();
+  const rows = await getDb()<Row[]>`SELECT * FROM descontos_saldo WHERE matricula = ${matricula} ORDER BY competencia`;
+  return rows.map(toDescontoSaldo);
+}
+
+/**
  * Quanto já foi lançado como desconto (férias e 13° salário, separados) dessa matrícula NESSA
  * competência específica — cada mês tem seu próprio valor, sem se misturar com outros meses (ver
  * tela do colaborador). Valor sempre positivo pra exibição (o que fica gravado em
