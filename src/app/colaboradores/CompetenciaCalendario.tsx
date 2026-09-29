@@ -39,9 +39,10 @@ function formatarBase(base: string): string {
 
 /**
  * Calendário nativo do navegador (input type="month") pra navegar entre competências — em vez de
- * uma fileira de botões, um por mês. Só deixa ir pra meses que realmente têm alguma competência
- * salva (ver `meses`); escolher um mês sem nada mostra um aviso, sem navegar pra um lugar sem
- * dado nenhum.
+ * uma fileira de botões, um por mês. Meses com Movimentos/Folha salvos (ver `meses`) abrem a
+ * competência real (com sufixo Prévia/Folha se houver); meses sem nada navegam mesmo assim pra
+ * "MM/YYYY" puro — não trava, porque o Desconto de saldo (ver SaldoFeriasCard.tsx) pode ser
+ * lançado em qualquer mês, sem depender de Movimentos existirem naquela competência.
  *
  * Um mesmo mês pode ter Prévia e Folha salvas separadas (ver tipoCompetencia.ts) — quando o mês
  * escolhido tem mais de uma, aparecem uns rádios pra marcar qual das duas (ou "Normal", pra
@@ -63,19 +64,21 @@ export function CompetenciaCalendario({
   const mesAtual = meses.find((m) => m.base === baseAtual);
   const tiposDoMes = mesAtual?.raws.map((raw) => ({ raw, label: TIPO_LABEL[sufixoTipo(raw)] ?? sufixoTipo(raw) })) ?? [];
 
-  function irParaCompetencia(raw: string) {
-    setSemDadoEm(null);
+  function irParaCompetencia(raw: string, avisoSemDado: string | null = null) {
+    setSemDadoEm(avisoSemDado);
     router.push(`${basePath}?competencia=${encodeURIComponent(raw)}`);
   }
 
   function onChangeMes(value: string) {
     const base = inputMonthParaBase(value);
+    if (!base) return;
     const mes = meses.find((m) => m.base === base);
-    if (!mes) {
-      setSemDadoEm(base);
+    if (mes) {
+      irParaCompetencia(mes.raws[0]);
       return;
     }
-    irParaCompetencia(mes.raws[0]);
+    // Sem Movimentos/Folha nesse mês — navega mesmo assim pra "MM/YYYY" puro (avisa, mas não trava).
+    irParaCompetencia(base, base);
   }
 
   return (
@@ -106,7 +109,7 @@ export function CompetenciaCalendario({
 
       {competenciaAtual && <span className="text-sm text-neutral-600">Mostrando: {competenciaAtual}</span>}
       {semDadoEm && (
-        <span className="text-sm text-amber-700">Nenhuma competência salva em {formatarBase(semDadoEm)} — mostrando {competenciaAtual ?? "nada"}.</span>
+        <span className="text-sm text-amber-700">Nenhum Movimento/Folha enviado em {formatarBase(semDadoEm)} — dá pra lançar Desconto de saldo aqui mesmo assim.</span>
       )}
     </div>
   );
