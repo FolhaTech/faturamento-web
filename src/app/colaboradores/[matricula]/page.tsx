@@ -4,7 +4,9 @@ import { getColaborador } from "@/lib/repo/colaboradores";
 import { CompetenciaCalendario, type MesDisponivel } from "../CompetenciaCalendario";
 import { getDescontoSaldoPorMatriculaECompetencia } from "@/lib/repo/descontosSaldo";
 import { listCompetencias } from "@/lib/repo/movimentos";
+import { listProvisoesMensaisPorMatricula } from "@/lib/repo/provisoesMensais";
 import { ColaboradorForm } from "../ColaboradorForm";
+import { RescisaoCard } from "../RescisaoCard";
 import { SaldoFeriasCard } from "../SaldoFeriasCard";
 
 export const dynamic = "force-dynamic";
@@ -58,6 +60,8 @@ export default async function EditarColaboradorPage({
   const descontoNaCompetencia = competenciaAtual
     ? await getDescontoSaldoPorMatriculaECompetencia(colaborador.matricula, competenciaAtual)
     : { ferias: 0, terco: 0 };
+  // Histórico completo (todos os meses, não só o selecionado) — base pra rescisão.
+  const provisoesMensais = await listProvisoesMensaisPorMatricula(colaborador.matricula);
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-12">
@@ -82,6 +86,7 @@ export default async function EditarColaboradorPage({
         descontoFeriasNaCompetencia={descontoNaCompetencia.ferias}
         descontoUmTercoNaCompetencia={descontoNaCompetencia.terco}
       />
+      <RescisaoCard provisoes={provisoesMensais} />
       <ColaboradorForm matricula={colaborador.matricula} initialDados={colaborador.dados} />
     </main>
   );

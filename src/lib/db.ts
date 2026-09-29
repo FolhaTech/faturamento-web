@@ -190,6 +190,21 @@ ALTER TABLE eventos_excluidos ADD COLUMN IF NOT EXISTS matricula INTEGER NOT NUL
 ALTER TABLE eventos_excluidos ALTER COLUMN matricula DROP DEFAULT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_eventos_excluidos_pk ON eventos_excluidos (matricula, competencia, evento);
 
+-- Provisão de férias e de 13º que a Folha de cada colaborador gerou naquela competência (soma de
+-- CalculatedLine.provFerias/prov13 de todas as linhas dele) — histórico mês a mês, guardado na
+-- hora de subir uma Folha (ver /api/movimentos, salvarProvisoesMensais em
+-- repo/provisoesMensais.ts), pra servir de base num cálculo de rescisão depois (soma do
+-- acumulado). Reenviar a Folha da mesma competência substitui o valor daquele mês (não soma) —
+-- é sempre o retrato mais recente da Folha, não um lançamento manual acumulável feito por alguém.
+CREATE TABLE IF NOT EXISTS provisoes_mensais (
+  matricula INTEGER NOT NULL,
+  competencia TEXT NOT NULL,
+  prov_ferias DOUBLE PRECISION NOT NULL DEFAULT 0,
+  prov_13 DOUBLE PRECISION NOT NULL DEFAULT 0,
+  salvo_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (matricula, competencia)
+);
+
 -- Login do sistema (ver src/lib/auth/). Senha nunca gravada em texto puro: scrypt (Node
 -- built-in, sem dependência nem segredo externo) com salt por usuário — ver auth/senha.ts.
 -- Cadastro é liberado só pra e-mails de domínios específicos, checado em código (ver
@@ -265,6 +280,6 @@ export async function resetDbForTests(): Promise<void> {
   }
   await ensureSchema();
   const sql = getDb();
-  await sql`TRUNCATE tomadores, encargos, informativas, colaboradores, movimentos, descontos_saldo, faturas_salvas, eventos_excluidos, usuarios, sessoes`;
+  await sql`TRUNCATE tomadores, encargos, informativas, colaboradores, movimentos, descontos_saldo, faturas_salvas, eventos_excluidos, provisoes_mensais, usuarios, sessoes`;
   await sql`UPDATE configuracoes SET valor = 29.32 WHERE chave = 'plr_celetista'`;
 }

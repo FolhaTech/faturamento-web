@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { aplicarAbatimentoFerias } from "@/lib/calc/abatimentoFerias";
+import { calcularLinesAoVivo } from "@/lib/calc/faturaCompetencia";
 import { aplicarTipoNaCompetencia } from "@/lib/calc/tipoCompetencia";
 import {
   getColaboradoresPorMatriculas,
@@ -16,6 +17,7 @@ import {
   listCompetencias,
   replaceMovimentosPorCompetencia,
 } from "@/lib/repo/movimentos";
+import { salvarProvisoesMensais } from "@/lib/repo/provisoesMensais";
 import { getTomadorPorNome, listTomadores, upsertTomadoresPendentes } from "@/lib/repo/tomadores";
 import { parseMovimentosFile } from "@/lib/xlsx/parseMovimentos";
 
@@ -228,6 +230,24 @@ export async function POST(request: Request) {
   const linhasComAbatimento = await aplicarAbatimentoFerias(linhas);
 
   await replaceMovimentosPorCompetencia(linhasComAbatimento);
+
+  // Folha (fechamento, não Prévia) é a fonte de verdade da provisão de férias/13º de cada
+  // colaborador — grava o que o motor calculou pra cada matrícula nessa competência, mês a mês,
+  // pra servir de base (soma do acumulado) num cálculo de rescisão depois (ver
+  // provisoesMensais.ts). Roda DEPOIS de substituir os lançamentos, pra refletir o arquivo novo.
+  if (tipo === "folha") {
+    for (const competencia of competencias) {
+      const { lines } = await calcularLinesAoVivo(competencia);
+      const provisoesPorMatricula = new Map<number, { provFerias: number; prov13: number }>();
+      for (const l of lines) {
+        const acumulado = provisoesPorMatricula.get(l.matricula) ?? { provFerias: 0, prov13: 0 };
+        acumulado.provFerias += l.provFerias;
+        acumulado.prov13 += l.prov13;
+        provisoesPorMatricula.set(l.matricula, acumulado);
+      }
+      await salvarProvisoesMensais(competencia, provisoesPorMatricula);
+    }
+  }
 
   return NextResponse.json({
     importados: linhas.length,
