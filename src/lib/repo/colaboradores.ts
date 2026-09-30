@@ -228,12 +228,28 @@ export async function marcarDescontoProvisaoAplicado(
   tipo: "ferias" | "13",
   competencia: string,
 ): Promise<void> {
+  await marcarDescontosProvisaoAplicadosEmLote([{ matricula, tipo, competencia }]);
+}
+
+interface MarcarProvisaoAplicadaLote {
+  matricula: number;
+  tipo: "ferias" | "13";
+  competencia: string;
+}
+
+/** Registra em lote em qual competência o desconto automático de provisão foi aplicado — usado pelo motor de cálculo pra evitar N+1. */
+export async function marcarDescontosProvisaoAplicadosEmLote(entradas: MarcarProvisaoAplicadaLote[]): Promise<void> {
+  if (entradas.length === 0) return;
   await ensureSchema();
   const sql = getDb();
-  if (tipo === "ferias") {
-    await sql`UPDATE colaboradores SET desconto_prov_ferias_competencia = ${competencia} WHERE matricula = ${matricula}`;
-  } else {
-    await sql`UPDATE colaboradores SET desconto_prov_13_competencia = ${competencia} WHERE matricula = ${matricula}`;
+  const ferias = entradas.filter((e) => e.tipo === "ferias").map((e) => e.matricula);
+  const prov13 = entradas.filter((e) => e.tipo === "13").map((e) => e.matricula);
+  const competencia = entradas[0].competencia;
+  if (ferias.length > 0) {
+    await sql`UPDATE colaboradores SET desconto_prov_ferias_competencia = ${competencia} WHERE matricula IN ${sql(ferias)}`;
+  }
+  if (prov13.length > 0) {
+    await sql`UPDATE colaboradores SET desconto_prov_13_competencia = ${competencia} WHERE matricula IN ${sql(prov13)}`;
   }
 }
 

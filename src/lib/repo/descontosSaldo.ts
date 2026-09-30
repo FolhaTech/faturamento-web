@@ -59,6 +59,35 @@ export async function deleteDescontoSaldoPorCompetencia(matricula: number, compe
   await getDb()`DELETE FROM descontos_saldo WHERE matricula = ${matricula} AND competencia = ${competencia}`;
 }
 
+interface DescontoSaldoLote {
+  matricula: number;
+  competencia: string;
+  tipo: TipoSaldoFerias;
+  valorAbsoluto: number;
+}
+
+/** Substitui (não soma) vários descontos de saldo de uma só vez — versão em lote de setDescontoSaldo. */
+export async function setDescontosSaldoEmLote(entradas: DescontoSaldoLote[]): Promise<void> {
+  if (entradas.length === 0) return;
+  await ensureSchema();
+  const sql = getDb();
+  const paraInserir = entradas.filter((e) => e.valorAbsoluto > 0);
+  const paraDeletar = entradas.filter((e) => e.valorAbsoluto <= 0);
+
+  if (paraDeletar.length > 0) {
+    const chaves = paraDeletar.map((e) => `(${e.matricula}, ${sql(e.competencia)}, ${sql(e.tipo)})`).join(",");
+    await sql.unsafe(`DELETE FROM descontos_saldo WHERE (matricula, competencia, tipo) IN (${chaves})`);
+  }
+
+  if (paraInserir.length > 0) {
+    await sql`
+      INSERT INTO descontos_saldo (matricula, competencia, tipo, valor)
+      ${sql(paraInserir.map((e) => ({ matricula: e.matricula, competencia: e.competencia, tipo: e.tipo, valor: -e.valorAbsoluto })))}
+      ON CONFLICT (matricula, competencia, tipo) DO UPDATE SET valor = excluded.valor
+    `;
+  }
+}
+
 /** Descontos lançados para qualquer das competências dadas — usado pelo motor de cálculo (ver generateDescontoSaldoFeriasCharges em engine.ts). */
 export async function listDescontosSaldoPorCompetencias(competencias: string[]): Promise<DescontoSaldo[]> {
   if (competencias.length === 0) return [];

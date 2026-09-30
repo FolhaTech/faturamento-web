@@ -1,8 +1,8 @@
-import { listProvisoesMensaisPorMatricula } from "../repo/provisoesMensais";
-import { setDescontoSaldo } from "../repo/descontosSaldo";
-import { marcarDescontoProvisaoAplicado } from "../repo/colaboradores";
+import { listProvisoesMensaisPorMatriculas } from "../repo/provisoesMensais";
+import { setDescontosSaldoEmLote } from "../repo/descontosSaldo";
+import { marcarDescontosProvisaoAplicadosEmLote } from "../repo/colaboradores";
 import type { EngineContext } from "./engine";
-import type { Movimento } from "../types";
+import type { Colaborador, Movimento } from "../types";
 
 function competenciaParaData(competencia: string): Date {
   const [mes, ano] = competencia.replace(/\s*\((Prévia|Folha)\)$/, "").split("/");
@@ -21,6 +21,8 @@ function dataCompetenciaMaiorOuIgual(a: string, b: string): boolean {
  * desconto automaticamente enquanto a flag continuar "Sim".
  *
  * Chamado pelo motor de cálculo antes de gerar as linhas de desconto de saldo na fatura.
+ * Implementação otimizada: busca provisões em lote e faz no máximo 3 escritas no banco por
+ * competência (insert/update descontos, update colaboradores, uma pra cada tipo).
  */
 export async function aplicarDescontoAutomaticoProvisao(movimentos: Movimento[], ctx: EngineContext): Promise<void> {
   const competencias = [...new Set(movimentos.map((m) => m.competencia))];
@@ -35,31 +37,53 @@ export async function aplicarDescontoAutomaticoProvisao(movimentos: Movimento[],
 
   for (const competencia of competencias) {
     const matriculas = [...(matriculasPorCompetencia.get(competencia) ?? [])];
+    const candidatos: { matricula: number; colaborador: Colaborador }[] = [];
     for (const matricula of matriculas) {
       const colaborador = ctx.colaboradoresPorMatricula.get(matricula);
-      if (!colaborador) continue;
+      if (
+        colaborador &&
+        ((colaborador.descontarProvFerias && colaborador.descontoProvFeriasCompetencia == null) ||
+          (colaborador.descontarProv13 && colaborador.descontoProv13Competencia == null))
+      ) {
+        candidatos.push({ matricula, colaborador });
+      }
+    }
 
-      const provisoes = await listProvisoesMensaisPorMatricula(matricula);
+    if (candidatos.length === 0) continue;
+
+    const provisoes = await listProvisoesMensaisPorMatriculas(candidatos.map((c) => c.matricula));
+    const provisoesPorMatricula = new Map<number, typeof provisoes>();
+    for (const p of provisoes) {
+      const arr = provisoesPorMatricula.get(p.matricula) ?? [];
+      arr.push(p);
+      provisoesPorMatricula.set(p.matricula, arr);
+    }
+
+    const descontosLote: { matricula: number; competencia: string; tipo: "ferias" | "terco"; valorAbsoluto: number }[] = [];
+    const marcarLote: { matricula: number; tipo: "ferias" | "13"; competencia: string }[] = [];
+
+    for (const { matricula, colaborador } of candidatos) {
+      const provisoesDoColaborador = provisoesPorMatricula.get(matricula) ?? [];
+      const ateCompetencia = provisoesDoColaborador.filter((p) => dataCompetenciaMaiorOuIgual(competencia, p.competencia));
 
       if (colaborador.descontarProvFerias && colaborador.descontoProvFeriasCompetencia == null) {
-        const acumulado = provisoes
-          .filter((p) => dataCompetenciaMaiorOuIgual(competencia, p.competencia))
-          .reduce((soma, p) => soma + p.provFerias, 0);
+        const acumulado = ateCompetencia.reduce((soma, p) => soma + p.provFerias, 0);
         if (acumulado > 0) {
-          await setDescontoSaldo(matricula, competencia, "ferias", acumulado);
-          await marcarDescontoProvisaoAplicado(matricula, "ferias", competencia);
+          descontosLote.push({ matricula, competencia, tipo: "ferias", valorAbsoluto: acumulado });
+          marcarLote.push({ matricula, tipo: "ferias", competencia });
         }
       }
 
       if (colaborador.descontarProv13 && colaborador.descontoProv13Competencia == null) {
-        const acumulado = provisoes
-          .filter((p) => dataCompetenciaMaiorOuIgual(competencia, p.competencia))
-          .reduce((soma, p) => soma + p.prov13, 0);
+        const acumulado = ateCompetencia.reduce((soma, p) => soma + p.prov13, 0);
         if (acumulado > 0) {
-          await setDescontoSaldo(matricula, competencia, "terco", acumulado);
-          await marcarDescontoProvisaoAplicado(matricula, "13", competencia);
+          descontosLote.push({ matricula, competencia, tipo: "terco", valorAbsoluto: acumulado });
+          marcarLote.push({ matricula, tipo: "13", competencia });
         }
       }
     }
+
+    if (descontosLote.length > 0) await setDescontosSaldoEmLote(descontosLote);
+    if (marcarLote.length > 0) await marcarDescontosProvisaoAplicadosEmLote(marcarLote);
   }
 }

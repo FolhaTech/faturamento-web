@@ -52,3 +52,13 @@ export async function listProvisoesMensaisPorMatricula(matricula: number): Promi
   const rows = await getDb()<Row[]>`SELECT * FROM provisoes_mensais WHERE matricula = ${matricula} ORDER BY competencia DESC`;
   return rows.map(toProvisaoMensal);
 }
+
+/** Histórico mês a mês da provisão de férias/13º de vários colaboradores de uma vez — usado pelo motor de cálculo pra evitar N+1. */
+export async function listProvisoesMensaisPorMatriculas(matriculas: number[]): Promise<ProvisaoMensal[]> {
+  const unicos = [...new Set(matriculas)];
+  if (unicos.length === 0) return [];
+  await ensureSchema();
+  const sql = getDb();
+  const rows = await sql<Row[]>`SELECT * FROM provisoes_mensais WHERE matricula IN ${sql(unicos)} ORDER BY competencia DESC`;
+  return rows.map(toProvisaoMensal);
+}
