@@ -33,6 +33,32 @@ export async function upsertDescontoSaldo(matricula: number, competencia: string
   `;
 }
 
+/**
+ * Substitui (não soma) o desconto dessa matrícula+competência+tipo pelo `valorAbsoluto` exato —
+ * usado pra EDITAR um lançamento já existente (ver RescisaoCard.tsx/DescontoLancadoTable.tsx),
+ * ao contrário de upsertDescontoSaldo (que acumula, pro fluxo normal de "Salvar" em
+ * SaldoFeriasCard). `valorAbsoluto` <= 0 apaga a linha em vez de gravar 0.
+ */
+export async function setDescontoSaldo(matricula: number, competencia: string, tipo: TipoSaldoFerias, valorAbsoluto: number): Promise<void> {
+  await ensureSchema();
+  const sql = getDb();
+  if (valorAbsoluto <= 0) {
+    await sql`DELETE FROM descontos_saldo WHERE matricula = ${matricula} AND competencia = ${competencia} AND tipo = ${tipo}`;
+    return;
+  }
+  await sql`
+    INSERT INTO descontos_saldo (matricula, competencia, tipo, valor)
+    VALUES (${matricula}, ${competencia}, ${tipo}, ${-valorAbsoluto})
+    ON CONFLICT (matricula, competencia, tipo) DO UPDATE SET valor = excluded.valor
+  `;
+}
+
+/** Apaga os dois lançamentos (férias e 13º) dessa matrícula+competência — usado pra EXCLUIR uma linha inteira da Rescisão (ver DescontoLancadoTable.tsx). */
+export async function deleteDescontoSaldoPorCompetencia(matricula: number, competencia: string): Promise<void> {
+  await ensureSchema();
+  await getDb()`DELETE FROM descontos_saldo WHERE matricula = ${matricula} AND competencia = ${competencia}`;
+}
+
 /** Descontos lançados para qualquer das competências dadas — usado pelo motor de cálculo (ver generateDescontoSaldoFeriasCharges em engine.ts). */
 export async function listDescontosSaldoPorCompetencias(competencias: string[]): Promise<DescontoSaldo[]> {
   if (competencias.length === 0) return [];

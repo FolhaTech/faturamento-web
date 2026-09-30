@@ -89,7 +89,7 @@ export default async function EditarColaboradorPage({
         descontoFeriasNaCompetencia={descontoNaCompetencia.ferias}
         descontoUmTercoNaCompetencia={descontoNaCompetencia.terco}
       />
-      <RescisaoCard provisoes={provisoesMensais} descontos={descontosSaldoTodos} />
+      <RescisaoCard matricula={colaborador.matricula} provisoes={provisoesMensais} descontos={descontosSaldoTodos} />
       <ColaboradorForm matricula={colaborador.matricula} initialDados={colaborador.dados} />
     </main>
   );
