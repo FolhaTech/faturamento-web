@@ -1,5 +1,5 @@
 import { listProvisoesMensaisPorMatriculas } from "../repo/provisoesMensais";
-import { setDescontosSaldoEmLote } from "../repo/descontosSaldo";
+import { setDescontosSaldoEmLote, listDescontosSaldoPorMatricula } from "../repo/descontosSaldo";
 import { marcarDescontosProvisaoAplicadosEmLote } from "../repo/colaboradores";
 import type { EngineContext } from "./engine";
 import type { Colaborador, Movimento } from "../types";
@@ -68,6 +68,14 @@ export async function aplicarDescontoAutomaticoProvisao(movimentos: Movimento[],
       provisoesPorMatricula.set(p.matricula, arr);
     }
 
+    const descontosJaLancados = await Promise.all(
+      candidatos.map((c) => listDescontosSaldoPorMatricula(c.matricula)),
+    );
+    const descontosPorMatricula = new Map<number, typeof descontosJaLancados[number]>();
+    for (let i = 0; i < candidatos.length; i++) {
+      descontosPorMatricula.set(candidatos[i].matricula, descontosJaLancados[i]);
+    }
+
     const descontosLote: { matricula: number; competencia: string; tipo: "ferias" | "terco"; valorAbsoluto: number }[] = [];
     const marcarLote: { matricula: number; tipo: "ferias" | "13"; competencia: string }[] = [];
 
@@ -75,18 +83,30 @@ export async function aplicarDescontoAutomaticoProvisao(movimentos: Movimento[],
       const provisoesDoColaborador = provisoesPorMatricula.get(matricula) ?? [];
       const ateCompetencia = provisoesDoColaborador.filter((p) => dataCompetenciaMaiorOuIgual(competencia, p.competencia));
 
+      const descontosDoColaborador = descontosPorMatricula.get(matricula) ?? [];
+      const totalDescontosFerias = descontosDoColaborador
+        .filter((d) => d.tipo === "ferias")
+        .reduce((soma, d) => soma + Math.abs(d.valor), 0);
+      const totalDescontos13 = descontosDoColaborador
+        .filter((d) => d.tipo === "terco")
+        .reduce((soma, d) => soma + Math.abs(d.valor), 0);
+
       if (colaborador.descontarProvFerias && colaborador.descontoProvFeriasCompetencia == null) {
         const acumulado = ateCompetencia.reduce((soma, p) => soma + p.provFerias, 0);
-        if (acumulado > 0) {
-          descontosLote.push({ matricula, competencia, tipo: "ferias", valorAbsoluto: acumulado });
+        const liquido = acumulado - totalDescontosFerias;
+        if (liquido > 0) {
+          console.log(`[descontoAutomatico] matrícula ${matricula}: provFerias acumulado=${acumulado}, descontos=${totalDescontosFerias}, líquido=${liquido}`);
+          descontosLote.push({ matricula, competencia, tipo: "ferias", valorAbsoluto: liquido });
           marcarLote.push({ matricula, tipo: "ferias", competencia });
         }
       }
 
       if (colaborador.descontarProv13 && colaborador.descontoProv13Competencia == null) {
         const acumulado = ateCompetencia.reduce((soma, p) => soma + p.prov13, 0);
-        if (acumulado > 0) {
-          descontosLote.push({ matricula, competencia, tipo: "terco", valorAbsoluto: acumulado });
+        const liquido = acumulado - totalDescontos13;
+        if (liquido > 0) {
+          console.log(`[descontoAutomatico] matrícula ${matricula}: prov13 acumulado=${acumulado}, descontos=${totalDescontos13}, líquido=${liquido}`);
+          descontosLote.push({ matricula, competencia, tipo: "terco", valorAbsoluto: liquido });
           marcarLote.push({ matricula, tipo: "13", competencia });
         }
       }
