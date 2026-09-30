@@ -49,8 +49,10 @@ export async function calcularLinesAoVivo(competencia: string): Promise<{ lines:
 export async function carregarEngineLines(competencia: string, usuarioEmail: string | null): Promise<EngineLinesCarregadas> {
   const salva = usuarioEmail ? await getFaturaSalvaDoUsuario(competencia, usuarioEmail) : null;
   if (salva) {
+    console.log(`[carregarEngineLines] Usando fatura SALVA para competência ${competencia} (salva em ${salva.salvoEm})`);
     return { lines: salva.lines, warnings: salva.warnings, salvoEm: salva.salvoEm, previaTotalFaturaPorCcusto: salva.previaTotalFaturaPorCcusto };
   }
+  console.log(`[carregarEngineLines] Calculando AO VIVO para competência ${competencia}`);
   const { lines, warnings } = await calcularLinesAoVivo(competencia);
   return { lines, warnings, salvoEm: null, previaTotalFaturaPorCcusto: null };
 }
