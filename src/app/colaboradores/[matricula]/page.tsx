@@ -8,7 +8,6 @@ import { listProvisoesMensaisPorMatricula } from "@/lib/repo/provisoesMensais";
 import { ColaboradorForm } from "../ColaboradorForm";
 import { RescisaoCard } from "../RescisaoCard";
 import { SaldoFeriasCard } from "../SaldoFeriasCard";
-import { DescontoProvisaoForm } from "../DescontoProvisaoForm";
 
 export const dynamic = "force-dynamic";
 
@@ -91,11 +90,6 @@ export default async function EditarColaboradorPage({
         descontoUmTercoNaCompetencia={descontoNaCompetencia.terco}
       />
       <RescisaoCard matricula={colaborador.matricula} provisoes={provisoesMensais} descontos={descontosSaldoTodos} />
-      <DescontoProvisaoForm
-        matricula={colaborador.matricula}
-        descontarProvFeriasInicial={colaborador.descontarProvFerias}
-        descontarProv13Inicial={colaborador.descontarProv13}
-      />
       <ColaboradorForm matricula={colaborador.matricula} initialDados={colaborador.dados} />
     </main>
   );
