@@ -28,6 +28,15 @@ export async function aplicarDescontoAutomaticoProvisao(movimentos: Movimento[],
   const competencias = [...new Set(movimentos.map((m) => m.competencia))];
   if (competencias.length === 0) return;
 
+  const temAlgumCandidato = [...ctx.colaboradoresPorMatricula.values()].some(
+    (c) =>
+      (c.descontarProvFerias && c.descontoProvFeriasCompetencia == null) ||
+      (c.descontarProv13 && c.descontoProv13Competencia == null),
+  );
+  if (!temAlgumCandidato) return;
+
+  console.log(`[descontoAutomatico] processando ${competencias.length} competência(s) com ${movimentos.length} movimento(s)`);
+
   const matriculasPorCompetencia = new Map<string, Set<number>>();
   for (const m of movimentos) {
     const set = matriculasPorCompetencia.get(m.competencia) ?? new Set<number>();
