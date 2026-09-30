@@ -92,7 +92,13 @@ export async function aplicarDescontoAutomaticoProvisao(movimentos: Movimento[],
       }
     }
 
-    if (descontosLote.length > 0) await setDescontosSaldoEmLote(descontosLote);
-    if (marcarLote.length > 0) await marcarDescontosProvisaoAplicadosEmLote(marcarLote);
+    if (descontosLote.length > 0) {
+      console.log(`[descontoAutomatico] criando ${descontosLote.length} desconto(s) na competência ${competencia}:`, descontosLote);
+      await setDescontosSaldoEmLote(descontosLote);
+    }
+    if (marcarLote.length > 0) {
+      console.log(`[descontoAutomatico] marcando ${marcarLote.length} flag(s) como aplicadas na competência ${competencia}`);
+      await marcarDescontosProvisaoAplicadosEmLote(marcarLote);
+    }
   }
 }
