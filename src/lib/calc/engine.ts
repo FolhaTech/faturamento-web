@@ -420,7 +420,7 @@ export async function runEngine(movimentos: Movimento[]): Promise<RunResult> {
   lines.push(...(await generateComplementaryCharges(movimentos, ctx, warnings)));
   lines.push(...generateProvisaoRescisaoCharges(movimentos, ctx));
   lines.push(...generatePlrCharges(movimentos, ctx));
-  await aplicarDescontoAutomaticoProvisao(movimentos, ctx);
+  await aplicarDescontoAutomaticoProvisao(movimentos, ctx, lines);
   lines.push(...(await generateDescontoSaldoFeriasCharges(movimentos, ctx)));
 
   return { lines, warnings };
