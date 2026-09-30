@@ -149,6 +149,22 @@ export async function buildContext(movimentos: Movimento[]): Promise<EngineConte
   ]);
   const encargosPorCodigo = new Map(encargos.map((e) => [e.codigo, e]));
   const tomadoresPorCodigo = new Map(tomadores.map((t) => [t.codigo, t]));
+  
+  const colaboradoresComFlag = [...colaboradoresPorMatricula.values()].filter(
+    (c) => c.descontarProvFerias || c.descontarProv13
+  );
+  console.log(`[buildContext] ${colaboradoresPorMatricula.size} colaborador(es) carregado(s), ${colaboradoresComFlag.length} com flag de desconto ativa`);
+  if (colaboradoresComFlag.length > 0) {
+    console.log(`[buildContext] Colaboradores com flag:`, colaboradoresComFlag.map(c => ({
+      matricula: c.matricula,
+      nome: c.nome,
+      descontarProvFerias: c.descontarProvFerias,
+      descontoProvFeriasCompetencia: c.descontoProvFeriasCompetencia,
+      descontarProv13: c.descontarProv13,
+      descontoProv13Competencia: c.descontoProv13Competencia,
+    })));
+  }
+  
   return { encargosPorCodigo, colaboradoresPorMatricula, tomadoresPorCodigo, plrCeletista };
 }
 
