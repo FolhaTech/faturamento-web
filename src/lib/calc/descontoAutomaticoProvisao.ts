@@ -4,15 +4,6 @@ import { marcarDescontosProvisaoAplicadosEmLote } from "../repo/colaboradores";
 import type { EngineContext } from "./engine";
 import type { Colaborador, Movimento } from "../types";
 
-function competenciaParaData(competencia: string): Date {
-  const [mes, ano] = competencia.replace(/\s*\((Prévia|Folha)\)$/, "").split("/");
-  return new Date(Number(ano), Number(mes) - 1, 1);
-}
-
-function dataCompetenciaMaiorOuIgual(a: string, b: string): boolean {
-  return competenciaParaData(a).getTime() >= competenciaParaData(b).getTime();
-}
-
 /**
  * Para colaboradores com as flags de desconto automático de provisão ativas, lança um desconto
  * de saldo na primeira competência processada em que ele aparece. O valor descontado é o
@@ -108,8 +99,10 @@ export async function aplicarDescontoAutomaticoProvisao(movimentos: Movimento[],
       const provisoesDoColaborador = provisoesPorMatricula.get(matricula) ?? [];
       console.log(`[descontoAutomatico] Matrícula ${matricula}: ${provisoesDoColaborador.length} provisão(ões) encontrada(s)`);
       
-      const ateCompetencia = provisoesDoColaborador.filter((p) => dataCompetenciaMaiorOuIgual(competencia, p.competencia));
-      console.log(`[descontoAutomatico] Matrícula ${matricula}: ${ateCompetencia.length} provisão(ões) até competência ${competencia}`);
+      // Calcula o acumulado histórico de TODAS as provisões (não apenas até a competência atual)
+      const acumuladoFerias = provisoesDoColaborador.reduce((soma, p) => soma + p.provFerias, 0);
+      const acumulado13 = provisoesDoColaborador.reduce((soma, p) => soma + p.prov13, 0);
+      console.log(`[descontoAutomatico] Matrícula ${matricula}: acumulado histórico férias=${acumuladoFerias.toFixed(2)}, 13º=${acumulado13.toFixed(2)}`);
 
       const descontosDoColaborador = descontosPorMatricula.get(matricula) ?? [];
       console.log(`[descontoAutomatico] Matrícula ${matricula}: ${descontosDoColaborador.length} desconto(s) já lançado(s)`);
@@ -122,9 +115,8 @@ export async function aplicarDescontoAutomaticoProvisao(movimentos: Movimento[],
         .reduce((soma, d) => soma + Math.abs(d.valor), 0);
 
       if (colaborador.descontarProvFerias && colaborador.descontoProvFeriasCompetencia == null) {
-        const acumulado = ateCompetencia.reduce((soma, p) => soma + p.provFerias, 0);
-        const liquido = acumulado - totalDescontosFerias;
-        console.log(`[descontoAutomatico] Matrícula ${matricula}: provFerias acumulado=${acumulado.toFixed(2)}, descontos=${totalDescontosFerias.toFixed(2)}, líquido=${liquido.toFixed(2)}`);
+        const liquido = acumuladoFerias - totalDescontosFerias;
+        console.log(`[descontoAutomatico] Matrícula ${matricula}: provFerias acumulado=${acumuladoFerias.toFixed(2)}, descontos=${totalDescontosFerias.toFixed(2)}, líquido=${liquido.toFixed(2)}`);
         if (liquido > 0) {
           console.log(`[descontoAutomatico] ✓ Matrícula ${matricula}: provFerias líquido=${liquido.toFixed(2)} > 0, criando desconto`);
           descontosLote.push({ matricula, competencia, tipo: "ferias", valorAbsoluto: liquido });
@@ -137,9 +129,8 @@ export async function aplicarDescontoAutomaticoProvisao(movimentos: Movimento[],
       }
 
       if (colaborador.descontarProv13 && colaborador.descontoProv13Competencia == null) {
-        const acumulado = ateCompetencia.reduce((soma, p) => soma + p.prov13, 0);
-        const liquido = acumulado - totalDescontos13;
-        console.log(`[descontoAutomatico] Matrícula ${matricula}: prov13 acumulado=${acumulado.toFixed(2)}, descontos=${totalDescontos13.toFixed(2)}, líquido=${liquido.toFixed(2)}`);
+        const liquido = acumulado13 - totalDescontos13;
+        console.log(`[descontoAutomatico] Matrícula ${matricula}: prov13 acumulado=${acumulado13.toFixed(2)}, descontos=${totalDescontos13.toFixed(2)}, líquido=${liquido.toFixed(2)}`);
         if (liquido > 0) {
           console.log(`[descontoAutomatico] ✓ Matrícula ${matricula}: prov13 líquido=${liquido.toFixed(2)} > 0, criando desconto`);
           descontosLote.push({ matricula, competencia, tipo: "terco", valorAbsoluto: liquido });
