@@ -14,6 +14,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ matr
     });
     return NextResponse.json({ colaborador });
   } catch (error) {
+    console.error("[desconto-provisao] erro ao salvar flags:", error);
     const message = error instanceof Error ? error.message : "Erro ao salvar flags.";
     return NextResponse.json({ error: message }, { status: 500 });
   }

@@ -49,7 +49,8 @@ export function DescontoProvisaoForm({
       <p className="text-xs text-neutral-500">
         Quando marcado <strong>Sim</strong>, o valor acumulado de Prov. Férias / Prov. 13º da Rescisão será lançado
         como desconto (crédito) na próxima Folha processada para esse colaborador. O desconto é aplicado uma única vez
-        por flag; para descontar novamente, marque <strong>Não</strong> e depois <strong>Sim</strong>.
+        por flag; para descontar novamente, marque <strong>Não</strong> e depois <strong>Sim</strong>. Se a fatura do
+        mês já foi salva, descarte-a ou salve uma nova versão pra ver o desconto refletido.
       </p>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-xs font-medium text-neutral-500">

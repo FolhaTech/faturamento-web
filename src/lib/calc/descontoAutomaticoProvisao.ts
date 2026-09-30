@@ -1,5 +1,5 @@
 import { listProvisoesMensaisPorMatricula } from "../repo/provisoesMensais";
-import { upsertDescontoSaldo } from "../repo/descontosSaldo";
+import { setDescontoSaldo } from "../repo/descontosSaldo";
 import { marcarDescontoProvisaoAplicado } from "../repo/colaboradores";
 import type { EngineContext } from "./engine";
 import type { Movimento } from "../types";
@@ -46,7 +46,7 @@ export async function aplicarDescontoAutomaticoProvisao(movimentos: Movimento[],
           .filter((p) => dataCompetenciaMaiorOuIgual(competencia, p.competencia))
           .reduce((soma, p) => soma + p.provFerias, 0);
         if (acumulado > 0) {
-          await upsertDescontoSaldo(matricula, competencia, "ferias", -acumulado);
+          await setDescontoSaldo(matricula, competencia, "ferias", acumulado);
           await marcarDescontoProvisaoAplicado(matricula, "ferias", competencia);
         }
       }
@@ -56,7 +56,7 @@ export async function aplicarDescontoAutomaticoProvisao(movimentos: Movimento[],
           .filter((p) => dataCompetenciaMaiorOuIgual(competencia, p.competencia))
           .reduce((soma, p) => soma + p.prov13, 0);
         if (acumulado > 0) {
-          await upsertDescontoSaldo(matricula, competencia, "terco", -acumulado);
+          await setDescontoSaldo(matricula, competencia, "terco", acumulado);
           await marcarDescontoProvisaoAplicado(matricula, "13", competencia);
         }
       }
