@@ -14,6 +14,10 @@ interface Row {
   saldo_ferias: number;
   saldo_um_terco: number;
   cc: string | null;
+  descontar_prov_ferias: boolean;
+  descontar_prov_13: boolean;
+  desconto_prov_ferias_competencia: string | null;
+  desconto_prov_13_competencia: string | null;
 }
 
 function toColaborador(row: Row): Colaborador {
@@ -30,6 +34,10 @@ function toColaborador(row: Row): Colaborador {
     saldoFerias: row.saldo_ferias,
     saldoUmTerco: row.saldo_um_terco,
     cc: row.cc,
+    descontarProvFerias: row.descontar_prov_ferias,
+    descontarProv13: row.descontar_prov_13,
+    descontoProvFeriasCompetencia: row.desconto_prov_ferias_competencia,
+    descontoProv13Competencia: row.desconto_prov_13_competencia,
   };
 }
 
@@ -182,6 +190,51 @@ export async function updateCc(matricula: number, cc: string | null): Promise<Co
   const colaborador = await getColaborador(matricula);
   if (!colaborador) throw new Error(`Colaborador ${matricula} não encontrado.`);
   return colaborador;
+}
+
+export interface DescontoProvisaoFlags {
+  descontarProvFerias: boolean;
+  descontarProv13: boolean;
+}
+
+/** Define as flags de desconto automático de provisão acumulada na Folha. Quando uma flag passa de false para true,
+ * a competência aplicada é limpa, permitindo que o desconto seja gerado na próxima Folha processada. */
+export async function updateDescontoProvisaoFlags(matricula: number, flags: DescontoProvisaoFlags): Promise<Colaborador> {
+  await ensureSchema();
+  const sql = getDb();
+  const atual = await getColaborador(matricula);
+  if (!atual) throw new Error(`Colaborador ${matricula} não encontrado.`);
+
+  const limpaFerias = flags.descontarProvFerias && !atual.descontarProvFerias ? null : atual.descontoProvFeriasCompetencia;
+  const limpa13 = flags.descontarProv13 && !atual.descontarProv13 ? null : atual.descontoProv13Competencia;
+
+  await sql`
+    UPDATE colaboradores
+    SET descontar_prov_ferias = ${flags.descontarProvFerias},
+        descontar_prov_13 = ${flags.descontarProv13},
+        desconto_prov_ferias_competencia = ${limpaFerias},
+        desconto_prov_13_competencia = ${limpa13}
+    WHERE matricula = ${matricula}
+  `;
+
+  const colaborador = await getColaborador(matricula);
+  if (!colaborador) throw new Error(`Colaborador ${matricula} não encontrado.`);
+  return colaborador;
+}
+
+/** Registra em qual competência o desconto automático de provisão foi aplicado, pra não repetir. */
+export async function marcarDescontoProvisaoAplicado(
+  matricula: number,
+  tipo: "ferias" | "13",
+  competencia: string,
+): Promise<void> {
+  await ensureSchema();
+  const sql = getDb();
+  if (tipo === "ferias") {
+    await sql`UPDATE colaboradores SET desconto_prov_ferias_competencia = ${competencia} WHERE matricula = ${matricula}`;
+  } else {
+    await sql`UPDATE colaboradores SET desconto_prov_13_competencia = ${competencia} WHERE matricula = ${matricula}`;
+  }
 }
 
 /** Saldo (férias OU 1/3, conforme `tipo`) atual de cada matrícula — usado pelo abatimento no upload de Movimentos. */

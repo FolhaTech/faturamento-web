@@ -7,6 +7,7 @@ import { listTomadores } from "../repo/tomadores";
 import { normalizaTexto } from "../text";
 import type { Colaborador, Encargo, GrossUpOperacao, Movimento, TipoEvento, Tomador } from "../types";
 import { CODIGO_DESCONTO_SALDO_FERIAS, CODIGO_DESCONTO_SALDO_UM_TERCO } from "./descontoSaldoFerias";
+import { aplicarDescontoAutomaticoProvisao } from "./descontoAutomaticoProvisao";
 
 /**
  * Percentual de tributação padrão da Nota Fiscal (PIS 1,65% + COFINS 7,6% + ISS 2% + CSLL 1% +
@@ -403,6 +404,7 @@ export async function runEngine(movimentos: Movimento[]): Promise<RunResult> {
   lines.push(...(await generateComplementaryCharges(movimentos, ctx, warnings)));
   lines.push(...generateProvisaoRescisaoCharges(movimentos, ctx));
   lines.push(...generatePlrCharges(movimentos, ctx));
+  await aplicarDescontoAutomaticoProvisao(movimentos, ctx);
   lines.push(...(await generateDescontoSaldoFeriasCharges(movimentos, ctx)));
 
   return { lines, warnings };

@@ -82,6 +82,14 @@ ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS saldo_um_terco DOUBLE PRECISI
 -- FaturamentoViewer.tsx) e mostrado no PDF. Fora da coluna dados pelo mesmo motivo dos saldos
 -- acima: um reimport da base de Colaboradores não pode apagar o que foi digitado aqui.
 ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS cc TEXT;
+-- Flags de desconto automático de provisão acumulada na Folha: quando "true", o valor acumulado
+-- de Prov. Férias / Prov. 13º (que aparece na Rescisão) é lançado como desconto de saldo na
+-- primeira Folha processada depois que a flag foi marcada. A coluna de competência registra em
+-- qual mês o desconto foi aplicado, pra não repetir automaticamente enquanto a flag continuar "Sim".
+ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS descontar_prov_ferias BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS descontar_prov_13 BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS desconto_prov_ferias_competencia TEXT;
+ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS desconto_prov_13_competencia TEXT;
 
 CREATE TABLE IF NOT EXISTS movimentos (
   id TEXT PRIMARY KEY,
