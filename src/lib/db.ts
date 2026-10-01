@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import postgres from "postgres";
 
 const SCHEMA = `
@@ -258,10 +259,27 @@ export function getDb(): Sql {
   return globalThis.__sql__;
 }
 
-/** Garante que as tabelas existem — roda uma vez por processo (idempotente: CREATE TABLE IF NOT EXISTS). */
+/**
+ * Garante que as tabelas existem — roda uma vez por processo (idempotente: CREATE TABLE IF NOT EXISTS).
+ *
+ * O SCHEMA tem dezenas de ALTER TABLE/DROP/UPDATE, que pedem lock exclusivo nas tabelas mesmo quando
+ * nada muda: rodar tudo isso a cada instância nova (cold start serverless) travava as demais
+ * consultas na fila e deixava o sistema lento. Por isso a versão aplicada (hash do SCHEMA) fica
+ * gravada em schema_meta e o SCHEMA só roda de novo quando o texto dele mudar.
+ */
+async function aplicarSchemaSeMudou(): Promise<void> {
+  const sql = getDb();
+  const versao = createHash("sha1").update(SCHEMA).digest("hex");
+  await sql`CREATE TABLE IF NOT EXISTS schema_meta (chave TEXT PRIMARY KEY, valor TEXT NOT NULL)`;
+  const [atual] = await sql<{ valor: string }[]>`SELECT valor FROM schema_meta WHERE chave = 'versao'`;
+  if (atual?.valor === versao) return;
+  await sql.unsafe(SCHEMA);
+  await sql`INSERT INTO schema_meta (chave, valor) VALUES ('versao', ${versao}) ON CONFLICT (chave) DO UPDATE SET valor = excluded.valor`;
+}
+
 export async function ensureSchema(): Promise<void> {
   if (!globalThis.__schemaReady__) {
-    globalThis.__schemaReady__ = getDb().unsafe(SCHEMA).then(() => undefined);
+    globalThis.__schemaReady__ = aplicarSchemaSeMudou();
   }
   return globalThis.__schemaReady__;
 }
