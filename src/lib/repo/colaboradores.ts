@@ -198,24 +198,37 @@ export interface DescontoProvisaoFlags {
 }
 
 /** Define as flags de desconto automático de provisão acumulada na Folha. Quando uma flag passa de false para true,
- * a competência aplicada é limpa, permitindo que o desconto seja gerado na próxima Folha processada. */
+ * a competência aplicada é limpa, permitindo que o desconto seja gerado na próxima Folha processada. Quando uma flag
+ * fica "Não" e já havia um desconto automático aplicado (competência registrada), esse desconto é removido de
+ * descontos_saldo e a competência é limpa — senão o motor continuaria cobrando o valor já lançado. */
 export async function updateDescontoProvisaoFlags(matricula: number, flags: DescontoProvisaoFlags): Promise<Colaborador> {
   await ensureSchema();
   const sql = getDb();
   const atual = await getColaborador(matricula);
   if (!atual) throw new Error(`Colaborador ${matricula} não encontrado.`);
 
-  const limpaFerias = flags.descontarProvFerias && !atual.descontarProvFerias ? null : atual.descontoProvFeriasCompetencia;
-  const limpa13 = flags.descontarProv13 && !atual.descontarProv13 ? null : atual.descontoProv13Competencia;
+  const removerFerias = !flags.descontarProvFerias && atual.descontoProvFeriasCompetencia != null;
+  const remover13 = !flags.descontarProv13 && atual.descontoProv13Competencia != null;
 
-  await sql`
-    UPDATE colaboradores
-    SET descontar_prov_ferias = ${flags.descontarProvFerias},
-        descontar_prov_13 = ${flags.descontarProv13},
-        desconto_prov_ferias_competencia = ${limpaFerias},
-        desconto_prov_13_competencia = ${limpa13}
-    WHERE matricula = ${matricula}
-  `;
+  const limpaFerias = removerFerias || (flags.descontarProvFerias && !atual.descontarProvFerias) ? null : atual.descontoProvFeriasCompetencia;
+  const limpa13 = remover13 || (flags.descontarProv13 && !atual.descontarProv13) ? null : atual.descontoProv13Competencia;
+
+  await sql.begin(async (tx) => {
+    if (removerFerias) {
+      await tx`DELETE FROM descontos_saldo WHERE matricula = ${matricula} AND competencia = ${atual.descontoProvFeriasCompetencia} AND tipo = 'ferias'`;
+    }
+    if (remover13) {
+      await tx`DELETE FROM descontos_saldo WHERE matricula = ${matricula} AND competencia = ${atual.descontoProv13Competencia} AND tipo = 'terco'`;
+    }
+    await tx`
+      UPDATE colaboradores
+      SET descontar_prov_ferias = ${flags.descontarProvFerias},
+          descontar_prov_13 = ${flags.descontarProv13},
+          desconto_prov_ferias_competencia = ${limpaFerias},
+          desconto_prov_13_competencia = ${limpa13}
+      WHERE matricula = ${matricula}
+    `;
+  });
 
   const colaborador = await getColaborador(matricula);
   if (!colaborador) throw new Error(`Colaborador ${matricula} não encontrado.`);

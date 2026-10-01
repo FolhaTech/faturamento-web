@@ -98,6 +98,36 @@ describe("runEngine — desconto automático de provisão acumulada", () => {
     expect(new Set(descontos.map((d) => d.competencia)).size).toBe(1);
   });
 
+  it("marcar a flag como Não remove o desconto automático já lançado", async () => {
+    await updateDescontoProvisaoFlags(90103392, { descontarProvFerias: true, descontarProv13: true });
+
+    const movimentos: Movimento[] = [
+      {
+        id: "1",
+        codigo: 8781,
+        matricula: 90103392,
+        nome: "ADALBERTO ALVARES JUNIOR",
+        evento: "DIAS NORMAIS",
+        competencia: "09/2026 (Folha)",
+        valor: 5000,
+        ref: 30,
+        tipo: "P",
+        forma: "Dias",
+      },
+    ];
+    const ehDesconto = (evento: string) => evento === "DESCONTO SALDO DE FÉRIAS" || evento === "DESCONTO SALDO DE 13° SALÁRIO";
+
+    const antes = await runEngine(movimentos);
+    expect(antes.lines.filter((l) => ehDesconto(l.evento))).toHaveLength(2);
+
+    const colaborador = await updateDescontoProvisaoFlags(90103392, { descontarProvFerias: false, descontarProv13: false });
+    expect(colaborador.descontoProvFeriasCompetencia).toBeNull();
+    expect(colaborador.descontoProv13Competencia).toBeNull();
+
+    const depois = await runEngine(movimentos);
+    expect(depois.lines.filter((l) => ehDesconto(l.evento))).toHaveLength(0);
+  });
+
   it("abate descontos de saldo já lançados do acumulado", async () => {
     // Histórico de provisões.
     await salvarProvisoesMensais(
