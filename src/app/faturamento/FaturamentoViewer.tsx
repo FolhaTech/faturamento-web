@@ -7,6 +7,7 @@ import { normalizaTexto } from "@/lib/text";
 import type { Encargo } from "@/lib/types";
 import { DescontoProvisaoColaborador, type ProvisaoColaborador } from "./DescontoProvisaoColaborador";
 import { GrossUpConfigForm } from "./GrossUpConfigForm";
+import { RegimeColaborador, type TomadorOpcao } from "./RegimeColaborador";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 function fmt(n: number): string {
@@ -21,6 +22,8 @@ export function FaturamentoViewer({
   encargos,
   colaboradoresCc,
   colaboradoresProvisao,
+  colaboradoresTomador,
+  tomadoresOpcoes,
   previaTotalFaturaPorCcusto,
   eventosExcluidos,
 }: {
@@ -42,6 +45,9 @@ export function FaturamentoViewer({
   colaboradoresCc: { matricula: number; cc: string | null }[];
   /** Estado dos botões Sim/Não de Prov. Férias / Prov. 13º de cada colaborador mostrado — ver DescontoProvisaoColaborador. */
   colaboradoresProvisao: ProvisaoColaborador[];
+  /** Tomador (Cód Serviço) atual de cada colaborador mostrado e a lista de Tomadores pra escolher — ver RegimeColaborador. */
+  colaboradoresTomador: { matricula: number; codServico: number | null }[];
+  tomadoresOpcoes: TomadorOpcao[];
   /** Total fatura (NF) já cobrado na Prévia do mesmo mês, por Centro de Custo — vazio quando a competência atual não é uma Folha ou não tem Prévia correspondente. Ver page.tsx. */
   previaTotalFaturaPorCcusto: { ccustoCodigo: string; totalFatura: number }[];
   /** Eventos excluídos manualmente da fatura, por colaborador (ver eventosExcluidos.ts) — usado só pro painel de restaurar, o cálculo já vem sem eles. */
@@ -54,6 +60,7 @@ export function FaturamentoViewer({
   const encargosPorCodigo = useMemo(() => new Map(encargos.map((e) => [e.codigo, e])), [encargos]);
   const ccPorMatricula = useMemo(() => new Map(colaboradoresCc.map((c) => [c.matricula, c.cc])), [colaboradoresCc]);
   const provisaoPorMatricula = useMemo(() => new Map(colaboradoresProvisao.map((p) => [p.matricula, p])), [colaboradoresProvisao]);
+  const codServicoPorMatricula = useMemo(() => new Map(colaboradoresTomador.map((c) => [c.matricula, c.codServico])), [colaboradoresTomador]);
   const previaPorCcusto = useMemo(() => new Map(previaTotalFaturaPorCcusto.map((p) => [p.ccustoCodigo, p.totalFatura])), [previaTotalFaturaPorCcusto]);
   const eventosExcluidosPorMatricula = useMemo(() => {
     const map = new Map<number, { matricula: number; evento: string }[]>();
@@ -150,6 +157,8 @@ export function FaturamentoViewer({
             ccPorMatricula={ccPorMatricula}
             competencia={resumo.competencia}
             provisaoPorMatricula={provisaoPorMatricula}
+            codServicoPorMatricula={codServicoPorMatricula}
+            tomadoresOpcoes={tomadoresOpcoes}
             eventosExcluidosPorMatricula={eventosExcluidosPorMatricula}
             onExcluir={excluirEvento}
             onRestaurar={restaurarEvento}
@@ -519,6 +528,8 @@ function ColaboradoresTable({
   ccPorMatricula,
   competencia,
   provisaoPorMatricula,
+  codServicoPorMatricula,
+  tomadoresOpcoes,
   eventosExcluidosPorMatricula,
   onExcluir,
   onRestaurar,
@@ -531,6 +542,9 @@ function ColaboradoresTable({
   /** Competência mostrada — pra qual os botões de Prov. Férias / Prov. 13º lançam o desconto. */
   competencia: string;
   provisaoPorMatricula: Map<number, ProvisaoColaborador>;
+  /** Tomador atual de cada colaborador + Tomadores disponíveis — alimentam o seletor de regime (ver RegimeColaborador). */
+  codServicoPorMatricula: Map<number, number | null>;
+  tomadoresOpcoes: TomadorOpcao[];
   /** Eventos excluídos manualmente, por matrícula (ver eventosExcluidos.ts) — pro painel de restaurar dentro do detalhamento de cada colaborador. */
   eventosExcluidosPorMatricula: Map<number, { matricula: number; evento: string }[]>;
   onExcluir: (matricula: number, nomeColaborador: string, evento: string) => void | Promise<void>;
@@ -594,6 +608,7 @@ function ColaboradoresTable({
                     <tr>
                       <td colSpan={8} className="bg-neutral-50 p-3">
                         <div className="flex flex-col gap-3">
+                          <RegimeColaborador matricula={c.matricula} codServicoAtual={codServicoPorMatricula.get(c.matricula) ?? null} tomadores={tomadoresOpcoes} />
                           {provisaoPorMatricula.has(c.matricula) && (
                             <DescontoProvisaoColaborador matricula={c.matricula} competencia={competencia} provisao={provisaoPorMatricula.get(c.matricula)!} />
                           )}

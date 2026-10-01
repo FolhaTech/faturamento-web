@@ -164,6 +164,27 @@ export async function upsertColaborador(input: ColaboradorInput): Promise<Colabo
   return (await getColaborador(input.matricula))!;
 }
 
+/**
+ * Troca o Tomador (Cód Serviço) do colaborador — é ele que define o regime (FPAS 515 = Terceiro, 655 =
+ * Temporário), taxa adm e gross-up da fatura. Usado pelo seletor de regime no Faturamento (ver
+ * RegimeColaborador.tsx), em vez de digitar o número no cadastro. Grava na coluna e no JSON `dados`
+ * (que a base de Colaboradores também lê) pra os dois ficarem iguais; cadastro pendente passa a
+ * "Trabalhando" porque agora tem Tomador, igual ao vínculo automático do upload.
+ */
+export async function updateTomadorDoColaborador(matricula: number, tomador: { codigo: number; nome: string }): Promise<Colaborador> {
+  await ensureSchema();
+  const atual = await getColaborador(matricula);
+  if (!atual) throw new Error(`Colaborador ${matricula} não encontrado.`);
+  const situacao = atual.situacao === SITUACAO_CADASTRO_PENDENTE ? SITUACAO_TRABALHANDO : atual.situacao;
+  const dados = { ...atual.dados, cod_servico: tomador.codigo, descricao_servico: tomador.nome, situacao };
+  await getDb()`
+    UPDATE colaboradores
+    SET cod_servico = ${tomador.codigo}, descricao_servico = ${tomador.nome}, situacao = ${situacao}, dados = ${JSON.stringify(dados)}
+    WHERE matricula = ${matricula}
+  `;
+  return (await getColaborador(matricula))!;
+}
+
 /** Define os saldos de férias e de 1/3 do colaborador (edição manual, mantidos separados — ver saldo_ferias/saldo_um_terco em db.ts). */
 export async function updateSaldosFerias(matricula: number, saldoFerias: number, saldoUmTerco: number): Promise<Colaborador> {
   await ensureSchema();

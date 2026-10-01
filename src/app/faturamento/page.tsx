@@ -11,9 +11,11 @@ import { listCompetencias } from "@/lib/repo/movimentos";
 import { getColaboradoresPorMatriculas, listValoresDistintosDados } from "@/lib/repo/colaboradores";
 import { CHAVE_PLR_CELETISTA, getConfigNumero } from "@/lib/repo/configuracoes";
 import { listEncargos } from "@/lib/repo/encargos";
+import { listTomadores } from "@/lib/repo/tomadores";
 import type { ProvisaoColaborador } from "./DescontoProvisaoColaborador";
 import { FaturaTimeline } from "./FaturaTimeline";
 import { FaturamentoViewer } from "./FaturamentoViewer";
+import type { TomadorOpcao } from "./RegimeColaborador";
 import { PlrConfigForm } from "./PlrConfigForm";
 import { SalvarFaturaBanner } from "./SalvarFaturaBanner";
 import { UploadMovimentosForm } from "./UploadMovimentosForm";
@@ -108,6 +110,10 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   const matriculasNaTela = [...new Set(resumos.flatMap((r) => r.colaboradores.map((c) => c.matricula)))];
   const colaboradoresPorMatricula = await getColaboradoresPorMatriculas(matriculasNaTela);
   const colaboradoresCc = matriculasNaTela.map((matricula) => ({ matricula, cc: colaboradoresPorMatricula.get(matricula)?.cc ?? null }));
+
+  // Seletor de regime (Tomador) por colaborador — ver RegimeColaborador.tsx.
+  const tomadoresOpcoes: TomadorOpcao[] = (await listTomadores()).map((t) => ({ codigo: t.codigo, nome: t.nome, fpas: t.fpas, pendente: t.pendente }));
+  const colaboradoresTomador = matriculasNaTela.map((matricula) => ({ matricula, codServico: colaboradoresPorMatricula.get(matricula)?.codServico ?? null }));
 
   // Botões Sim/Não de Prov. Férias / Prov. 13º por colaborador (ver DescontoProvisaoColaborador.tsx):
   // "Sim" = já existe desconto desse tipo lançado nessa competência; o valor mostrado é o Acumulado
@@ -282,6 +288,8 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
             encargos={encargos}
             colaboradoresCc={colaboradoresCc}
             colaboradoresProvisao={colaboradoresProvisao}
+            colaboradoresTomador={colaboradoresTomador}
+            tomadoresOpcoes={tomadoresOpcoes}
             previaTotalFaturaPorCcusto={previaTotalFaturaPorCcusto}
             eventosExcluidos={eventosExcluidos}
           />
