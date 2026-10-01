@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import type { CcustoResumo, ColaboradorResumo, RubricaSomada } from "@/lib/calc/aggregate";
 import { normalizaTexto } from "@/lib/text";
 import type { Encargo } from "@/lib/types";
-import { DescontoProvisaoForm } from "../colaboradores/DescontoProvisaoForm";
 import { GrossUpConfigForm } from "./GrossUpConfigForm";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -20,7 +19,6 @@ export function FaturamentoViewer({
   regimeLabel = null,
   encargos,
   colaboradoresCc,
-  colaboradoresFlags,
   previaTotalFaturaPorCcusto,
   eventosExcluidos,
 }: {
@@ -40,8 +38,6 @@ export function FaturamentoViewer({
   encargos: Encargo[];
   /** CC (não obrigatório) de cada colaborador mostrado — ver ColaboradoresTable/CcInput. Array (não Map) pelo mesmo motivo de filtrosQuery acima. */
   colaboradoresCc: { matricula: number; cc: string | null }[];
-  /** Flags de desconto automático de provisão de cada colaborador mostrado — ver ColaboradoresTable/DescontoProvisaoForm. */
-  colaboradoresFlags: { matricula: number; descontarProvFerias: boolean; descontarProv13: boolean }[];
   /** Total fatura (NF) já cobrado na Prévia do mesmo mês, por Centro de Custo — vazio quando a competência atual não é uma Folha ou não tem Prévia correspondente. Ver page.tsx. */
   previaTotalFaturaPorCcusto: { ccustoCodigo: string; totalFatura: number }[];
   /** Eventos excluídos manualmente da fatura, por colaborador (ver eventosExcluidos.ts) — usado só pro painel de restaurar, o cálculo já vem sem eles. */
@@ -53,10 +49,6 @@ export function FaturamentoViewer({
   const resumo = useMemo(() => resumos.find((r) => r.ccustoCodigo === ccustoCodigo) ?? resumos[0] ?? null, [resumos, ccustoCodigo]);
   const encargosPorCodigo = useMemo(() => new Map(encargos.map((e) => [e.codigo, e])), [encargos]);
   const ccPorMatricula = useMemo(() => new Map(colaboradoresCc.map((c) => [c.matricula, c.cc])), [colaboradoresCc]);
-  const flagsPorMatricula = useMemo(
-    () => new Map(colaboradoresFlags.map((c) => [c.matricula, { descontarProvFerias: c.descontarProvFerias, descontarProv13: c.descontarProv13 }])),
-    [colaboradoresFlags],
-  );
   const previaPorCcusto = useMemo(() => new Map(previaTotalFaturaPorCcusto.map((p) => [p.ccustoCodigo, p.totalFatura])), [previaTotalFaturaPorCcusto]);
   const eventosExcluidosPorMatricula = useMemo(() => {
     const map = new Map<number, { matricula: number; evento: string }[]>();
@@ -151,7 +143,6 @@ export function FaturamentoViewer({
             colaboradores={resumo.colaboradores}
             encargosPorCodigo={encargosPorCodigo}
             ccPorMatricula={ccPorMatricula}
-            flagsPorMatricula={flagsPorMatricula}
             eventosExcluidosPorMatricula={eventosExcluidosPorMatricula}
             onExcluir={excluirEvento}
             onRestaurar={restaurarEvento}
@@ -519,7 +510,6 @@ function ColaboradoresTable({
   colaboradores,
   encargosPorCodigo,
   ccPorMatricula,
-  flagsPorMatricula,
   eventosExcluidosPorMatricula,
   onExcluir,
   onRestaurar,
@@ -529,8 +519,6 @@ function ColaboradoresTable({
   encargosPorCodigo: Map<number, Encargo>;
   /** CC (não obrigatório) de cada colaborador — ver CcInput. */
   ccPorMatricula: Map<number, string | null>;
-  /** Flags de desconto automático de provisão de cada colaborador — ver DescontoProvisaoForm. */
-  flagsPorMatricula: Map<number, { descontarProvFerias: boolean; descontarProv13: boolean }>;
   /** Eventos excluídos manualmente, por matrícula (ver eventosExcluidos.ts) — pro painel de restaurar dentro do detalhamento de cada colaborador. */
   eventosExcluidosPorMatricula: Map<number, { matricula: number; evento: string }[]>;
   onExcluir: (matricula: number, nomeColaborador: string, evento: string) => void | Promise<void>;
@@ -594,11 +582,6 @@ function ColaboradoresTable({
                     <tr>
                       <td colSpan={8} className="bg-neutral-50 p-3">
                         <div className="flex flex-col gap-3">
-                          <DescontoProvisaoForm
-                            matricula={c.matricula}
-                            descontarProvFeriasInicial={flagsPorMatricula.get(c.matricula)?.descontarProvFerias ?? false}
-                            descontarProv13Inicial={flagsPorMatricula.get(c.matricula)?.descontarProv13 ?? false}
-                          />
                           <RubricasTable
                             rubricas={c.rubricas}
                             encargosPorCodigo={encargosPorCodigo}

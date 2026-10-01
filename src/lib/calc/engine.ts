@@ -7,7 +7,6 @@ import { listTomadores } from "../repo/tomadores";
 import { normalizaTexto } from "../text";
 import type { Colaborador, Encargo, GrossUpOperacao, Movimento, TipoEvento, Tomador } from "../types";
 import { CODIGO_DESCONTO_SALDO_FERIAS, CODIGO_DESCONTO_SALDO_UM_TERCO } from "./descontoSaldoFerias";
-import { aplicarDescontoAutomaticoProvisao } from "./descontoAutomaticoProvisao";
 
 /**
  * Percentual de tributação padrão da Nota Fiscal (PIS 1,65% + COFINS 7,6% + ISS 2% + CSLL 1% +
@@ -149,22 +148,6 @@ export async function buildContext(movimentos: Movimento[]): Promise<EngineConte
   ]);
   const encargosPorCodigo = new Map(encargos.map((e) => [e.codigo, e]));
   const tomadoresPorCodigo = new Map(tomadores.map((t) => [t.codigo, t]));
-  
-  const colaboradoresComFlag = [...colaboradoresPorMatricula.values()].filter(
-    (c) => c.descontarProvFerias || c.descontarProv13
-  );
-  console.log(`[buildContext] ${colaboradoresPorMatricula.size} colaborador(es) carregado(s), ${colaboradoresComFlag.length} com flag de desconto ativa`);
-  if (colaboradoresComFlag.length > 0) {
-    console.log(`[buildContext] Colaboradores com flag:`, colaboradoresComFlag.map(c => ({
-      matricula: c.matricula,
-      nome: c.nome,
-      descontarProvFerias: c.descontarProvFerias,
-      descontoProvFeriasCompetencia: c.descontoProvFeriasCompetencia,
-      descontarProv13: c.descontarProv13,
-      descontoProv13Competencia: c.descontoProv13Competencia,
-    })));
-  }
-  
   return { encargosPorCodigo, colaboradoresPorMatricula, tomadoresPorCodigo, plrCeletista };
 }
 
@@ -420,7 +403,6 @@ export async function runEngine(movimentos: Movimento[]): Promise<RunResult> {
   lines.push(...(await generateComplementaryCharges(movimentos, ctx, warnings)));
   lines.push(...generateProvisaoRescisaoCharges(movimentos, ctx));
   lines.push(...generatePlrCharges(movimentos, ctx));
-  await aplicarDescontoAutomaticoProvisao(movimentos, ctx, lines);
   lines.push(...(await generateDescontoSaldoFeriasCharges(movimentos, ctx)));
 
   return { lines, warnings };
@@ -759,8 +741,6 @@ async function generateDescontoSaldoFeriasCharges(movimentos: Movimento[], ctx: 
 
     const codigo = d.tipo === "ferias" ? CODIGO_DESCONTO_SALDO_FERIAS : CODIGO_DESCONTO_SALDO_UM_TERCO;
     const evento = d.tipo === "ferias" ? "DESCONTO SALDO DE FÉRIAS" : "DESCONTO SALDO DE 13° SALÁRIO";
-
-    console.log(`[generateDescontoSaldoFeriasCharges] criando linha: matrícula=${colaborador.matricula}, evento="${evento}", valor=${d.valor}, tipo=${d.tipo}`);
 
     const base = d.valor;
     const taxaAdmValor = base * tomador.taxaAdm;

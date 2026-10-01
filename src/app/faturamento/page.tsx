@@ -105,14 +105,6 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   const matriculasNaTela = [...new Set(resumos.flatMap((r) => r.colaboradores.map((c) => c.matricula)))];
   const colaboradoresPorMatricula = await getColaboradoresPorMatriculas(matriculasNaTela);
   const colaboradoresCc = matriculasNaTela.map((matricula) => ({ matricula, cc: colaboradoresPorMatricula.get(matricula)?.cc ?? null }));
-  const colaboradoresFlags = matriculasNaTela.map((matricula) => {
-    const c = colaboradoresPorMatricula.get(matricula);
-    return {
-      matricula,
-      descontarProvFerias: c?.descontarProvFerias ?? false,
-      descontarProv13: c?.descontarProv13 ?? false,
-    };
-  });
 
   const filtrosQuery = new URLSearchParams();
   if (codEmp) filtrosQuery.set("codEmp", codEmp);
@@ -267,7 +259,6 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
             regimeLabel={fpas === 515 ? "Terceiro (CLT)" : fpas === 655 ? "Temporário" : null}
             encargos={encargos}
             colaboradoresCc={colaboradoresCc}
-            colaboradoresFlags={colaboradoresFlags}
             previaTotalFaturaPorCcusto={previaTotalFaturaPorCcusto}
             eventosExcluidos={eventosExcluidos}
           />

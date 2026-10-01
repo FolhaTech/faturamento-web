@@ -82,12 +82,4 @@ export interface Colaborador {
   saldoUmTerco: number;
   /** CC do colaborador — digitado manualmente na tela de Faturamento (não vem de importação/upload), aparece no PDF. Ver cc em db.ts. */
   cc: string | null;
-  /** Se true, o acumulado de Prov. Férias é descontado automaticamente na próxima Folha processada. */
-  descontarProvFerias: boolean;
-  /** Se true, o acumulado de Prov. 13º é descontado automaticamente na próxima Folha processada. */
-  descontarProv13: boolean;
-  /** Competência em que o desconto automático de Prov. Férias foi aplicado (null = ainda não aplicado). */
-  descontoProvFeriasCompetencia: string | null;
-  /** Competência em que o desconto automático de Prov. 13º foi aplicado (null = ainda não aplicado). */
-  descontoProv13Competencia: string | null;
 }
