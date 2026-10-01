@@ -12,6 +12,10 @@ import type { GrossUpOperacao, TipoEvento } from "../types";
  */
 const CATEGORIAS_EXCLUIDAS_BASE_INSS = ["VALE TRANSPORTE", "VALE REFEI", "VALE ALIMENTA", "BONIFICA", "BOA PERMANEN"];
 
+/** Alíquotas dos tributos da NF (PIS/COFINS/ISS/CSLL/IRRF) — somam 13,25%, o Gross Up padrão. Só definem a proporção de cada um dentro do total de encargos. */
+const ALIQUOTAS_ENCARGOS = { pis: 0.0165, cofins: 0.076, iss: 0.02, csll: 0.01, irrf: 0.01 };
+const ALIQUOTA_ENCARGOS_TOTAL = Object.values(ALIQUOTAS_ENCARGOS).reduce((a, b) => a + b, 0);
+
 function ehBeneficioExcluidoDaBaseInss(evento: string): boolean {
   const n = normalizaTexto(evento);
   return CATEGORIAS_EXCLUIDAS_BASE_INSS.some((cat) => n.includes(cat));
@@ -179,15 +183,21 @@ export function aggregateByCcusto(lines: CalculatedLine[], competencia: string):
     const totalFaturaSemEncargos = totalDespesas + taxaAdministrativa;
     const totalFatura = sum(ccustoLines, (l) => l.nf);
 
+    // Encargos = a tributação que o gross-up de cada linha realmente acrescentou (NF − fatura, a
+    // mesma coluna "Tributação" das tabelas), repartida entre os cinco tributos na proporção das
+    // alíquotas. Aplicar as alíquotas direto sobre a NF (já com gross-up) contava o gross-up duas
+    // vezes no Gross Up "+" padrão (13,25% da NF em vez de da fatura) e o card não fechava:
+    // Fatura + Encargos ≠ Total fatura.
+    const totalEncargos = totalFatura - totalFaturaSemEncargos;
+    const parte = (aliquota: number) => (totalEncargos * aliquota) / ALIQUOTA_ENCARGOS_TOTAL;
     const encargosFatura: EncargosFatura = {
-      pis: totalFatura * 0.0165,
-      cofins: totalFatura * 0.076,
-      iss: totalFatura * 0.02,
-      csll: totalFatura * 0.01,
-      irrf: totalFatura * 0.01,
-      total: 0,
+      pis: parte(ALIQUOTAS_ENCARGOS.pis),
+      cofins: parte(ALIQUOTAS_ENCARGOS.cofins),
+      iss: parte(ALIQUOTAS_ENCARGOS.iss),
+      csll: parte(ALIQUOTAS_ENCARGOS.csll),
+      irrf: parte(ALIQUOTAS_ENCARGOS.irrf),
+      total: totalEncargos,
     };
-    encargosFatura.total = encargosFatura.pis + encargosFatura.cofins + encargosFatura.iss + encargosFatura.csll + encargosFatura.irrf;
 
     const faturaExcluidaInss = sum(
       ccustoLines.filter((l) => l.trilha === "beneficio" && ehBeneficioExcluidoDaBaseInss(l.evento)),
