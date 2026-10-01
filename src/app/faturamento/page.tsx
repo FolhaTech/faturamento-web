@@ -172,6 +172,25 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
 
       <PlrConfigForm valorInicial={plrCeletista} />
 
+      {tomadoresOpcoes.some((t) => t.pendente) && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-semibold">Tomador com cadastro pendente — os colaboradores dele ficam fora do faturamento (e do seletor de Centro de custo)</p>
+          <p className="mt-1">
+            {tomadoresOpcoes
+              .filter((t) => t.pendente)
+              .map((t) => `${t.nome} (cód. ${t.codigo})`)
+              .join(" · ")}
+          </p>
+          <p className="mt-1">
+            Complete o <strong>FPAS</strong> e a <strong>Taxa Adm</strong> em{" "}
+            <Link href="/tomadores" className="font-medium underline">
+              Tomadores
+            </Link>{" "}
+            pra eles entrarem na fatura.
+          </p>
+        </div>
+      )}
+
       {competencias.length === 0 ? (
         <p className="text-sm text-neutral-500">Nenhum arquivo de Movimentos importado ainda.</p>
       ) : (
