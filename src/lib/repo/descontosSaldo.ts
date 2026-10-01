@@ -68,6 +68,16 @@ export async function listDescontosSaldoPorCompetencias(competencias: string[]):
   return rows.map(toDescontoSaldo);
 }
 
+/** Descontos de saldo de vários colaboradores de uma vez (uma consulta só), em qualquer competência — usado na tela de Faturamento. */
+export async function listDescontosSaldoPorMatriculas(matriculas: number[]): Promise<DescontoSaldo[]> {
+  const unicos = [...new Set(matriculas)];
+  if (unicos.length === 0) return [];
+  await ensureSchema();
+  const sql = getDb();
+  const rows = await sql<Row[]>`SELECT * FROM descontos_saldo WHERE matricula IN ${sql(unicos)} ORDER BY competencia`;
+  return rows.map(toDescontoSaldo);
+}
+
 /**
  * Todo desconto de saldo já lançado pra essa matrícula, em qualquer competência — usado pra
  * abater da Rescisão (ver RescisaoCard.tsx): esse valor já foi pago/quitado com o colaborador

@@ -46,6 +46,16 @@ export async function salvarProvisoesMensais(competencia: string, porMatricula: 
   `;
 }
 
+/** Histórico de provisão de vários colaboradores de uma vez (uma consulta só) — usado na tela de Faturamento. */
+export async function listProvisoesMensaisPorMatriculas(matriculas: number[]): Promise<ProvisaoMensal[]> {
+  const unicos = [...new Set(matriculas)];
+  if (unicos.length === 0) return [];
+  await ensureSchema();
+  const sql = getDb();
+  const rows = await sql<Row[]>`SELECT * FROM provisoes_mensais WHERE matricula IN ${sql(unicos)} ORDER BY competencia DESC`;
+  return rows.map(toProvisaoMensal);
+}
+
 /** Histórico mês a mês da provisão de férias/13º de um colaborador — mais recente primeiro. Base pra somar o acumulado numa rescisão. */
 export async function listProvisoesMensaisPorMatricula(matricula: number): Promise<ProvisaoMensal[]> {
   await ensureSchema();

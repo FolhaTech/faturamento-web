@@ -3,12 +3,15 @@ import { getUsuarioAtual } from "@/lib/auth/sessao";
 import { aggregateByCcusto } from "@/lib/calc/aggregate";
 import { calcularPreviaTotalFaturaPorCcusto, carregarEngineLines, type PreviaTotalPorCcusto } from "@/lib/calc/faturaCompetencia";
 import { filtrarLinesPorColaborador, type FiltrosColaborador } from "@/lib/calc/filtroColaboradores";
+import { listarAcumuladoLiquido } from "@/lib/calc/descontoProvisaoAcumulada";
 import { listEventosExcluidos } from "@/lib/repo/eventosExcluidos";
+import { listDescontosSaldoPorCompetencias } from "@/lib/repo/descontosSaldo";
 import { listMinhasCompetenciasComFaturaSalva } from "@/lib/repo/faturasSalvas";
 import { listCompetencias } from "@/lib/repo/movimentos";
 import { getColaboradoresPorMatriculas, listValoresDistintosDados } from "@/lib/repo/colaboradores";
 import { CHAVE_PLR_CELETISTA, getConfigNumero } from "@/lib/repo/configuracoes";
 import { listEncargos } from "@/lib/repo/encargos";
+import type { ProvisaoColaborador } from "./DescontoProvisaoColaborador";
 import { FaturaTimeline } from "./FaturaTimeline";
 import { FaturamentoViewer } from "./FaturamentoViewer";
 import { PlrConfigForm } from "./PlrConfigForm";
@@ -105,6 +108,25 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   const matriculasNaTela = [...new Set(resumos.flatMap((r) => r.colaboradores.map((c) => c.matricula)))];
   const colaboradoresPorMatricula = await getColaboradoresPorMatriculas(matriculasNaTela);
   const colaboradoresCc = matriculasNaTela.map((matricula) => ({ matricula, cc: colaboradoresPorMatricula.get(matricula)?.cc ?? null }));
+
+  // Botões Sim/Não de Prov. Férias / Prov. 13º por colaborador (ver DescontoProvisaoColaborador.tsx):
+  // "Sim" = já existe desconto desse tipo lançado nessa competência; o valor mostrado é o Acumulado
+  // líquido da Rescisão, que é o que vira desconto ao marcar "Sim".
+  let colaboradoresProvisao: ProvisaoColaborador[] = [];
+  if (competenciaAtual && matriculasNaTela.length > 0) {
+    const [acumulados, descontosDaCompetencia] = await Promise.all([
+      listarAcumuladoLiquido(matriculasNaTela, competenciaAtual),
+      listDescontosSaldoPorCompetencias([competenciaAtual]),
+    ]);
+    const aplicados = new Set(descontosDaCompetencia.filter((d) => d.valor !== 0).map((d) => `${d.matricula}:${d.tipo}`));
+    colaboradoresProvisao = matriculasNaTela.map((matricula) => ({
+      matricula,
+      aplicadoFerias: aplicados.has(`${matricula}:ferias`),
+      aplicado13: aplicados.has(`${matricula}:terco`),
+      acumuladoFerias: acumulados.get(matricula)?.ferias ?? 0,
+      acumulado13: acumulados.get(matricula)?.terco ?? 0,
+    }));
+  }
 
   const filtrosQuery = new URLSearchParams();
   if (codEmp) filtrosQuery.set("codEmp", codEmp);
@@ -259,6 +281,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
             regimeLabel={fpas === 515 ? "Terceiro (CLT)" : fpas === 655 ? "Temporário" : null}
             encargos={encargos}
             colaboradoresCc={colaboradoresCc}
+            colaboradoresProvisao={colaboradoresProvisao}
             previaTotalFaturaPorCcusto={previaTotalFaturaPorCcusto}
             eventosExcluidos={eventosExcluidos}
           />
