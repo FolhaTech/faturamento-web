@@ -5,6 +5,7 @@ import { aplicarTipoNaCompetencia } from "@/lib/calc/tipoCompetencia";
 import {
   getColaboradoresPorMatriculas,
   getTomadoresPorCcusto,
+  listCcustosCadastrados,
   SITUACAO_CADASTRO_PENDENTE,
   SITUACAO_TRABALHANDO,
   upsertColaborador,
@@ -19,6 +20,7 @@ import {
 } from "@/lib/repo/movimentos";
 import { salvarProvisoesMensais } from "@/lib/repo/provisoesMensais";
 import { getTomadorPorNome, listTomadores, upsertTomadoresPendentes } from "@/lib/repo/tomadores";
+import { ccustoDoNomeDoArquivo } from "@/lib/xlsx/ccustoDoNomeArquivo";
 import { parseMovimentosFile } from "@/lib/xlsx/parseMovimentos";
 
 export const runtime = "nodejs";
@@ -134,16 +136,22 @@ export async function POST(request: Request) {
   // folha normalmente vem agrupado por local de trabalho, e quem está logo acima de um
   // colaborador sem Ccusto é o sinal mais confiável disponível nesse caso), nunca sobrescreve um
   // cadastro já preenchido (ver 2ª passada).
-  const ccustoPorMatricula = new Map<number, { codigo: string; nome: string; explicito: boolean }>();
-  let ultimoCcusto: { codigo: string; nome: string; explicito: boolean } | null = null;
+  //
+  // Sem "Local de trabalho" no arquivo, o NOME do arquivo pode dizer o cliente (ex.: "CARBRINK
+  // 092026.xlsx" -> Ccusto "CARBRINK", ver ccustoDoNomeArquivo.ts) — também conta como explícito.
+  const ccustoDoArquivo = ccustoDoNomeDoArquivo(file.name, await listCcustosCadastrados());
+  const ccustoPorMatricula = new Map<number, { codigo: string; nome: string; explicito: boolean; doNomeDoArquivo?: boolean }>();
+  let ultimoCcusto: { codigo: string; nome: string; explicito: boolean; doNomeDoArquivo?: boolean } | null = null;
   for (const matricula of matriculasEmOrdem) {
     const c = colaboradoresDoArquivo.get(matricula);
     if (!c) continue;
     const ccustoVazio = c.dados.cod_ccusto === null || c.dados.cod_ccusto === undefined || String(c.dados.cod_ccusto).trim() === "";
     const localTrabalho = localTrabalhoPorMatricula.get(matricula);
-    let ccusto: { codigo: string; nome: string; explicito: boolean } | null = null;
+    let ccusto: { codigo: string; nome: string; explicito: boolean; doNomeDoArquivo?: boolean } | null = null;
     if (localTrabalho) {
       ccusto = { codigo: localTrabalho, nome: localTrabalho, explicito: true };
+    } else if (ccustoDoArquivo) {
+      ccusto = { codigo: ccustoDoArquivo.codigo, nome: ccustoDoArquivo.nome, explicito: true, doNomeDoArquivo: true };
     } else if (!ccustoVazio) {
       ccusto = {
         codigo: String(c.dados.cod_ccusto),
@@ -204,6 +212,14 @@ export async function POST(request: Request) {
       patch.descricao_ccusto = ccustoResolvido.nome;
       if (ccustoAtual !== null) {
         ccustoCorrigido.push({ matricula: c.matricula, nome: c.nome, ccustoAntigo: ccustoAtual, ccustoNovo: ccustoResolvido.nome });
+        // Colaborador que mudou de Ccusto pelo nome do arquivo (ex.: caiu em "IPEC" e o arquivo é do
+        // "CARBRINK") leva junto o Tomador que os demais desse Ccusto usam, quando não for ambíguo —
+        // senão ficava no Tomador do Ccusto antigo. Tomador que ainda não existe vira pendente logo abaixo.
+        const porCcusto = ccustoResolvido.doNomeDoArquivo ? tomadorPorCcusto.get(ccustoResolvido.nome) : undefined;
+        if (porCcusto && !porCcusto.ambiguo && porCcusto.codigo !== c.codServico) {
+          patch.cod_servico = porCcusto.codigo;
+          patch.descricao_servico = tomadoresPorCodigo.get(porCcusto.codigo)?.nome ?? ccustoResolvido.nome;
+        }
       }
     }
     if (Object.keys(patch).length === 0) continue;

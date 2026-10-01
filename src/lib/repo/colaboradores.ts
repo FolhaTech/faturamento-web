@@ -295,6 +295,17 @@ export async function getTomadoresPorCcusto(descricoesCcusto: string[]): Promise
   return resultado;
 }
 
+/** Pares (código, descrição) de Centro de Custo já cadastrados em algum colaborador — base pra inferir o Ccusto pelo nome do arquivo (ver ccustoDoNomeArquivo.ts). */
+export async function listCcustosCadastrados(): Promise<{ codigo: string; nome: string }[]> {
+  await ensureSchema();
+  const rows = await getDb()<{ codigo: string; nome: string }[]>`
+    SELECT DISTINCT dados::jsonb ->> 'cod_ccusto' AS codigo, dados::jsonb ->> 'descricao_ccusto' AS nome
+    FROM colaboradores
+    WHERE COALESCE(dados::jsonb ->> 'cod_ccusto', '') != '' AND COALESCE(dados::jsonb ->> 'descricao_ccusto', '') != ''
+  `;
+  return rows;
+}
+
 export async function countColaboradores(): Promise<number> {
   await ensureSchema();
   const [{ n }] = await getDb()<{ n: number }[]>`SELECT COUNT(*)::int as n FROM colaboradores`;
