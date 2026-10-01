@@ -16,6 +16,7 @@ import type { ProvisaoColaborador } from "./DescontoProvisaoColaborador";
 import { FaturaTimeline } from "./FaturaTimeline";
 import { FaturamentoViewer } from "./FaturamentoViewer";
 import type { TomadorOpcao } from "./RegimeColaborador";
+import { TomadorPendenteForm, type TomadorPendente } from "./TomadorPendenteForm";
 import { PlrConfigForm } from "./PlrConfigForm";
 import { SalvarFaturaBanner } from "./SalvarFaturaBanner";
 import { UploadMovimentosForm } from "./UploadMovimentosForm";
@@ -112,7 +113,12 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   const colaboradoresCc = matriculasNaTela.map((matricula) => ({ matricula, cc: colaboradoresPorMatricula.get(matricula)?.cc ?? null }));
 
   // Seletor de regime (Tomador) por colaborador — ver RegimeColaborador.tsx.
-  const tomadoresOpcoes: TomadorOpcao[] = (await listTomadores()).map((t) => ({ codigo: t.codigo, nome: t.nome, fpas: t.fpas, pendente: t.pendente }));
+  const todosTomadores = await listTomadores();
+  const tomadoresOpcoes: TomadorOpcao[] = todosTomadores.map((t) => ({ codigo: t.codigo, nome: t.nome, fpas: t.fpas, pendente: t.pendente }));
+  // Tomador criado automaticamente pelo upload, ainda sem FPAS/Taxa Adm — preenchido direto na tela (ver TomadorPendenteForm).
+  const tomadoresPendentes: TomadorPendente[] = todosTomadores
+    .filter((t) => t.pendente)
+    .map((t) => ({ codigo: t.codigo, nome: t.nome, grossUp: t.grossUp, grossUpOperacao: t.grossUpOperacao }));
   const colaboradoresTomador = matriculasNaTela.map((matricula) => ({ matricula, codServico: colaboradoresPorMatricula.get(matricula)?.codServico ?? null }));
 
   // Botões Sim/Não de Prov. Férias / Prov. 13º por colaborador (ver DescontoProvisaoColaborador.tsx):
@@ -172,22 +178,22 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
 
       <PlrConfigForm valorInicial={plrCeletista} />
 
-      {tomadoresOpcoes.some((t) => t.pendente) && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-          <p className="font-semibold">Tomador com cadastro pendente — os colaboradores dele ficam fora do faturamento (e do seletor de Centro de custo)</p>
-          <p className="mt-1">
-            {tomadoresOpcoes
-              .filter((t) => t.pendente)
-              .map((t) => `${t.nome} (cód. ${t.codigo})`)
-              .join(" · ")}
-          </p>
-          <p className="mt-1">
-            Complete o <strong>FPAS</strong> e a <strong>Taxa Adm</strong> em{" "}
-            <Link href="/tomadores" className="font-medium underline">
-              Tomadores
-            </Link>{" "}
-            pra eles entrarem na fatura.
-          </p>
+      {tomadoresPendentes.length > 0 && (
+        <div className="flex flex-col gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <div>
+            <p className="font-semibold">Tomador sem FPAS — preencha pra os colaboradores dele entrarem no faturamento</p>
+            <p className="mt-1">
+              Enquanto o cadastro estiver pendente, os colaboradores desses Tomadores ficam fora da fatura (e o Centro de custo deles não aparece no seletor).
+              Informe o <strong>FPAS</strong> e a <strong>Taxa Adm</strong> abaixo, ou edite o Tomador completo em{" "}
+              <Link href="/tomadores" className="font-medium underline">
+                Tomadores
+              </Link>
+              .
+            </p>
+          </div>
+          {tomadoresPendentes.map((t) => (
+            <TomadorPendenteForm key={t.codigo} tomador={t} />
+          ))}
         </div>
       )}
 
