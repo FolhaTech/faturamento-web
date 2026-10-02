@@ -24,9 +24,11 @@ export function DescontoProvisaoColaborador({ matricula, competencia, provisao }
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [avisos, setAvisos] = useState<{ ferias?: string; "13"?: string }>({});
 
   async function definir(tipo: "ferias" | "13", aplicar: boolean) {
     setErro(null);
+    setAvisos((a) => ({ ...a, [tipo]: undefined }));
     setBusy(true);
     try {
       const res = await fetch("/api/faturamento/desconto-provisao", {
@@ -34,10 +36,14 @@ export function DescontoProvisaoColaborador({ matricula, competencia, provisao }
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ matricula, competencia, tipo, aplicar }),
       });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
         setErro(data.error ?? "Falha ao salvar.");
         return;
+      }
+      // "Sim" sem acumulado positivo não lança nada (valor 0) — avisa em vez de parecer que não funcionou.
+      if (aplicar && !(data.valor > 0)) {
+        setAvisos((a) => ({ ...a, [tipo]: "Nenhum desconto lançado: o Acumulado líquido está zerado ou negativo." }));
       }
       router.refresh();
     } catch {
@@ -62,6 +68,7 @@ export function DescontoProvisaoColaborador({ matricula, competencia, provisao }
           valor={provisao.aplicadoFerias}
           acumulado={provisao.acumuladoFerias}
           disabled={busy}
+          aviso={avisos.ferias}
           onChange={(aplicar) => definir("ferias", aplicar)}
         />
         <Seletor
@@ -69,6 +76,7 @@ export function DescontoProvisaoColaborador({ matricula, competencia, provisao }
           valor={provisao.aplicado13}
           acumulado={provisao.acumulado13}
           disabled={busy}
+          aviso={avisos["13"]}
           onChange={(aplicar) => definir("13", aplicar)}
         />
       </div>
@@ -82,33 +90,39 @@ function Seletor({
   valor,
   acumulado,
   disabled,
+  aviso,
   onChange,
 }: {
   rotulo: string;
   valor: boolean;
   acumulado: number;
   disabled: boolean;
+  aviso?: string;
   onChange: (aplicar: boolean) => void;
 }) {
-  // Sem acumulado positivo "Sim" não teria o que lançar (o desconto ficaria 0) — avisa em vez de
-  // aceitar o clique e parecer que não funcionou.
+  // O seletor fica sempre liberado (só trava enquanto salva). Sem acumulado positivo "Sim" não tem o
+  // que lançar — o aviso explica, em vez de bloquear a escolha.
   const semAcumulado = !valor && acumulado <= 0;
   return (
     <label className="flex flex-col gap-1 text-xs font-medium text-neutral-500">
       {rotulo} — Acumulado líquido: <span className="font-mono tabular-nums text-neutral-900">{currency.format(acumulado)}</span>
       <select
         value={valor ? "1" : "0"}
-        disabled={disabled || semAcumulado}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value === "1")}
         className="rounded-md border border-neutral-300 px-2 py-1.5 text-sm font-normal text-neutral-900 disabled:bg-neutral-100"
       >
         <option value="0">Não</option>
         <option value="1">Sim</option>
       </select>
-      {semAcumulado && (
-        <span className="text-xs font-normal text-amber-700">
-          Sem acumulado de provisão para descontar — o acumulado vem das Folhas já enviadas deste colaborador.
-        </span>
+      {aviso ? (
+        <span className="text-xs font-normal text-amber-700">{aviso}</span>
+      ) : (
+        semAcumulado && (
+          <span className="text-xs font-normal text-amber-700">
+            Sem acumulado de provisão para descontar — o acumulado vem das Folhas já enviadas deste colaborador.
+          </span>
+        )
       )}
     </label>
   );
