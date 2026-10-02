@@ -2,23 +2,26 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import type { ResumoAcumulado } from "@/lib/calc/acumuladoLiquido";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+export const SEM_RESUMO: ResumoAcumulado = { provisao: 0, desconto: 0, aLancar: 0 };
 
 export interface ProvisaoColaborador {
   matricula: number;
   /** Já tem desconto de Prov. Férias lançado nessa competência (= "Sim"). */
   aplicadoFerias: boolean;
   aplicado13: boolean;
-  /** Acumulado líquido da Rescisão (sem contar o desconto dessa competência) — o que vira desconto quando marcar "Sim". */
-  acumuladoFerias: number;
-  acumulado13: number;
+  /** Subtotais da Rescisão (sem contar o desconto dessa competência) e o valor que vira desconto quando marcar "Sim". */
+  ferias: ResumoAcumulado;
+  decimoTerceiro: ResumoAcumulado;
 }
 
 /**
- * Dois seletores Sim/Não no detalhamento do colaborador: Prov. Férias e Prov. 13º. "Sim" lança o
- * Acumulado líquido da Rescisão como desconto desse colaborador nessa competência; "Não" tira esse
- * desconto. Salva na hora ao trocar (ver /api/faturamento/desconto-provisao).
+ * Dois seletores Sim/Não no detalhamento do colaborador: Prov. Férias e Prov. 13º. "Sim" lança como
+ * desconto desse colaborador nessa competência o Subtotal desconto da Rescisão (sem abater o Subtotal
+ * provisão); "Não" tira esse desconto. Salva na hora ao trocar (ver /api/faturamento/desconto-provisao).
  */
 export function DescontoProvisaoColaborador({ matricula, competencia, provisao }: { matricula: number; competencia: string; provisao: ProvisaoColaborador }) {
   const router = useRouter();
@@ -41,9 +44,9 @@ export function DescontoProvisaoColaborador({ matricula, competencia, provisao }
         setErro(data.error ?? "Falha ao salvar.");
         return;
       }
-      // "Sim" sem acumulado positivo não lança nada (valor 0) — avisa em vez de parecer que não funcionou.
+      // "Sim" sem nada a lançar não grava desconto (valor 0) — avisa em vez de parecer que não funcionou.
       if (aplicar && !(data.valor > 0)) {
-        setAvisos((a) => ({ ...a, [tipo]: "Nenhum desconto lançado: o Acumulado líquido está zerado." }));
+        setAvisos((a) => ({ ...a, [tipo]: "Nenhum desconto lançado: não há Subtotal desconto nem Subtotal provisão para esse colaborador." }));
       }
       router.refresh();
     } catch {
@@ -58,15 +61,16 @@ export function DescontoProvisaoColaborador({ matricula, competencia, provisao }
       <div>
         <h4 className="text-sm font-semibold text-neutral-900">Desconto da provisão acumulada (Rescisão)</h4>
         <p className="text-xs text-neutral-500">
-          <strong>Sim</strong> lança o Acumulado líquido como desconto desse colaborador em {competencia}; <strong>Não</strong> tira o desconto. Se a fatura
-          dessa competência já foi salva, descarte-a ou salve uma nova versão pra ver a mudança.
+          <strong>Sim</strong> lança o valor a descontar (o <strong>Subtotal desconto</strong> da Rescisão, sem abater o Subtotal provisão) como desconto
+          desse colaborador em {competencia}; <strong>Não</strong> tira o desconto. Se a fatura dessa competência já foi salva, descarte-a ou salve uma nova
+          versão pra ver a mudança.
         </p>
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Seletor
           rotulo="Prov. Férias"
           valor={provisao.aplicadoFerias}
-          acumulado={provisao.acumuladoFerias}
+          resumo={provisao.ferias}
           disabled={busy}
           aviso={avisos.ferias}
           onChange={(aplicar) => definir("ferias", aplicar)}
@@ -74,7 +78,7 @@ export function DescontoProvisaoColaborador({ matricula, competencia, provisao }
         <Seletor
           rotulo="Prov. 13º"
           valor={provisao.aplicado13}
-          acumulado={provisao.acumulado13}
+          resumo={provisao.decimoTerceiro}
           disabled={busy}
           aviso={avisos["13"]}
           onChange={(aplicar) => definir("13", aplicar)}
@@ -88,24 +92,28 @@ export function DescontoProvisaoColaborador({ matricula, competencia, provisao }
 function Seletor({
   rotulo,
   valor,
-  acumulado,
+  resumo,
   disabled,
   aviso,
   onChange,
 }: {
   rotulo: string;
   valor: boolean;
-  acumulado: number;
+  resumo: ResumoAcumulado;
   disabled: boolean;
   aviso?: string;
   onChange: (aplicar: boolean) => void;
 }) {
-  // O seletor fica sempre liberado (só trava enquanto salva). "Sim" lança o Acumulado líquido em módulo
-  // (inclusive quando ele aparece negativo); só não há o que lançar quando é exatamente zero.
-  const semAcumulado = !valor && Math.abs(acumulado) < 0.005;
+  // O seletor fica sempre liberado (só trava enquanto salva).
+  const semValor = !valor && resumo.aLancar <= 0;
   return (
     <label className="flex flex-col gap-1 text-xs font-medium text-neutral-500">
-      {rotulo} — Acumulado líquido: <span className="font-mono tabular-nums text-neutral-900">{currency.format(acumulado)}</span>
+      <span>
+        {rotulo} — desconto a lançar: <span className="font-mono tabular-nums text-neutral-900">{currency.format(resumo.aLancar)}</span>
+      </span>
+      <span className="font-normal text-neutral-400">
+        Subtotal provisão {currency.format(resumo.provisao)} · Subtotal desconto {currency.format(resumo.desconto)}
+      </span>
       <select
         value={valor ? "1" : "0"}
         disabled={disabled}
@@ -118,9 +126,9 @@ function Seletor({
       {aviso ? (
         <span className="text-xs font-normal text-amber-700">{aviso}</span>
       ) : (
-        semAcumulado && (
+        semValor && (
           <span className="text-xs font-normal text-amber-700">
-            Sem acumulado de provisão para descontar — o acumulado vem das Folhas já enviadas deste colaborador.
+            Sem Subtotal desconto nem Subtotal provisão para descontar — as provisões vêm das Folhas já enviadas deste colaborador.
           </span>
         )
       )}

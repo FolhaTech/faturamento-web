@@ -24,13 +24,11 @@ export async function listarAcumuladoLiquido(matriculas: number[], competenciaAl
 /**
  * Botões Sim/Não de Prov. Férias e Prov. 13º no detalhamento do colaborador no Faturamento.
  *
- * Sim: o Acumulado líquido atual do colaborador vira o desconto dele NESSA competência (substitui o
- * que já estava lançado pra esse tipo nela) — o valor que a tela mostra, em módulo: o líquido da
- * Rescisão aparece negativo quando os descontos já lançados superam as provisões salvas, e mesmo
- * assim é esse número que o usuário quer descontado. Não: tira esse desconto do colaborador. O
- * desconto entra na fatura pelo mesmo caminho dos descontos de saldo (ver
- * generateDescontoSaldoFeriasCharges em engine.ts). Retorna o valor lançado (0 quando "Não" ou
- * quando o acumulado líquido é exatamente zero).
+ * Sim: o valor "a lançar" (ver calcularAcumuladoLiquido — o Subtotal desconto da Rescisão, sem abater
+ * o Subtotal provisão) vira o desconto dele NESSA competência, substituindo o que já estava lançado
+ * pra esse tipo nela. Não: tira esse desconto do colaborador. O desconto entra na fatura pelo mesmo
+ * caminho dos descontos de saldo (ver generateDescontoSaldoFeriasCharges em engine.ts). Retorna o
+ * valor lançado (0 quando "Não" ou quando não há nada a lançar).
  */
 export async function definirDescontoProvisao(matricula: number, competencia: string, tipo: TipoSaldoFerias, aplicar: boolean): Promise<number> {
   if (!aplicar) {
@@ -39,7 +37,7 @@ export async function definirDescontoProvisao(matricula: number, competencia: st
   }
   const [provisoes, descontos] = await Promise.all([listProvisoesMensaisPorMatricula(matricula), listDescontosSaldoPorMatricula(matricula)]);
   const acumulado = calcularAcumuladoLiquido(provisoes, descontos, competencia);
-  const valor = Math.abs(acumulado[tipo]);
+  const valor = acumulado[tipo].aLancar;
   await setDescontoSaldo(matricula, competencia, tipo, valor);
   return valor;
 }

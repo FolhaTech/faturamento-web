@@ -12,7 +12,7 @@ import { getColaboradoresPorMatriculas, listValoresDistintosDados } from "@/lib/
 import { CHAVE_PLR_CELETISTA, getConfigNumero } from "@/lib/repo/configuracoes";
 import { listEncargos } from "@/lib/repo/encargos";
 import { listTomadores } from "@/lib/repo/tomadores";
-import type { ProvisaoColaborador } from "./DescontoProvisaoColaborador";
+import { SEM_RESUMO, type ProvisaoColaborador } from "./DescontoProvisaoColaborador";
 import { FaturaTimeline } from "./FaturaTimeline";
 import { FaturamentoViewer } from "./FaturamentoViewer";
 import type { TomadorOpcao } from "./RegimeColaborador";
@@ -122,8 +122,8 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   const colaboradoresTomador = matriculasNaTela.map((matricula) => ({ matricula, codServico: colaboradoresPorMatricula.get(matricula)?.codServico ?? null }));
 
   // Botões Sim/Não de Prov. Férias / Prov. 13º por colaborador (ver DescontoProvisaoColaborador.tsx):
-  // "Sim" = já existe desconto desse tipo lançado nessa competência; o valor mostrado é o Acumulado
-  // líquido da Rescisão, que é o que vira desconto ao marcar "Sim".
+  // "Sim" = já existe desconto desse tipo lançado nessa competência; a tela mostra o Subtotal provisão,
+  // o Subtotal desconto e o valor que vira desconto ao marcar "Sim" (ver calcularAcumuladoLiquido).
   let colaboradoresProvisao: ProvisaoColaborador[] = [];
   if (competenciaAtual && matriculasNaTela.length > 0) {
     const [acumulados, descontosDaCompetencia] = await Promise.all([
@@ -135,8 +135,8 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
       matricula,
       aplicadoFerias: aplicados.has(`${matricula}:ferias`),
       aplicado13: aplicados.has(`${matricula}:terco`),
-      acumuladoFerias: acumulados.get(matricula)?.ferias ?? 0,
-      acumulado13: acumulados.get(matricula)?.terco ?? 0,
+      ferias: acumulados.get(matricula)?.ferias ?? SEM_RESUMO,
+      decimoTerceiro: acumulados.get(matricula)?.terco ?? SEM_RESUMO,
     }));
   }
 
