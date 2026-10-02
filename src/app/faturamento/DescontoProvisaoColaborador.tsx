@@ -90,18 +90,26 @@ function Seletor({
   disabled: boolean;
   onChange: (aplicar: boolean) => void;
 }) {
+  // Sem acumulado positivo "Sim" não teria o que lançar (o desconto ficaria 0) — avisa em vez de
+  // aceitar o clique e parecer que não funcionou.
+  const semAcumulado = !valor && acumulado <= 0;
   return (
     <label className="flex flex-col gap-1 text-xs font-medium text-neutral-500">
       {rotulo} — Acumulado líquido: <span className="font-mono tabular-nums text-neutral-900">{currency.format(acumulado)}</span>
       <select
         value={valor ? "1" : "0"}
-        disabled={disabled}
+        disabled={disabled || semAcumulado}
         onChange={(e) => onChange(e.target.value === "1")}
         className="rounded-md border border-neutral-300 px-2 py-1.5 text-sm font-normal text-neutral-900 disabled:bg-neutral-100"
       >
         <option value="0">Não</option>
         <option value="1">Sim</option>
       </select>
+      {semAcumulado && (
+        <span className="text-xs font-normal text-amber-700">
+          Sem acumulado de provisão para descontar — o acumulado vem das Folhas já enviadas deste colaborador.
+        </span>
+      )}
     </label>
   );
 }

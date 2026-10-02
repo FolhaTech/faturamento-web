@@ -20,6 +20,17 @@ describe("calcularAcumuladoLiquido", () => {
     expect(calcularAcumuladoLiquido(provisoes, descontos, COMP)).toEqual({ ferias: 4460.33, terco: 3343.97 });
   });
 
+  it("não abate o desconto da Prévia/Folha par do mesmo mês (é o mesmo mês, não um desconto anterior)", () => {
+    const descontos = [
+      { competencia: "09/2026 (Prévia)", tipo: "ferias" as const, valor: -4460.33 },
+      { competencia: "09/2026 (Prévia)", tipo: "terco" as const, valor: -3343.97 },
+    ];
+    expect(calcularAcumuladoLiquido(provisoes, descontos, COMP)).toEqual({ ferias: 4460.33, terco: 3343.97 });
+    // E o inverso: marcar na Prévia ignora o desconto que já está na Folha.
+    const naFolha = [{ competencia: COMP, tipo: "ferias" as const, valor: -4460.33 }];
+    expect(calcularAcumuladoLiquido(provisoes, naFolha, "09/2026 (Prévia)").ferias).toBe(4460.33);
+  });
+
   it("abate descontos já lançados em outras competências, separando férias de 13º", () => {
     const descontos = [
       { competencia: "08/2026", tipo: "ferias" as const, valor: -1000 },
