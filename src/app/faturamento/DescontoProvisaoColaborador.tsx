@@ -43,7 +43,7 @@ export function DescontoProvisaoColaborador({ matricula, competencia, provisao }
       }
       // "Sim" sem acumulado positivo não lança nada (valor 0) — avisa em vez de parecer que não funcionou.
       if (aplicar && !(data.valor > 0)) {
-        setAvisos((a) => ({ ...a, [tipo]: "Nenhum desconto lançado: o Acumulado líquido está zerado ou negativo." }));
+        setAvisos((a) => ({ ...a, [tipo]: "Nenhum desconto lançado: o Acumulado líquido está zerado." }));
       }
       router.refresh();
     } catch {
@@ -100,9 +100,9 @@ function Seletor({
   aviso?: string;
   onChange: (aplicar: boolean) => void;
 }) {
-  // O seletor fica sempre liberado (só trava enquanto salva). Sem acumulado positivo "Sim" não tem o
-  // que lançar — o aviso explica, em vez de bloquear a escolha.
-  const semAcumulado = !valor && acumulado <= 0;
+  // O seletor fica sempre liberado (só trava enquanto salva). "Sim" lança o Acumulado líquido em módulo
+  // (inclusive quando ele aparece negativo); só não há o que lançar quando é exatamente zero.
+  const semAcumulado = !valor && Math.abs(acumulado) < 0.005;
   return (
     <label className="flex flex-col gap-1 text-xs font-medium text-neutral-500">
       {rotulo} — Acumulado líquido: <span className="font-mono tabular-nums text-neutral-900">{currency.format(acumulado)}</span>
