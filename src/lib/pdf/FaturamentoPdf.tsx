@@ -339,12 +339,10 @@ function ColaboradoresSection({ resumo, ccPorMatricula }: { resumo: CcustoResumo
 
 export function FaturamentoPdf({
   resumo,
-  warnings,
   regimeLabel = null,
   ccPorMatricula,
 }: {
   resumo: CcustoResumo;
-  warnings: string[];
   /** "Terceiro (CLT)" ou "Temporário" quando o export foi filtrado por regime (ver /api/faturamento/export) — null pra fatura sem esse filtro (mistura os dois regimes). */
   regimeLabel?: string | null;
   /** CC (não obrigatório) de cada colaborador — ver ColaboradoresSection. */
@@ -370,18 +368,6 @@ export function FaturamentoPdf({
         </View>
 
         <SummarySection resumo={resumo} />
-
-        {warnings.length > 0 && (
-          <View>
-            <Text style={styles.sectionTitle}>Avisos ({warnings.length})</Text>
-            {warnings.slice(0, 12).map((w, i) => (
-              <Text key={i} style={styles.footnote}>
-                • {w}
-              </Text>
-            ))}
-            {warnings.length > 12 && <Text style={styles.footnote}>+ {warnings.length - 12} aviso(s) adicional(is).</Text>}
-          </View>
-        )}
 
         <RubricasSection resumo={resumo} />
         <DescontosSection resumo={resumo} />

@@ -28,7 +28,8 @@ export async function GET(request: Request) {
   // de recalcular ao vivo, pra o PDF exportado nunca divergir do que está (ou estava, se algo
   // mudou depois) na tela desse usuário — mesma fonte de dados de src/app/faturamento/page.tsx.
   const usuario = await getUsuarioAtual();
-  const { lines: allLines, warnings } = await carregarEngineLines(competencia, usuario?.email ?? null);
+  // Os avisos do cálculo ficam só na tela (painel "aviso(s) durante o cálculo") — não saem no PDF.
+  const { lines: allLines } = await carregarEngineLines(competencia, usuario?.email ?? null);
   if (allLines.length === 0) {
     return NextResponse.json({ error: `Nenhum lançamento encontrado para a competência ${competencia}.` }, { status: 404 });
   }
@@ -53,7 +54,6 @@ export async function GET(request: Request) {
   // retorna um, mas o elemento em si é tipado pelas próprias props do componente.
   const pdfElement = createElement(FaturamentoPdf, {
     resumo,
-    warnings,
     regimeLabel,
     ccPorMatricula,
   }) as Parameters<typeof renderToBuffer>[0];
