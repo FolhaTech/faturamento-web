@@ -7,6 +7,7 @@ import { normalizaTexto } from "@/lib/text";
 import type { Encargo } from "@/lib/types";
 import { DescontoProvisaoColaborador, type ProvisaoColaborador } from "./DescontoProvisaoColaborador";
 import { GrossUpConfigForm } from "./GrossUpConfigForm";
+import { PercentualCobranca } from "./PercentualCobranca";
 import { RegimeColaborador, type TomadorOpcao } from "./RegimeColaborador";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -239,6 +240,7 @@ function TotalsCard({
           </div>
         ))}
       </dl>
+      <PercentualCobranca competencia={resumo.competencia} ccustoCodigo={resumo.ccustoCodigo} totalFatura={resumo.totalFatura} />
       {complementar != null && (
         <div className="mt-4 rounded-md border border-sky-200 bg-sky-50 p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">Comparação com a Prévia</p>
