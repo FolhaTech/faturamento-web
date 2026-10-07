@@ -18,6 +18,8 @@ export async function GET(request: Request) {
   const codEmp = url.searchParams.get("codEmp") ?? undefined;
   const descricaoCargo = url.searchParams.get("descricaoCargo") ?? undefined;
   const descricaoDpto = url.searchParams.get("descricaoDpto") ?? undefined;
+  // Matrícula exata: PDF individual de um colaborador (botão "PDF" na linha dele no Faturamento).
+  const colaborador = url.searchParams.get("colaborador")?.trim() || undefined;
   const regimeParam = url.searchParams.get("regime");
   const fpas = regimeParam === "515" || regimeParam === "655" ? (Number(regimeParam) as 515 | 655) : undefined;
   // Percentual a cobrar de cada colaborador digitado na tela ("matrícula:%,matrícula:%", ver FaturamentoViewer) — sai
@@ -38,7 +40,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: `Nenhum lançamento encontrado para a competência ${competencia}.` }, { status: 404 });
   }
 
-  const lines = await filtrarLinesPorColaborador(allLines, { codEmp, descricaoCargo, descricaoDpto, fpas });
+  const lines = await filtrarLinesPorColaborador(allLines, { codEmp, descricaoCargo, descricaoDpto, fpas, colaborador });
   const resumos = aggregateByCcusto(lines, competencia);
   const resumo = resumos.find((r) => r.ccustoCodigo === ccustoCodigo);
 
@@ -56,15 +58,20 @@ export async function GET(request: Request) {
 
   // @react-pdf/renderer tipa renderToBuffer esperando um <Document> literal; FaturamentoPdf
   // retorna um, mas o elemento em si é tipado pelas próprias props do componente.
+  // PDF individual: o filtro por matrícula deixa um único colaborador no resumo — o nome vai no cabeçalho e no arquivo.
+  const individual = colaborador && resumo.colaboradores.length === 1 ? resumo.colaboradores[0] : null;
+  const colaboradorLabel = individual ? `${individual.nome} (${individual.matricula})` : null;
+
   const pdfElement = createElement(FaturamentoPdf, {
     resumo,
     regimeLabel,
     ccPorMatricula,
     percentuaisCobranca,
+    colaboradorLabel,
   }) as Parameters<typeof renderToBuffer>[0];
   const buffer = await renderToBuffer(pdfElement);
 
-  const filename = `Faturamento-${resumo.ccustoNome}-${competencia.replace("/", "-")}${regimeLabel ? `-${regimeLabel}` : ""}.pdf`.replace(
+  const filename = `Faturamento-${resumo.ccustoNome}-${competencia.replace("/", "-")}${regimeLabel ? `-${regimeLabel}` : ""}${individual ? `-${individual.nome}` : ""}.pdf`.replace(
     /[^a-zA-Z0-9._-]+/g,
     "_",
   );

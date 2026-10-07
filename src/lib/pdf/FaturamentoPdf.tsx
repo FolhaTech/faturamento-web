@@ -397,6 +397,7 @@ export function FaturamentoPdf({
   regimeLabel = null,
   ccPorMatricula,
   percentuaisCobranca = new Map<number, number>(),
+  colaboradorLabel = null,
 }: {
   resumo: CcustoResumo;
   /** "Terceiro (CLT)" ou "Temporário" quando o export foi filtrado por regime (ver /api/faturamento/export) — null pra fatura sem esse filtro (mistura os dois regimes). */
@@ -405,6 +406,8 @@ export function FaturamentoPdf({
   ccPorMatricula: Map<number, string | null>;
   /** Percentual da Nota Fiscal de cada colaborador que o usuário quer cobrar (campo na tela de Faturamento, matrícula -> %) — vazio = sem as colunas e linhas de cobrança. */
   percentuaisCobranca?: Map<number, number>;
+  /** "NOME (matrícula)" quando o PDF é individual (um colaborador só) — aparece no cabeçalho; null = relatório do centro de custo. */
+  colaboradorLabel?: string | null;
 }) {
   const geradoEm = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date());
 
@@ -413,9 +416,14 @@ export function FaturamentoPdf({
       <Page size="A4" orientation="landscape" style={styles.page}>
         <View style={styles.header}>
           <View>
-            <Text style={styles.eyebrow}>Relatório de Faturamento{regimeLabel ? ` · ${regimeLabel}` : ""}</Text>
-            <Text style={styles.title}>{resumo.ccustoNome}</Text>
-            <Text style={styles.subtitle}>Tomador: {resumo.tomadorNome} · Competência {resumo.competencia}</Text>
+            <Text style={styles.eyebrow}>
+              {colaboradorLabel ? "Relatório de Faturamento individual" : "Relatório de Faturamento"}
+              {regimeLabel ? ` · ${regimeLabel}` : ""}
+            </Text>
+            <Text style={styles.title}>{colaboradorLabel ?? resumo.ccustoNome}</Text>
+            <Text style={styles.subtitle}>
+              {colaboradorLabel ? `${resumo.ccustoNome} · ` : ""}Tomador: {resumo.tomadorNome} · Competência {resumo.competencia}
+            </Text>
           </View>
           <View style={styles.metaBlock}>
             <Text style={styles.metaLabel}>Gerado em</Text>

@@ -71,6 +71,20 @@ export function FaturamentoViewer({
     }
     return mapa;
   }, [percentuaisTexto, resumo]);
+
+  /** Link do PDF individual de um colaborador: mesmos filtros da tela, mas só a matrícula dele (e o percentual dele, se houver). */
+  function hrefPdfColaborador(matricula: number): string {
+    const params = new URLSearchParams(filtrosQuery ?? "");
+    if (resumo) {
+      params.set("competencia", resumo.competencia);
+      params.set("ccusto", resumo.ccustoCodigo);
+    }
+    params.set("colaborador", String(matricula));
+    const percentual = percentuaisDoCcusto.get(matricula);
+    if (percentual !== undefined) params.set("percentuais", serializarPercentuais(new Map([[matricula, percentual]])));
+    else params.delete("percentuais");
+    return `/api/faturamento/export?${params.toString()}`;
+  }
   const encargosPorCodigo = useMemo(() => new Map(encargos.map((e) => [e.codigo, e])), [encargos]);
   const ccPorMatricula = useMemo(() => new Map(colaboradoresCc.map((c) => [c.matricula, c.cc])), [colaboradoresCc]);
   const provisaoPorMatricula = useMemo(() => new Map(colaboradoresProvisao.map((p) => [p.matricula, p])), [colaboradoresProvisao]);
@@ -176,6 +190,7 @@ export function FaturamentoViewer({
             ccPorMatricula={ccPorMatricula}
             percentuaisTexto={percentuaisTexto}
             onPercentualChange={setPercentualColaborador}
+            hrefPdfColaborador={hrefPdfColaborador}
             competencia={resumo.competencia}
             provisaoPorMatricula={provisaoPorMatricula}
             codServicoPorMatricula={codServicoPorMatricula}
@@ -553,6 +568,7 @@ function ColaboradoresTable({
   ccPorMatricula,
   percentuaisTexto,
   onPercentualChange,
+  hrefPdfColaborador,
   competencia,
   provisaoPorMatricula,
   codServicoPorMatricula,
@@ -569,6 +585,8 @@ function ColaboradoresTable({
   /** Percentual a cobrar digitado de cada colaborador (matrícula -> texto) e o setter — ver PercentualInput. */
   percentuaisTexto: Record<string, string>;
   onPercentualChange: (matricula: number, novo: string) => void;
+  /** Link do PDF individual de um colaborador (botão "PDF" da linha dele). */
+  hrefPdfColaborador: (matricula: number) => string;
   /** Competência mostrada — pra qual os botões de Prov. Férias / Prov. 13º lançam o desconto. */
   competencia: string;
   provisaoPorMatricula: Map<number, ProvisaoColaborador>;
@@ -587,7 +605,7 @@ function ColaboradoresTable({
     <div className="flex flex-col gap-2">
       <h3 className="px-1 text-sm font-semibold text-neutral-700">Detalhamento por colaborador — clique numa linha pra ver o detalhamento por evento dele</h3>
       <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-        <table className="w-full min-w-[1160px] text-sm">
+        <table className="w-full min-w-[1240px] text-sm">
           <thead className="bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
             <tr>
               <Th>Matrícula</Th>
@@ -601,6 +619,7 @@ function ColaboradoresTable({
               <Th right>% a cobrar</Th>
               <Th right>Valor a cobrar</Th>
               <Th right>Deduzido</Th>
+              <Th right>PDF</Th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100">
@@ -652,10 +671,19 @@ function ColaboradoresTable({
                     <Td right mono>
                       {percentual === null ? <span className="text-neutral-300">—</span> : fmt(cobranca.deduzido)}
                     </Td>
+                    <Td right onClick={(e) => e.stopPropagation()}>
+                      <a
+                        href={hrefPdfColaborador(c.matricula)}
+                        title={`Exportar o PDF individual de ${c.nome}`}
+                        className="inline-block rounded-md bg-emerald-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-800"
+                      >
+                        PDF
+                      </a>
+                    </Td>
                   </tr>
                   {aberta && (
                     <tr>
-                      <td colSpan={11} className="bg-neutral-50 p-3">
+                      <td colSpan={12} className="bg-neutral-50 p-3">
                         <div className="flex flex-col gap-3">
                           <RegimeColaborador matricula={c.matricula} codServicoAtual={codServicoPorMatricula.get(c.matricula) ?? null} tomadores={tomadoresOpcoes} />
                           {provisaoPorMatricula.has(c.matricula) && (
