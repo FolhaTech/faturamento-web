@@ -44,14 +44,32 @@ export function UploadMovimentosForm() {
     setError(null);
     try {
       const res = await fetch("/api/movimentos", { method: "POST", body: formData });
-      const data = await res.json();
+      // Resposta que não é JSON (timeout da Vercel, erro do servidor) não pode virar "falha de rede": o
+      // servidor pode ter gravado tudo antes de a resposta falhar — a mensagem diz isso e o status HTTP.
+      const texto = await res.text();
+      // O formato muda conforme o status (409 de confirmação, erro, sucesso) — antes era o `any` do res.json().
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let data: Record<string, any> | null = null;
+      try {
+        data = JSON.parse(texto);
+      } catch {
+        data = null;
+      }
+      if (!data) {
+        setError(
+          `O servidor respondeu com erro (HTTP ${res.status}) sem detalhes — ${
+            res.status === 504 || res.status === 502 ? "provavelmente demorou demais. " : ""
+          }O arquivo pode ter sido importado mesmo assim: confira em Movimentos (competência do arquivo) antes de enviar de novo.`,
+        );
+        return false;
+      }
 
       if (res.status === 409 && data.requerConfirmacao) {
         setPendingConfirm({ file, competencias: data.competencias, novosLancamentos: data.novosLancamentos });
         return false;
       }
       if (!res.ok) {
-        setError(data.error ?? "Falha ao processar o arquivo.");
+        setError(data.error ?? `Falha ao processar o arquivo (HTTP ${res.status}).`);
         return false;
       }
 
@@ -75,7 +93,7 @@ export function UploadMovimentosForm() {
       }
       return true;
     } catch {
-      setError("Falha de rede ao enviar o arquivo.");
+      setError("A conexão caiu ao enviar o arquivo — ele pode ter sido importado mesmo assim: confira em Movimentos antes de enviar de novo.");
       return false;
     } finally {
       setBusy(false);

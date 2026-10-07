@@ -24,6 +24,9 @@ import { ccustoDoNomeDoArquivo } from "@/lib/xlsx/ccustoDoNomeArquivo";
 import { parseMovimentosFile } from "@/lib/xlsx/parseMovimentos";
 
 export const runtime = "nodejs";
+// O upload grava os lançamentos e, na Folha, recalcula a competência inteira pra guardar as provisões —
+// leva bem mais que o limite padrão de uma função em arquivos grandes.
+export const maxDuration = 60;
 
 export async function GET() {
   const [competencias, total] = await Promise.all([listCompetencias(), countMovimentos()]);
