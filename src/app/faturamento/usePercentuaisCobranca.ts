@@ -36,7 +36,9 @@ function interpretar(json: string): Record<string, string> {
  * navegador. Um único item no localStorage por competência ({ matrícula: texto }) — o card de totais,
  * a tabela de colaboradores e o link "Exportar PDF" leem o mesmo estado.
  */
-export function usePercentuaisCobranca(competencia: string): readonly [Record<string, string>, (matricula: number, novo: string) => void] {
+export function usePercentuaisCobranca(
+  competencia: string,
+): readonly [Record<string, string>, (matricula: number, novo: string) => void, (matriculas: number[]) => void] {
   const chave = `faturamento:percentuais-cobranca:${competencia}`;
   // No servidor (e na hidratação) nasce vazio; no navegador lê o que ficou lembrado.
   const json = useSyncExternalStore(assinar, () => lerArmazenado(chave), () => "");
@@ -45,10 +47,7 @@ export function usePercentuaisCobranca(competencia: string): readonly [Record<st
 
   const valores = useMemo(() => (semArmazenamento?.chave === chave ? semArmazenamento.valores : interpretar(json)), [json, chave, semArmazenamento]);
 
-  function alterar(matricula: number, novo: string) {
-    const proximo = { ...valores };
-    if (novo.trim() === "") delete proximo[String(matricula)];
-    else proximo[String(matricula)] = novo;
+  function gravar(proximo: Record<string, string>) {
     try {
       if (Object.keys(proximo).length === 0) window.localStorage.removeItem(chave);
       else window.localStorage.setItem(chave, JSON.stringify(proximo));
@@ -58,5 +57,19 @@ export function usePercentuaisCobranca(competencia: string): readonly [Record<st
     }
   }
 
-  return [valores, alterar] as const;
+  function alterar(matricula: number, novo: string) {
+    const proximo = { ...valores };
+    if (novo.trim() === "") delete proximo[String(matricula)];
+    else proximo[String(matricula)] = novo;
+    gravar(proximo);
+  }
+
+  /** Apaga o percentual de vários colaboradores de uma vez (de uma só gravação — chamar alterar() em laço usaria o estado antigo a cada volta). */
+  function limpar(matriculas: number[]) {
+    const proximo = { ...valores };
+    for (const m of matriculas) delete proximo[String(m)];
+    gravar(proximo);
+  }
+
+  return [valores, alterar, limpar] as const;
 }

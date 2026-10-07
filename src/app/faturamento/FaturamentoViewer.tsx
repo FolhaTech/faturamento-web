@@ -7,7 +7,7 @@ import { normalizaTexto } from "@/lib/text";
 import type { Encargo } from "@/lib/types";
 import { DescontoProvisaoColaborador, type ProvisaoColaborador } from "./DescontoProvisaoColaborador";
 import { GrossUpConfigForm } from "./GrossUpConfigForm";
-import { calcularCobranca, lerPercentual, serializarPercentuais } from "@/lib/percentualCobranca";
+import { calcularCobranca, lerPercentual, percentualAtivo, serializarPercentuais } from "@/lib/percentualCobranca";
 import { usePercentuaisCobranca } from "./usePercentuaisCobranca";
 import { RegimeColaborador, type TomadorOpcao } from "./RegimeColaborador";
 
@@ -59,14 +59,15 @@ export function FaturamentoViewer({
   const [ccustoCodigo, setCcustoCodigo] = useState<string | null>(resumos[0]?.ccustoCodigo ?? null);
   const [busyExclusao, setBusyExclusao] = useState(false);
   const resumo = useMemo(() => resumos.find((r) => r.ccustoCodigo === ccustoCodigo) ?? resumos[0] ?? null, [resumos, ccustoCodigo]);
-  // Percentual a cobrar de cada colaborador (campo na tabela de colaboradores) — o card de totais soma e o
-  // link "Exportar PDF" leva só os do centro de custo mostrado, pra sair no relatório.
-  const [percentuaisTexto, setPercentualColaborador] = usePercentuaisCobranca(resumo?.competencia ?? "");
+  // Percentual a DEDUZIR da Nota Fiscal de cada colaborador (campo na tabela de colaboradores) — o card de
+  // totais soma e o link "Exportar PDF" leva só os do centro de custo mostrado, pra sair no relatório.
+  // 0% (ou vazio) é "sem dedução": o valor do colaborador fica normal e ele nem entra neste mapa.
+  const [percentuaisTexto, setPercentualColaborador, limparPercentuais] = usePercentuaisCobranca(resumo?.competencia ?? "");
   const percentuaisDoCcusto = useMemo(() => {
     const doCcusto = new Set((resumo?.colaboradores ?? []).map((c) => c.matricula));
     const mapa = new Map<number, number>();
     for (const [matricula, texto] of Object.entries(percentuaisTexto)) {
-      const percentual = lerPercentual(texto);
+      const percentual = percentualAtivo(texto);
       if (percentual !== null && doCcusto.has(Number(matricula))) mapa.set(Number(matricula), percentual);
     }
     return mapa;
@@ -181,6 +182,7 @@ export function FaturamentoViewer({
             regimeLabel={regimeLabel}
             previaTotalFatura={previaPorCcusto.get(resumo.ccustoCodigo) ?? null}
             percentuais={percentuaisDoCcusto}
+            onLimparPercentuais={() => limparPercentuais([...percentuaisDoCcusto.keys()])}
           />
           <RubricasTable rubricas={resumo.rubricas} encargosPorCodigo={encargosPorCodigo} />
           <DescontosTable rubricas={resumo.rubricas} />
@@ -232,13 +234,16 @@ function TotalsCard({
   regimeLabel,
   previaTotalFatura,
   percentuais,
+  onLimparPercentuais,
 }: {
   resumo: CcustoResumo;
   regimeLabel: string | null;
   /** Total fatura (NF) já cobrado na Prévia do mesmo mês — null quando não há Prévia correspondente pra comparar (ver FaturamentoViewer). */
   previaTotalFatura: number | null;
-  /** Percentual a cobrar válido de cada colaborador desse centro de custo (matrícula -> %) — vazio quando nenhum foi digitado. */
+  /** Percentual a deduzir (> 0) de cada colaborador desse centro de custo (matrícula -> %) — vazio quando nenhum foi digitado. */
   percentuais: Map<number, number>;
+  /** Apaga os percentuais desse centro de custo (volta tudo ao valor normal). */
+  onLimparPercentuais: () => void;
 }) {
   const rows: [string, number, boolean?][] = [
     ["Total de despesas", resumo.totalDespesas],
@@ -278,7 +283,7 @@ function TotalsCard({
           </div>
         ))}
       </dl>
-      <CobrancaResumo resumo={resumo} percentuais={percentuais} />
+      <CobrancaResumo resumo={resumo} percentuais={percentuais} onLimpar={onLimparPercentuais} />
       {complementar != null && (
         <div className="mt-4 rounded-md border border-sky-200 bg-sky-50 p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">Comparação com a Prévia</p>
@@ -582,7 +587,7 @@ function ColaboradoresTable({
   encargosPorCodigo: Map<number, Encargo>;
   /** CC (não obrigatório) de cada colaborador — ver CcInput. */
   ccPorMatricula: Map<number, string | null>;
-  /** Percentual a cobrar digitado de cada colaborador (matrícula -> texto) e o setter — ver PercentualInput. */
+  /** Percentual a deduzir digitado de cada colaborador (matrícula -> texto) e o setter — ver PercentualInput. */
   percentuaisTexto: Record<string, string>;
   onPercentualChange: (matricula: number, novo: string) => void;
   /** Link do PDF individual de um colaborador (botão "PDF" da linha dele). */
@@ -616,7 +621,7 @@ function ColaboradoresTable({
               <Th right>Fatura</Th>
               <Th right>Tributação</Th>
               <Th right>Nota Fiscal</Th>
-              <Th right>% a cobrar</Th>
+              <Th right>% a deduzir</Th>
               <Th right>Valor a cobrar</Th>
               <Th right>Deduzido</Th>
               <Th right>PDF</Th>
@@ -626,7 +631,7 @@ function ColaboradoresTable({
             {colaboradores.map((c) => {
               const aberta = expandida === c.matricula;
               const percentualTexto = percentuaisTexto[String(c.matricula)] ?? "";
-              const percentual = lerPercentual(percentualTexto);
+              const percentual = percentualAtivo(percentualTexto);
               const cobranca = calcularCobranca(c.nf, percentual);
               return (
                 <Fragment key={c.matricula}>
@@ -661,7 +666,7 @@ function ColaboradoresTable({
                     <Td right onClick={(e) => e.stopPropagation()}>
                       <PercentualInput
                         texto={percentualTexto}
-                        invalido={percentualTexto.trim() !== "" && percentual === null}
+                        invalido={percentualTexto.trim() !== "" && lerPercentual(percentualTexto) === null}
                         onChange={(novo) => onPercentualChange(c.matricula, novo)}
                       />
                     </Td>
@@ -716,7 +721,7 @@ function ColaboradoresTable({
   );
 }
 
-/** Percentual da Nota Fiscal do colaborador que será cobrado (ex.: 80) — o valor a cobrar e o deduzido saem ao lado e vão no PDF; lembrado neste navegador. */
+/** Percentual da Nota Fiscal do colaborador a DEDUZIR (ex.: 20) — 0 ou vazio deixa o valor normal; o valor a cobrar e o deduzido saem ao lado e vão no PDF; lembrado neste navegador. */
 function PercentualInput({ texto, invalido, onChange }: { texto: string; invalido: boolean; onChange: (novo: string) => void }) {
   return (
     <span className="inline-flex items-center gap-1">
@@ -725,7 +730,7 @@ function PercentualInput({ texto, invalido, onChange }: { texto: string; invalid
         onChange={(e) => onChange(e.target.value)}
         inputMode="decimal"
         placeholder="—"
-        aria-label="Percentual a cobrar"
+        aria-label="Percentual a deduzir"
         className={`w-16 rounded-md border px-2 py-1 text-right text-xs text-neutral-900 ${invalido ? "border-red-400 bg-red-50" : "border-neutral-300"}`}
       />
       <span className="text-xs text-neutral-500">%</span>
@@ -733,8 +738,8 @@ function PercentualInput({ texto, invalido, onChange }: { texto: string; invalid
   );
 }
 
-/** Soma por colaborador do que será cobrado e do que foi deduzido — só aparece quando algum colaborador tem percentual. Colaborador sem percentual entra com a NF inteira. */
-function CobrancaResumo({ resumo, percentuais }: { resumo: CcustoResumo; percentuais: Map<number, number> }) {
+/** Soma por colaborador do que será cobrado e do que foi deduzido — só aparece quando algum colaborador tem dedução (> 0%). Colaborador sem dedução entra com a NF inteira. */
+function CobrancaResumo({ resumo, percentuais, onLimpar }: { resumo: CcustoResumo; percentuais: Map<number, number>; onLimpar: () => void }) {
   if (percentuais.size === 0) return null;
   let cobrar = 0;
   let deduzido = 0;
@@ -745,7 +750,12 @@ function CobrancaResumo({ resumo, percentuais }: { resumo: CcustoResumo; percent
   }
   return (
     <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 p-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Percentual a cobrar por colaborador</p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Dedução por colaborador (% a deduzir)</p>
+        <button type="button" onClick={onLimpar} className="text-xs font-medium text-emerald-800 hover:underline">
+          Limpar percentuais
+        </button>
+      </div>
       <dl className="mt-2 grid grid-cols-1 gap-x-8 gap-y-1 sm:grid-cols-3">
         <div className="flex items-baseline justify-between py-0.5">
           <dt className="text-emerald-900">Total fatura (NF)</dt>
@@ -761,7 +771,7 @@ function CobrancaResumo({ resumo, percentuais }: { resumo: CcustoResumo; percent
         </div>
       </dl>
       <p className="mt-1 text-xs text-neutral-500">
-        {percentuais.size} colaborador(es) com percentual — os demais entram com a Nota Fiscal inteira. Preencha na coluna &quot;% a cobrar&quot; do detalhamento por colaborador; o PDF exportado leva esses valores.
+        {percentuais.size} colaborador(es) com dedução — os demais entram com a Nota Fiscal inteira. 0% ou campo vazio deixa o valor normal. Preencha na coluna &quot;% a deduzir&quot; do detalhamento por colaborador; o PDF exportado leva esses valores.
       </p>
     </div>
   );

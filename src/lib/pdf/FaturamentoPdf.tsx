@@ -158,7 +158,7 @@ function SummarySection({ resumo, percentuaisCobranca }: { resumo: CcustoResumo;
                 <Text style={styles.summaryValueStrong}>{fmt(cobranca.cobrar)}</Text>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Deduzido (Nota Fiscal menos valor a cobrar)</Text>
+                <Text style={styles.summaryLabel}>Deduzido (soma das deduções por colaborador)</Text>
                 <Text style={styles.summaryValue}>{fmt(cobranca.deduzido)}</Text>
               </View>
             </>
@@ -310,7 +310,7 @@ function DescontosSection({ resumo }: { resumo: CcustoResumo }) {
   );
 }
 
-/** Larguras da tabela de colaboradores; com percentual a cobrar entram 3 colunas e as demais ficam mais estreitas (somam 100% nos dois casos). */
+/** Larguras da tabela de colaboradores; com percentual a deduzir entram 3 colunas e as demais ficam mais estreitas (somam 100% nos dois casos). */
 const COLAB_LARGURAS = {
   base: { matricula: "10%", nome: "29%", cc: "9%", despesa: "10%", taxaAdm: "10%", fatura: "10%", impostos: "11%", nf: "11%", pct: "0%", cobrar: "0%", deduzido: "0%" },
   comCobranca: { matricula: "8%", nome: "19%", cc: "7%", despesa: "8%", taxaAdm: "8%", fatura: "8%", impostos: "8%", nf: "9%", pct: "6%", cobrar: "9%", deduzido: "10%" },
@@ -343,7 +343,7 @@ function ColaboradoresSection({
           <Text style={[styles.tHeadCell, { width: w.nf, textAlign: "right" }]}>Nota Fiscal</Text>
           {comCobranca && (
             <>
-              <Text style={[styles.tHeadCell, { width: w.pct, textAlign: "right" }]}>% cobrar</Text>
+              <Text style={[styles.tHeadCell, { width: w.pct, textAlign: "right" }]}>% deduzir</Text>
               <Text style={[styles.tHeadCell, { width: w.cobrar, textAlign: "right" }]}>A cobrar</Text>
               <Text style={[styles.tHeadCell, { width: w.deduzido, textAlign: "right" }]}>Deduzido</Text>
             </>
@@ -404,7 +404,7 @@ export function FaturamentoPdf({
   regimeLabel?: string | null;
   /** CC (não obrigatório) de cada colaborador — ver ColaboradoresSection. */
   ccPorMatricula: Map<number, string | null>;
-  /** Percentual da Nota Fiscal de cada colaborador que o usuário quer cobrar (campo na tela de Faturamento, matrícula -> %) — vazio = sem as colunas e linhas de cobrança. */
+  /** Percentual da Nota Fiscal de cada colaborador a DEDUZIR (campo na tela de Faturamento, matrícula -> %) — vazio = sem as colunas e linhas de cobrança. */
   percentuaisCobranca?: Map<number, number>;
   /** "NOME (matrícula)" quando o PDF é individual (um colaborador só) — aparece no cabeçalho; null = relatório do centro de custo. */
   colaboradorLabel?: string | null;
