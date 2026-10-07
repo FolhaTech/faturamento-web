@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { nomeBaseDoArquivo } from "@/lib/xlsx/ccustoDoNomeArquivo";
 
 interface CompetenciaComDados {
   competencia: string;
@@ -17,7 +18,7 @@ interface PendingConfirm {
   novosLancamentos: number;
 }
 
-export function UploadMovimentosForm() {
+export function UploadMovimentosForm({ ccustosCadastrados }: { ccustosCadastrados: string[] }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [tipo, setTipo] = useState<"previa" | "folha">("previa");
@@ -31,6 +32,9 @@ export function UploadMovimentosForm() {
   const [ccustoCompletado, setCcustoCompletado] = useState<{ matricula: number; nome: string; ccusto: string }[]>([]);
   const [ccustoCorrigido, setCcustoCorrigido] = useState<{ matricula: number; nome: string; ccustoAntigo: string; ccustoNovo: string }[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
+  // Centro de custo de TODOS os colaboradores do arquivo (opcional) — vale mais que o do cadastro; ver /api/movimentos.
+  const [ccusto, setCcusto] = useState("");
+  const sugestaoCcusto = fileName ? nomeBaseDoArquivo(fileName) : "";
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
 
   /** Retorna true quando o arquivo foi de fato importado (para o chamador decidir se limpa o form). */
@@ -39,6 +43,7 @@ export function UploadMovimentosForm() {
     formData.append("file", file);
     formData.append("tipo", tipo);
     if (confirmar) formData.append("confirmar", "true");
+    if (ccusto.trim() !== "") formData.append("ccusto", ccusto.trim());
 
     setBusy(true);
     setError(null);
@@ -119,7 +124,10 @@ export function UploadMovimentosForm() {
       return;
     }
     const importou = await enviarArquivo(file, false);
-    if (importou) formRef.current?.reset();
+    if (importou) {
+      formRef.current?.reset();
+      setCcusto("");
+    }
   }
 
   return (
@@ -163,6 +171,34 @@ export function UploadMovimentosForm() {
         {fileName && <p className="mt-1 text-xs text-neutral-500">Selecionado: {fileName}</p>}
       </div>
 
+      <div>
+        <label htmlFor="ccusto" className="block text-sm font-medium text-neutral-700 mb-1">
+          Centro de custo deste arquivo (opcional)
+        </label>
+        <p className="mb-2 text-xs text-neutral-500">
+          Use quando a planilha não diz o centro de custo. Todos os colaboradores do arquivo passam a ficar nele — escolha um já existente ou digite um
+          novo (ex.: CHAMA PERECIVEL). Em branco, vale o centro de custo do cadastro de cada colaborador.
+        </p>
+        <input
+          id="ccusto"
+          list="ccustos-cadastrados"
+          value={ccusto}
+          onChange={(e) => setCcusto(e.target.value)}
+          placeholder="Ex.: CHAMA PERECIVEL"
+          className="block w-full max-w-md rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-900"
+        />
+        <datalist id="ccustos-cadastrados">
+          {ccustosCadastrados.map((nome) => (
+            <option key={nome} value={nome} />
+          ))}
+        </datalist>
+        {sugestaoCcusto !== "" && sugestaoCcusto !== ccusto.trim().toUpperCase() && (
+          <button type="button" onClick={() => setCcusto(sugestaoCcusto)} className="mt-1 text-xs font-medium text-emerald-700 hover:text-emerald-800 hover:underline">
+            Usar o nome do arquivo: {sugestaoCcusto}
+          </button>
+        )}
+      </div>
+
       {error && <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{error}</div>}
       {info && <div className="rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm text-emerald-800">{info}</div>}
 
@@ -191,7 +227,10 @@ export function UploadMovimentosForm() {
               disabled={busy}
               onClick={async () => {
                 const importou = await enviarArquivo(pendingConfirm.file, true);
-                if (importou) formRef.current?.reset();
+                if (importou) {
+                  formRef.current?.reset();
+                  setCcusto("");
+                }
               }}
               className="rounded-md bg-amber-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-800 disabled:opacity-50"
             >

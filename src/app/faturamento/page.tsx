@@ -54,13 +54,15 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   const usuario = await getUsuarioAtual();
   const usuarioEmail = usuario?.email ?? null;
 
-  const [codEmps, descricoesCargo, descricoesDpto, plrCeletista, encargos, minhasCompetenciasComFaturaSalva] = await Promise.all([
+  const [codEmps, descricoesCargo, descricoesDpto, plrCeletista, encargos, minhasCompetenciasComFaturaSalva, ccustosCadastrados] = await Promise.all([
     listValoresDistintosDados("cod_emp"),
     listValoresDistintosDados("descricao_cargo"),
     listValoresDistintosDados("descricao_dpto"),
     getConfigNumero(CHAVE_PLR_CELETISTA, 29.32),
     listEncargos(),
     listMinhasCompetenciasComFaturaSalva(competencias, usuarioEmail ?? ""),
+    // Centros de custo já cadastrados — sugestões do campo "Centro de custo deste arquivo" no upload.
+    listValoresDistintosDados("descricao_ccusto"),
   ]);
 
   let resumos: ReturnType<typeof aggregateByCcusto> = [];
@@ -174,7 +176,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
         </p>
       </header>
 
-      <UploadMovimentosForm />
+      <UploadMovimentosForm ccustosCadastrados={ccustosCadastrados} />
 
       <PlrConfigForm valorInicial={plrCeletista} />
 

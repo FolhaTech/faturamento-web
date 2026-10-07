@@ -20,7 +20,7 @@ import {
 } from "@/lib/repo/movimentos";
 import { salvarProvisoesMensais } from "@/lib/repo/provisoesMensais";
 import { getTomadorPorNome, listTomadores, upsertTomadoresPendentes } from "@/lib/repo/tomadores";
-import { ccustoDoNomeDoArquivo } from "@/lib/xlsx/ccustoDoNomeArquivo";
+import { ccustoDoNomeDoArquivo, resolverCcustoInformado } from "@/lib/xlsx/ccustoDoNomeArquivo";
 import { parseMovimentosFile } from "@/lib/xlsx/parseMovimentos";
 
 export const runtime = "nodejs";
@@ -142,7 +142,10 @@ export async function POST(request: Request) {
   //
   // Sem "Local de trabalho" no arquivo, o NOME do arquivo pode dizer o cliente (ex.: "CARBRINK
   // 092026.xlsx" -> Ccusto "CARBRINK", ver ccustoDoNomeArquivo.ts) — também conta como explícito.
-  const ccustoDoArquivo = ccustoDoNomeDoArquivo(file.name, await listCcustosCadastrados());
+  // O centro de custo digitado no upload ("Centro de custo deste arquivo") vale mais que o inferido pelo nome do arquivo.
+  const ccustosCadastrados = await listCcustosCadastrados();
+  const ccustoInformado = resolverCcustoInformado(String(formData.get("ccusto") ?? ""), ccustosCadastrados);
+  const ccustoDoArquivo = ccustoInformado ?? ccustoDoNomeDoArquivo(file.name, ccustosCadastrados);
   const ccustoPorMatricula = new Map<number, { codigo: string; nome: string; explicito: boolean; doNomeDoArquivo?: boolean }>();
   let ultimoCcusto: { codigo: string; nome: string; explicito: boolean; doNomeDoArquivo?: boolean } | null = null;
   for (const matricula of matriculasEmOrdem) {

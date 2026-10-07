@@ -20,6 +20,21 @@ export function nomeBaseDoArquivo(nomeArquivo: string): string {
 }
 
 /**
+ * Centro de custo digitado pelo usuário no upload (campo "Centro de custo deste arquivo"): usa o já
+ * cadastrado com esse nome (ignora acento/maiúscula) ou, se não existir, cria um novo cujo código é o
+ * próprio nome em maiúsculas — mesmo padrão dos centros de custo que já usam o nome como código (ex.:
+ * "CHAMA LOGISTICA", "ORIZON"). Nome ambíguo (mesmo nome com códigos diferentes) fica com o primeiro código em ordem alfabética.
+ */
+export function resolverCcustoInformado(texto: string, ccustos: CcustoCadastrado[]): CcustoCadastrado | null {
+  const nome = texto.trim().replace(/\s+/g, " ");
+  if (nome === "") return null;
+  const casam = ccustos.filter((c) => normalizaTexto(c.nome) === normalizaTexto(nome)).sort((a, b) => a.codigo.localeCompare(b.codigo));
+  if (casam.length > 0) return casam[0];
+  const novo = nome.toUpperCase();
+  return { codigo: novo, nome: novo };
+}
+
+/**
  * Centro de custo indicado pelo NOME do arquivo — usado só quando a planilha não traz o Local de
  * trabalho (ver parseMovimentos.ts) pra dizer o cliente. Só vale quando o nome base do arquivo é
  * IGUAL a um centro de custo já cadastrado (ex.: "CARBRINK 092026.xlsx" -> "CARBRINK"); nome que
