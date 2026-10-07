@@ -5,6 +5,7 @@ import { getUsuarioAtual } from "@/lib/auth/sessao";
 import { aggregateByCcusto } from "@/lib/calc/aggregate";
 import { carregarEngineLines } from "@/lib/calc/faturaCompetencia";
 import { filtrarLinesPorColaborador } from "@/lib/calc/filtroColaboradores";
+import { lerPercentual } from "@/lib/percentualCobranca";
 import { FaturamentoPdf } from "@/lib/pdf/FaturamentoPdf";
 import { getColaboradoresPorMatriculas } from "@/lib/repo/colaboradores";
 
@@ -19,6 +20,8 @@ export async function GET(request: Request) {
   const descricaoDpto = url.searchParams.get("descricaoDpto") ?? undefined;
   const regimeParam = url.searchParams.get("regime");
   const fpas = regimeParam === "515" || regimeParam === "655" ? (Number(regimeParam) as 515 | 655) : undefined;
+  // Percentual a cobrar digitado na tela (ver PercentualCobranca) — sai no Resumo do PDF; ausente/inválido = sem a linha.
+  const percentualCobranca = lerPercentual(url.searchParams.get("percentual") ?? "");
 
   if (!competencia) {
     return NextResponse.json({ error: "Informe a competência (?competencia=MM/AAAA)." }, { status: 400 });
@@ -56,6 +59,7 @@ export async function GET(request: Request) {
     resumo,
     regimeLabel,
     ccPorMatricula,
+    percentualCobranca,
   }) as Parameters<typeof renderToBuffer>[0];
   const buffer = await renderToBuffer(pdfElement);
 

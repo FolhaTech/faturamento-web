@@ -1,5 +1,6 @@
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import type { ColaboradorResumo, RubricaSomada, CcustoResumo } from "../calc/aggregate";
+import { valorACobrar } from "../percentualCobranca";
 import { normalizaTexto } from "../text";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -110,7 +111,7 @@ function Footer({ resumo, regimeLabel }: { resumo: CcustoResumo; regimeLabel: st
   );
 }
 
-function SummarySection({ resumo }: { resumo: CcustoResumo }) {
+function SummarySection({ resumo, percentualCobranca }: { resumo: CcustoResumo; percentualCobranca: number | null }) {
   return (
     <View>
       <Text style={styles.sectionTitle}>Resumo</Text>
@@ -136,6 +137,12 @@ function SummarySection({ resumo }: { resumo: CcustoResumo }) {
             <Text style={styles.summaryLabelStrong}>Total fatura (com encargos)</Text>
             <Text style={styles.summaryValueStrong}>{fmt(resumo.totalFatura)}</Text>
           </View>
+          {percentualCobranca !== null && (
+            <View style={styles.summaryRowStrong}>
+              <Text style={styles.summaryLabelStrong}>Valor a cobrar ({percentualCobranca.toLocaleString("pt-BR")}% do Total fatura)</Text>
+              <Text style={styles.summaryValueStrong}>{fmt(valorACobrar(resumo.totalFatura, percentualCobranca))}</Text>
+            </View>
+          )}
         </View>
         <View style={styles.summaryCol}>
           <View style={styles.summaryRow}>
@@ -341,12 +348,15 @@ export function FaturamentoPdf({
   resumo,
   regimeLabel = null,
   ccPorMatricula,
+  percentualCobranca = null,
 }: {
   resumo: CcustoResumo;
   /** "Terceiro (CLT)" ou "Temporário" quando o export foi filtrado por regime (ver /api/faturamento/export) — null pra fatura sem esse filtro (mistura os dois regimes). */
   regimeLabel?: string | null;
   /** CC (não obrigatório) de cada colaborador — ver ColaboradoresSection. */
   ccPorMatricula: Map<number, string | null>;
+  /** Percentual do Total fatura que o usuário quer cobrar (campo na tela de Faturamento) — null = sem a linha "Valor a cobrar" no Resumo. */
+  percentualCobranca?: number | null;
 }) {
   const geradoEm = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date());
 
@@ -367,7 +377,7 @@ export function FaturamentoPdf({
           </View>
         </View>
 
-        <SummarySection resumo={resumo} />
+        <SummarySection resumo={resumo} percentualCobranca={percentualCobranca} />
 
         <RubricasSection resumo={resumo} />
         <DescontosSection resumo={resumo} />

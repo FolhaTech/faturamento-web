@@ -7,7 +7,9 @@ import { normalizaTexto } from "@/lib/text";
 import type { Encargo } from "@/lib/types";
 import { DescontoProvisaoColaborador, type ProvisaoColaborador } from "./DescontoProvisaoColaborador";
 import { GrossUpConfigForm } from "./GrossUpConfigForm";
+import { lerPercentual } from "@/lib/percentualCobranca";
 import { PercentualCobranca } from "./PercentualCobranca";
+import { usePercentualCobranca } from "./usePercentualCobranca";
 import { RegimeColaborador, type TomadorOpcao } from "./RegimeColaborador";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -58,6 +60,9 @@ export function FaturamentoViewer({
   const [ccustoCodigo, setCcustoCodigo] = useState<string | null>(resumos[0]?.ccustoCodigo ?? null);
   const [busyExclusao, setBusyExclusao] = useState(false);
   const resumo = useMemo(() => resumos.find((r) => r.ccustoCodigo === ccustoCodigo) ?? resumos[0] ?? null, [resumos, ccustoCodigo]);
+  // Percentual a cobrar (campo no card de totais) — também vai no link "Exportar PDF" pra sair no relatório.
+  const [percentualTexto, setPercentualTexto] = usePercentualCobranca(resumo?.competencia ?? "", resumo?.ccustoCodigo ?? "");
+  const percentualCobranca = lerPercentual(percentualTexto);
   const encargosPorCodigo = useMemo(() => new Map(encargos.map((e) => [e.codigo, e])), [encargos]);
   const ccPorMatricula = useMemo(() => new Map(colaboradoresCc.map((c) => [c.matricula, c.cc])), [colaboradoresCc]);
   const provisaoPorMatricula = useMemo(() => new Map(colaboradoresProvisao.map((p) => [p.matricula, p])), [colaboradoresProvisao]);
@@ -129,7 +134,7 @@ export function FaturamentoViewer({
           <a
             href={`/api/faturamento/export?competencia=${encodeURIComponent(resumo.competencia)}&ccusto=${encodeURIComponent(resumo.ccustoCodigo)}${
               filtrosQuery ? `&${filtrosQuery}` : ""
-            }`}
+            }${percentualCobranca !== null ? `&percentual=${encodeURIComponent(String(percentualCobranca))}` : ""}`}
             className="ml-auto flex items-center gap-2 rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
           >
             Exportar PDF
@@ -149,7 +154,13 @@ export function FaturamentoViewer({
 
       {resumo && (
         <>
-          <TotalsCard resumo={resumo} regimeLabel={regimeLabel} previaTotalFatura={previaPorCcusto.get(resumo.ccustoCodigo) ?? null} />
+          <TotalsCard
+            resumo={resumo}
+            regimeLabel={regimeLabel}
+            previaTotalFatura={previaPorCcusto.get(resumo.ccustoCodigo) ?? null}
+            percentualTexto={percentualTexto}
+            onPercentualChange={setPercentualTexto}
+          />
           <RubricasTable rubricas={resumo.rubricas} encargosPorCodigo={encargosPorCodigo} />
           <DescontosTable rubricas={resumo.rubricas} />
           <ColaboradoresTable
@@ -196,11 +207,16 @@ function TotalsCard({
   resumo,
   regimeLabel,
   previaTotalFatura,
+  percentualTexto,
+  onPercentualChange,
 }: {
   resumo: CcustoResumo;
   regimeLabel: string | null;
   /** Total fatura (NF) já cobrado na Prévia do mesmo mês — null quando não há Prévia correspondente pra comparar (ver FaturamentoViewer). */
   previaTotalFatura: number | null;
+  /** Percentual a cobrar digitado (texto) e o setter — o estado mora em FaturamentoViewer porque o link "Exportar PDF" também usa. */
+  percentualTexto: string;
+  onPercentualChange: (novo: string) => void;
 }) {
   const rows: [string, number, boolean?][] = [
     ["Total de despesas", resumo.totalDespesas],
@@ -240,7 +256,7 @@ function TotalsCard({
           </div>
         ))}
       </dl>
-      <PercentualCobranca competencia={resumo.competencia} ccustoCodigo={resumo.ccustoCodigo} totalFatura={resumo.totalFatura} />
+      <PercentualCobranca texto={percentualTexto} onChange={onPercentualChange} totalFatura={resumo.totalFatura} />
       {complementar != null && (
         <div className="mt-4 rounded-md border border-sky-200 bg-sky-50 p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">Comparação com a Prévia</p>
