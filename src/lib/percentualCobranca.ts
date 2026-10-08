@@ -114,3 +114,25 @@ export function juntarDeducoes(percentuais: Map<number, number>, adiantamentos: 
   }
   return resultado;
 }
+
+/**
+ * Soma, sobre os colaboradores de um centro de custo, do que será cobrado, do que foi deduzido (percentual +
+ * adiantamento) e de quanto disso é adiantamento. Quem não tem dedução entra com a Nota Fiscal inteira.
+ * O `deduzido` também é o que reduz o "Valor líquido a receber" do centro de custo (tela e PDF).
+ */
+export function somarCobranca(
+  colaboradores: { matricula: number; nf: number }[],
+  deducoes: Map<number, DeducaoColaborador>,
+): { cobrar: number; deduzido: number; adiantamentos: number } {
+  let cobrar = 0;
+  let deduzido = 0;
+  let adiantamentos = 0;
+  for (const c of colaboradores) {
+    const d = deducoes.get(c.matricula);
+    const r = calcularCobranca(c.nf, d?.percentual ?? null, d?.adiantamento ?? 0);
+    cobrar += r.cobrar;
+    deduzido += r.deduzido;
+    adiantamentos += r.adiantamento;
+  }
+  return { cobrar: arredonda(cobrar), deduzido: arredonda(deduzido), adiantamentos: arredonda(adiantamentos) };
+}

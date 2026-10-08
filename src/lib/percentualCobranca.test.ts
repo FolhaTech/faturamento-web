@@ -10,6 +10,7 @@ import {
   percentualAtivo,
   serializarAdiantamentos,
   serializarPercentuais,
+  somarCobranca,
   valorDoPercentual,
 } from "./percentualCobranca";
 
@@ -137,5 +138,22 @@ describe("adiantamentos no link do PDF", () => {
   it("junta percentuais e adiantamentos por matrícula", () => {
     const junto = juntarDeducoes(new Map([[1, 20]]), new Map([[1, 100], [2, 50]]));
     expect(junto).toEqual(new Map([[1, { percentual: 20, adiantamento: 100 }], [2, { percentual: null, adiantamento: 50 }]]));
+  });
+});
+
+describe("somarCobranca", () => {
+  const colaboradores = [
+    { matricula: 1, nf: 9299.23 },
+    { matricula: 2, nf: 9299.23 },
+    { matricula: 3, nf: 9299.23 },
+  ];
+
+  it("soma percentual e adiantamento; quem não tem dedução entra com a NF inteira", () => {
+    const deducoes = juntarDeducoes(new Map([[1, 20]]), new Map([[1, 1000], [3, 450.5]]));
+    expect(somarCobranca(colaboradores, deducoes)).toEqual({ cobrar: 24587.34, deduzido: 3310.35, adiantamentos: 1450.5 });
+  });
+
+  it("sem deduções o valor fica normal", () => {
+    expect(somarCobranca(colaboradores, new Map())).toEqual({ cobrar: 27897.69, deduzido: 0, adiantamentos: 0 });
   });
 });

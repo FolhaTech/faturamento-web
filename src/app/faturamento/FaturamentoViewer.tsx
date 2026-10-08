@@ -15,6 +15,7 @@ import {
   percentualAtivo,
   serializarAdiantamentos,
   serializarPercentuais,
+  somarCobranca,
   type DeducaoColaborador,
 } from "@/lib/percentualCobranca";
 import { useAdiantamentos, usePercentuaisCobranca } from "./usePercentuaisCobranca";
@@ -286,6 +287,8 @@ function TotalsCard({
   /** Apaga os percentuais e adiantamentos desse centro de custo (volta tudo ao valor normal). */
   onLimparDeducoes: () => void;
 }) {
+  // As deduções digitadas por colaborador (percentual + adiantamento) também reduzem o "Valor líquido a receber".
+  const deduzido = somarCobranca(resumo.colaboradores, deducoes).deduzido;
   const rows: [string, number, boolean?][] = [
     ["Total de despesas", resumo.totalDespesas],
     ["Taxa administrativa", resumo.taxaAdministrativa],
@@ -293,7 +296,8 @@ function TotalsCard({
     ["Encargos (PIS/COFINS/ISS/CSLL/IRRF)", resumo.encargosFatura.total],
     ["Total fatura (com encargos)", resumo.totalFatura, true],
     ["Retenções na fonte", -resumo.retencoes.total],
-    ["Valor líquido a receber", resumo.valorLiquido, true],
+    ...(deduzido > 0 ? ([["Deduções por colaborador (% e adiantamento)", -deduzido]] as [string, number, boolean?][]) : []),
+    ["Valor líquido a receber", resumo.valorLiquido - deduzido, true],
   ];
   const complementar = previaTotalFatura == null ? null : resumo.totalFatura - previaTotalFatura;
   return (
@@ -818,16 +822,7 @@ function AdiantamentoInput({ texto, invalido, aviso, onChange }: { texto: string
 /** Soma por colaborador do que será cobrado e do que foi deduzido (percentual + adiantamento) — só aparece quando algum colaborador tem dedução. Colaborador sem dedução entra com a NF inteira. */
 function CobrancaResumo({ resumo, deducoes, onLimpar }: { resumo: CcustoResumo; deducoes: Map<number, DeducaoColaborador>; onLimpar: () => void }) {
   if (deducoes.size === 0) return null;
-  let cobrar = 0;
-  let deduzido = 0;
-  let adiantamentos = 0;
-  for (const c of resumo.colaboradores) {
-    const d = deducoes.get(c.matricula);
-    const r = calcularCobranca(c.nf, d?.percentual ?? null, d?.adiantamento ?? 0);
-    cobrar += r.cobrar;
-    deduzido += r.deduzido;
-    adiantamentos += r.adiantamento;
-  }
+  const { cobrar, deduzido, adiantamentos } = somarCobranca(resumo.colaboradores, deducoes);
   return (
     <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 p-3">
       <div className="flex items-center justify-between gap-3">
@@ -851,7 +846,7 @@ function CobrancaResumo({ resumo, deducoes, onLimpar }: { resumo: CcustoResumo; 
         </div>
       </dl>
       <p className="mt-1 text-xs text-neutral-500">
-        {deducoes.size} colaborador(es) com dedução — os demais entram com a Nota Fiscal inteira. 0% / R$ 0 ou campo vazio deixa o valor normal. Preencha as colunas &quot;% a deduzir&quot; e &quot;Adiantamento&quot; do detalhamento por colaborador; o PDF exportado leva esses valores.
+        {deducoes.size} colaborador(es) com dedução — os demais entram com a Nota Fiscal inteira. O valor deduzido também reduz o &quot;Valor líquido a receber&quot; acima (as retenções continuam sobre o Total fatura). 0% / R$ 0 ou campo vazio deixa o valor normal. Preencha as colunas &quot;% a deduzir&quot; e &quot;Adiantamento&quot; do detalhamento por colaborador; o PDF exportado leva esses valores.
       </p>
     </div>
   );

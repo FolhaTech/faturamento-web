@@ -1,6 +1,6 @@
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import type { RubricaSomada, CcustoResumo } from "../calc/aggregate";
-import { calcularCobranca, type DeducaoColaborador } from "../percentualCobranca";
+import { calcularCobranca, somarCobranca, type DeducaoColaborador } from "../percentualCobranca";
 import { normalizaTexto } from "../text";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -114,18 +114,7 @@ function Footer({ resumo, regimeLabel }: { resumo: CcustoResumo; regimeLabel: st
 /** Soma por colaborador do que será cobrado/deduzido (percentual + adiantamento) — null quando nenhum colaborador desse relatório tem dedução. Sem dedução entra a NF inteira. */
 function somaCobranca(resumo: CcustoResumo, deducoes: Map<number, DeducaoColaborador>): { cobrar: number; deduzido: number; adiantamentos: number } | null {
   if (!resumo.colaboradores.some((c) => deducoes.has(c.matricula))) return null;
-  let cobrar = 0;
-  let deduzido = 0;
-  let adiantamentos = 0;
-  for (const c of resumo.colaboradores) {
-    const d = deducoes.get(c.matricula);
-    const r = calcularCobranca(c.nf, d?.percentual ?? null, d?.adiantamento ?? 0);
-    cobrar += r.cobrar;
-    deduzido += r.deduzido;
-    adiantamentos += r.adiantamento;
-  }
-  const centavos = (n: number) => Math.round(n * 100) / 100;
-  return { cobrar: centavos(cobrar), deduzido: centavos(deduzido), adiantamentos: centavos(adiantamentos) };
+  return somarCobranca(resumo.colaboradores, deducoes);
 }
 
 function SummarySection({ resumo, deducoesCobranca }: { resumo: CcustoResumo; deducoesCobranca: Map<number, DeducaoColaborador> }) {
@@ -199,9 +188,15 @@ function SummarySection({ resumo, deducoesCobranca }: { resumo: CcustoResumo; de
             <Text style={styles.summaryLabel}>Retenção INSS (11%, s/ VT-VR-VA-Bonif.)</Text>
             <Text style={styles.summaryValue}>{fmt(resumo.retencoes.inss)}</Text>
           </View>
+          {cobranca && (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Deduções por colaborador (% e adiantamento)</Text>
+              <Text style={styles.summaryValue}>{fmt(-cobranca.deduzido)}</Text>
+            </View>
+          )}
           <View style={styles.summaryRowStrong}>
             <Text style={styles.summaryLabelStrong}>Valor líquido a receber</Text>
-            <Text style={styles.summaryValueStrong}>{fmt(resumo.valorLiquido)}</Text>
+            <Text style={styles.summaryValueStrong}>{fmt(resumo.valorLiquido - (cobranca?.deduzido ?? 0))}</Text>
           </View>
         </View>
       </View>
