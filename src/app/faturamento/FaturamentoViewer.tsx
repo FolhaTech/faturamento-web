@@ -7,8 +7,17 @@ import { normalizaTexto } from "@/lib/text";
 import type { Encargo } from "@/lib/types";
 import { DescontoProvisaoColaborador, type ProvisaoColaborador } from "./DescontoProvisaoColaborador";
 import { GrossUpConfigForm } from "./GrossUpConfigForm";
-import { calcularCobranca, lerPercentual, percentualAtivo, serializarPercentuais } from "@/lib/percentualCobranca";
-import { usePercentuaisCobranca } from "./usePercentuaisCobranca";
+import {
+  adiantamentoAtivo,
+  calcularCobranca,
+  lerPercentual,
+  lerValorReais,
+  percentualAtivo,
+  serializarAdiantamentos,
+  serializarPercentuais,
+  type DeducaoColaborador,
+} from "@/lib/percentualCobranca";
+import { useAdiantamentos, usePercentuaisCobranca } from "./usePercentuaisCobranca";
 import { RegimeColaborador, type TomadorOpcao } from "./RegimeColaborador";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -59,10 +68,12 @@ export function FaturamentoViewer({
   const [ccustoCodigo, setCcustoCodigo] = useState<string | null>(resumos[0]?.ccustoCodigo ?? null);
   const [busyExclusao, setBusyExclusao] = useState(false);
   const resumo = useMemo(() => resumos.find((r) => r.ccustoCodigo === ccustoCodigo) ?? resumos[0] ?? null, [resumos, ccustoCodigo]);
-  // Percentual a DEDUZIR da Nota Fiscal de cada colaborador (campo na tabela de colaboradores) — o card de
-  // totais soma e o link "Exportar PDF" leva só os do centro de custo mostrado, pra sair no relatório.
-  // 0% (ou vazio) é "sem dedução": o valor do colaborador fica normal e ele nem entra neste mapa.
+  // Deduções digitadas por colaborador (campos na tabela de colaboradores): % a deduzir da Nota Fiscal e
+  // adiantamento em reais — os dois saem do total dele. O card de totais soma e os links de PDF levam só
+  // os do centro de custo mostrado. 0% / R$ 0 (ou vazio) é "sem dedução": o valor fica normal e o
+  // colaborador nem entra nestes mapas.
   const [percentuaisTexto, setPercentualColaborador, limparPercentuais] = usePercentuaisCobranca(resumo?.competencia ?? "");
+  const [adiantamentosTexto, setAdiantamentoColaborador, limparAdiantamentos] = useAdiantamentos(resumo?.competencia ?? "");
   const percentuaisDoCcusto = useMemo(() => {
     const doCcusto = new Set((resumo?.colaboradores ?? []).map((c) => c.matricula));
     const mapa = new Map<number, number>();
@@ -72,6 +83,33 @@ export function FaturamentoViewer({
     }
     return mapa;
   }, [percentuaisTexto, resumo]);
+  const adiantamentosDoCcusto = useMemo(() => {
+    const doCcusto = new Set((resumo?.colaboradores ?? []).map((c) => c.matricula));
+    const mapa = new Map<number, number>();
+    for (const [matricula, texto] of Object.entries(adiantamentosTexto)) {
+      const valor = adiantamentoAtivo(texto);
+      if (valor !== null && doCcusto.has(Number(matricula))) mapa.set(Number(matricula), valor);
+    }
+    return mapa;
+  }, [adiantamentosTexto, resumo]);
+  /** Quem tem alguma dedução (percentual > 0 e/ou adiantamento > 0) — base do card de totais. */
+  const deducoesDoCcusto = useMemo(() => {
+    const mapa = new Map<number, DeducaoColaborador>();
+    for (const matricula of new Set([...percentuaisDoCcusto.keys(), ...adiantamentosDoCcusto.keys()])) {
+      mapa.set(matricula, { percentual: percentuaisDoCcusto.get(matricula) ?? null, adiantamento: adiantamentosDoCcusto.get(matricula) ?? 0 });
+    }
+    return mapa;
+  }, [percentuaisDoCcusto, adiantamentosDoCcusto]);
+  /** Parâmetros do link de PDF com as deduções (só as dos colaboradores pedidos; todos quando `somente` é omitido). */
+  function paramsDeducoes(somente?: number): string {
+    const filtra = <T,>(mapa: Map<number, T>) => new Map([...mapa].filter(([m]) => somente === undefined || m === somente));
+    const partes: string[] = [];
+    const percentuais = filtra(percentuaisDoCcusto);
+    const adiantamentos = filtra(adiantamentosDoCcusto);
+    if (percentuais.size > 0) partes.push(`percentuais=${encodeURIComponent(serializarPercentuais(percentuais))}`);
+    if (adiantamentos.size > 0) partes.push(`adiantamentos=${encodeURIComponent(serializarAdiantamentos(adiantamentos))}`);
+    return partes.join("&");
+  }
 
   /** Link do PDF individual de um colaborador: mesmos filtros da tela, mas só a matrícula dele (e o percentual dele, se houver). */
   function hrefPdfColaborador(matricula: number): string {
@@ -81,10 +119,8 @@ export function FaturamentoViewer({
       params.set("ccusto", resumo.ccustoCodigo);
     }
     params.set("colaborador", String(matricula));
-    const percentual = percentuaisDoCcusto.get(matricula);
-    if (percentual !== undefined) params.set("percentuais", serializarPercentuais(new Map([[matricula, percentual]])));
-    else params.delete("percentuais");
-    return `/api/faturamento/export?${params.toString()}`;
+    const deducoes = paramsDeducoes(matricula);
+    return `/api/faturamento/export?${params.toString()}${deducoes ? `&${deducoes}` : ""}`;
   }
   const encargosPorCodigo = useMemo(() => new Map(encargos.map((e) => [e.codigo, e])), [encargos]);
   const ccPorMatricula = useMemo(() => new Map(colaboradoresCc.map((c) => [c.matricula, c.cc])), [colaboradoresCc]);
@@ -157,7 +193,7 @@ export function FaturamentoViewer({
           <a
             href={`/api/faturamento/export?competencia=${encodeURIComponent(resumo.competencia)}&ccusto=${encodeURIComponent(resumo.ccustoCodigo)}${
               filtrosQuery ? `&${filtrosQuery}` : ""
-            }${percentuaisDoCcusto.size > 0 ? `&percentuais=${encodeURIComponent(serializarPercentuais(percentuaisDoCcusto))}` : ""}`}
+            }${deducoesDoCcusto.size > 0 ? `&${paramsDeducoes()}` : ""}`}
             className="ml-auto flex items-center gap-2 rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
           >
             Exportar PDF
@@ -181,8 +217,11 @@ export function FaturamentoViewer({
             resumo={resumo}
             regimeLabel={regimeLabel}
             previaTotalFatura={previaPorCcusto.get(resumo.ccustoCodigo) ?? null}
-            percentuais={percentuaisDoCcusto}
-            onLimparPercentuais={() => limparPercentuais([...percentuaisDoCcusto.keys()])}
+            deducoes={deducoesDoCcusto}
+            onLimparDeducoes={() => {
+              limparPercentuais([...percentuaisDoCcusto.keys()]);
+              limparAdiantamentos([...adiantamentosDoCcusto.keys()]);
+            }}
           />
           <RubricasTable rubricas={resumo.rubricas} encargosPorCodigo={encargosPorCodigo} />
           <DescontosTable rubricas={resumo.rubricas} />
@@ -192,6 +231,8 @@ export function FaturamentoViewer({
             ccPorMatricula={ccPorMatricula}
             percentuaisTexto={percentuaisTexto}
             onPercentualChange={setPercentualColaborador}
+            adiantamentosTexto={adiantamentosTexto}
+            onAdiantamentoChange={setAdiantamentoColaborador}
             hrefPdfColaborador={hrefPdfColaborador}
             competencia={resumo.competencia}
             provisaoPorMatricula={provisaoPorMatricula}
@@ -233,17 +274,17 @@ function TotalsCard({
   resumo,
   regimeLabel,
   previaTotalFatura,
-  percentuais,
-  onLimparPercentuais,
+  deducoes,
+  onLimparDeducoes,
 }: {
   resumo: CcustoResumo;
   regimeLabel: string | null;
   /** Total fatura (NF) já cobrado na Prévia do mesmo mês — null quando não há Prévia correspondente pra comparar (ver FaturamentoViewer). */
   previaTotalFatura: number | null;
-  /** Percentual a deduzir (> 0) de cada colaborador desse centro de custo (matrícula -> %) — vazio quando nenhum foi digitado. */
-  percentuais: Map<number, number>;
-  /** Apaga os percentuais desse centro de custo (volta tudo ao valor normal). */
-  onLimparPercentuais: () => void;
+  /** Dedução (percentual > 0 e/ou adiantamento > 0) de cada colaborador desse centro de custo (matrícula -> dedução) — vazio quando nenhum foi digitado. */
+  deducoes: Map<number, DeducaoColaborador>;
+  /** Apaga os percentuais e adiantamentos desse centro de custo (volta tudo ao valor normal). */
+  onLimparDeducoes: () => void;
 }) {
   const rows: [string, number, boolean?][] = [
     ["Total de despesas", resumo.totalDespesas],
@@ -283,7 +324,7 @@ function TotalsCard({
           </div>
         ))}
       </dl>
-      <CobrancaResumo resumo={resumo} percentuais={percentuais} onLimpar={onLimparPercentuais} />
+      <CobrancaResumo resumo={resumo} deducoes={deducoes} onLimpar={onLimparDeducoes} />
       {complementar != null && (
         <div className="mt-4 rounded-md border border-sky-200 bg-sky-50 p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">Comparação com a Prévia</p>
@@ -573,6 +614,8 @@ function ColaboradoresTable({
   ccPorMatricula,
   percentuaisTexto,
   onPercentualChange,
+  adiantamentosTexto,
+  onAdiantamentoChange,
   hrefPdfColaborador,
   competencia,
   provisaoPorMatricula,
@@ -590,6 +633,9 @@ function ColaboradoresTable({
   /** Percentual a deduzir digitado de cada colaborador (matrícula -> texto) e o setter — ver PercentualInput. */
   percentuaisTexto: Record<string, string>;
   onPercentualChange: (matricula: number, novo: string) => void;
+  /** Adiantamento em reais digitado de cada colaborador (matrícula -> texto) e o setter — ver AdiantamentoInput. */
+  adiantamentosTexto: Record<string, string>;
+  onAdiantamentoChange: (matricula: number, novo: string) => void;
   /** Link do PDF individual de um colaborador (botão "PDF" da linha dele). */
   hrefPdfColaborador: (matricula: number) => string;
   /** Competência mostrada — pra qual os botões de Prov. Férias / Prov. 13º lançam o desconto. */
@@ -610,7 +656,7 @@ function ColaboradoresTable({
     <div className="flex flex-col gap-2">
       <h3 className="px-1 text-sm font-semibold text-neutral-700">Detalhamento por colaborador — clique numa linha pra ver o detalhamento por evento dele</h3>
       <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-        <table className="w-full min-w-[1240px] text-sm">
+        <table className="w-full min-w-[1420px] text-sm">
           <thead className="bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
             <tr>
               <Th>Matrícula</Th>
@@ -622,6 +668,7 @@ function ColaboradoresTable({
               <Th right>Tributação</Th>
               <Th right>Nota Fiscal</Th>
               <Th right>% a deduzir</Th>
+              <Th right>Adiantamento</Th>
               <Th right>Valor a cobrar</Th>
               <Th right>Deduzido</Th>
               <Th right>PDF</Th>
@@ -632,7 +679,12 @@ function ColaboradoresTable({
               const aberta = expandida === c.matricula;
               const percentualTexto = percentuaisTexto[String(c.matricula)] ?? "";
               const percentual = percentualAtivo(percentualTexto);
-              const cobranca = calcularCobranca(c.nf, percentual);
+              const adiantamentoTexto = adiantamentosTexto[String(c.matricula)] ?? "";
+              const adiantamento = adiantamentoAtivo(adiantamentoTexto);
+              const cobranca = calcularCobranca(c.nf, percentual, adiantamento ?? 0);
+              const temDeducao = percentual !== null || adiantamento !== null;
+              // Adiantamento maior que o que sobra do total dele deixaria o valor a cobrar negativo — avisa no campo.
+              const adiantamentoAlto = adiantamento !== null && cobranca.cobrar < 0;
               return (
                 <Fragment key={c.matricula}>
                   <tr
@@ -670,11 +722,19 @@ function ColaboradoresTable({
                         onChange={(novo) => onPercentualChange(c.matricula, novo)}
                       />
                     </Td>
-                    <Td right mono>
-                      {percentual === null ? <span className="text-neutral-300">—</span> : <span className="font-semibold text-emerald-800">{fmt(cobranca.cobrar)}</span>}
+                    <Td right onClick={(e) => e.stopPropagation()}>
+                      <AdiantamentoInput
+                        texto={adiantamentoTexto}
+                        invalido={(adiantamentoTexto.trim() !== "" && lerValorReais(adiantamentoTexto) === null) || adiantamentoAlto}
+                        aviso={adiantamentoAlto ? "Adiantamento maior que o total do colaborador após o percentual" : undefined}
+                        onChange={(novo) => onAdiantamentoChange(c.matricula, novo)}
+                      />
                     </Td>
                     <Td right mono>
-                      {percentual === null ? <span className="text-neutral-300">—</span> : fmt(cobranca.deduzido)}
+                      {!temDeducao ? <span className="text-neutral-300">—</span> : <span className="font-semibold text-emerald-800">{fmt(cobranca.cobrar)}</span>}
+                    </Td>
+                    <Td right mono>
+                      {!temDeducao ? <span className="text-neutral-300">—</span> : fmt(cobranca.deduzido)}
                     </Td>
                     <Td right onClick={(e) => e.stopPropagation()}>
                       <a
@@ -688,7 +748,7 @@ function ColaboradoresTable({
                   </tr>
                   {aberta && (
                     <tr>
-                      <td colSpan={12} className="bg-neutral-50 p-3">
+                      <td colSpan={13} className="bg-neutral-50 p-3">
                         <div className="flex flex-col gap-3">
                           <RegimeColaborador matricula={c.matricula} codServicoAtual={codServicoPorMatricula.get(c.matricula) ?? null} tomadores={tomadoresOpcoes} />
                           {provisaoPorMatricula.has(c.matricula) && (
@@ -738,22 +798,42 @@ function PercentualInput({ texto, invalido, onChange }: { texto: string; invalid
   );
 }
 
-/** Soma por colaborador do que será cobrado e do que foi deduzido — só aparece quando algum colaborador tem dedução (> 0%). Colaborador sem dedução entra com a NF inteira. */
-function CobrancaResumo({ resumo, percentuais, onLimpar }: { resumo: CcustoResumo; percentuais: Map<number, number>; onLimpar: () => void }) {
-  if (percentuais.size === 0) return null;
+/** Adiantamento em reais (ex.: 1.500,00) deduzido do total do colaborador, somado à dedução do percentual — R$ 0 ou vazio = sem adiantamento; vai no PDF; lembrado neste navegador. */
+function AdiantamentoInput({ texto, invalido, aviso, onChange }: { texto: string; invalido: boolean; aviso?: string; onChange: (novo: string) => void }) {
+  return (
+    <span className="inline-flex items-center gap-1" title={aviso}>
+      <span className="text-xs text-neutral-500">R$</span>
+      <input
+        value={texto}
+        onChange={(e) => onChange(e.target.value)}
+        inputMode="decimal"
+        placeholder="—"
+        aria-label="Adiantamento em reais"
+        className={`w-24 rounded-md border px-2 py-1 text-right text-xs text-neutral-900 ${invalido ? "border-red-400 bg-red-50" : "border-neutral-300"}`}
+      />
+    </span>
+  );
+}
+
+/** Soma por colaborador do que será cobrado e do que foi deduzido (percentual + adiantamento) — só aparece quando algum colaborador tem dedução. Colaborador sem dedução entra com a NF inteira. */
+function CobrancaResumo({ resumo, deducoes, onLimpar }: { resumo: CcustoResumo; deducoes: Map<number, DeducaoColaborador>; onLimpar: () => void }) {
+  if (deducoes.size === 0) return null;
   let cobrar = 0;
   let deduzido = 0;
+  let adiantamentos = 0;
   for (const c of resumo.colaboradores) {
-    const r = calcularCobranca(c.nf, percentuais.get(c.matricula) ?? null);
+    const d = deducoes.get(c.matricula);
+    const r = calcularCobranca(c.nf, d?.percentual ?? null, d?.adiantamento ?? 0);
     cobrar += r.cobrar;
     deduzido += r.deduzido;
+    adiantamentos += r.adiantamento;
   }
   return (
     <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 p-3">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Dedução por colaborador (% a deduzir)</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Dedução por colaborador (% a deduzir e adiantamento)</p>
         <button type="button" onClick={onLimpar} className="text-xs font-medium text-emerald-800 hover:underline">
-          Limpar percentuais
+          Limpar deduções
         </button>
       </div>
       <dl className="mt-2 grid grid-cols-1 gap-x-8 gap-y-1 sm:grid-cols-3">
@@ -766,12 +846,12 @@ function CobrancaResumo({ resumo, percentuais, onLimpar }: { resumo: CcustoResum
           <dd className="font-mono font-semibold tabular-nums text-emerald-900">{fmt(cobrar)}</dd>
         </div>
         <div className="flex items-baseline justify-between py-0.5">
-          <dt className="text-neutral-600">Deduzido</dt>
+          <dt className="text-neutral-600">Deduzido{adiantamentos > 0 ? ` (inclui ${fmt(adiantamentos)} de adiantamento)` : ""}</dt>
           <dd className="font-mono tabular-nums text-neutral-700">{fmt(deduzido)}</dd>
         </div>
       </dl>
       <p className="mt-1 text-xs text-neutral-500">
-        {percentuais.size} colaborador(es) com dedução — os demais entram com a Nota Fiscal inteira. 0% ou campo vazio deixa o valor normal. Preencha na coluna &quot;% a deduzir&quot; do detalhamento por colaborador; o PDF exportado leva esses valores.
+        {deducoes.size} colaborador(es) com dedução — os demais entram com a Nota Fiscal inteira. 0% / R$ 0 ou campo vazio deixa o valor normal. Preencha as colunas &quot;% a deduzir&quot; e &quot;Adiantamento&quot; do detalhamento por colaborador; o PDF exportado leva esses valores.
       </p>
     </div>
   );

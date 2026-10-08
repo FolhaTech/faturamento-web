@@ -1,3 +1,7 @@
+function arredonda(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
 /**
  * Percentual a DEDUZIR da Nota Fiscal de um colaborador: "20", "20,5", "20.5" ou "20%" -> número;
  * vazio, inválido, negativo ou acima de 100 -> null.
@@ -15,23 +19,51 @@ export function percentualAtivo(texto: string): number | null {
   return p !== null && p > 0 ? p : null;
 }
 
+/**
+ * Valor em reais digitado: "1500", "1.500,50", "1500,5", "1500.5" ou "R$ 1.500,50" -> número em centavos;
+ * vazio, inválido ou negativo -> null. "1.500" (ponto com 3 casas no fim) é milhar, como se escreve no Brasil.
+ */
+export function lerValorReais(texto: string): number | null {
+  let limpo = texto.trim().replace(/^R\$\s*/i, "").replace(/\s+/g, "");
+  if (limpo === "") return null;
+  if (limpo.includes(",")) limpo = limpo.replace(/\./g, "").replace(",", ".");
+  else if (/^\d{1,3}(\.\d{3})+$/.test(limpo)) limpo = limpo.replace(/\./g, "");
+  const n = Number(limpo);
+  return Number.isFinite(n) && n >= 0 ? arredonda(n) : null;
+}
+
+/** O adiantamento aplicado de verdade: R$ 0 (ou vazio/inválido) é "sem adiantamento". */
+export function adiantamentoAtivo(texto: string): number | null {
+  const v = lerValorReais(texto);
+  return v !== null && v > 0 ? v : null;
+}
+
 /** Valor que corresponde a `percentual`% de `total`, arredondado em centavos. */
 export function valorDoPercentual(total: number, percentual: number): number {
-  return Math.round(((total * percentual) / 100) * 100) / 100;
+  return arredonda((total * percentual) / 100);
 }
 
 export interface CobrancaColaborador {
-  /** O que será cobrado do colaborador: a Nota Fiscal dele menos o valor deduzido (sem dedução = a NF inteira). */
+  /** O que será cobrado do colaborador: a Nota Fiscal dele menos tudo que foi deduzido (sem dedução = a NF inteira). */
   cobrar: number;
-  /** O que sai do total dele: o percentual digitado aplicado à Nota Fiscal (sem dedução = 0). */
+  /** Total que sai da Nota Fiscal dele: dedução do percentual + adiantamento. */
   deduzido: number;
+  /** Parte do deduzido que vem do percentual (percentual × NF). */
+  deducaoPercentual: number;
+  /** Parte do deduzido que vem do adiantamento (valor digitado, em reais). */
+  adiantamento: number;
 }
 
-/** Valor a cobrar e valor deduzido de UM colaborador, a partir da Nota Fiscal e do percentual a deduzir (null ou 0 = sem dedução). */
-export function calcularCobranca(nf: number, percentual: number | null): CobrancaColaborador {
-  if (percentual === null || percentual <= 0) return { cobrar: nf, deduzido: 0 };
-  const deduzido = valorDoPercentual(nf, percentual);
-  return { cobrar: Math.round((nf - deduzido) * 100) / 100, deduzido };
+/**
+ * Valor a cobrar e valor deduzido de UM colaborador, a partir da Nota Fiscal, do percentual a deduzir
+ * (null ou 0 = sem percentual) e do adiantamento em reais (0 = sem adiantamento). As duas deduções saem
+ * do total da Nota Fiscal do colaborador, somadas — o percentual NÃO incide sobre o adiantamento.
+ */
+export function calcularCobranca(nf: number, percentual: number | null, adiantamento = 0): CobrancaColaborador {
+  const deducaoPercentual = percentual !== null && percentual > 0 ? valorDoPercentual(nf, percentual) : 0;
+  const valorAdiantamento = adiantamento > 0 ? arredonda(adiantamento) : 0;
+  const deduzido = arredonda(deducaoPercentual + valorAdiantamento);
+  return { cobrar: arredonda(nf - deduzido), deduzido, deducaoPercentual, adiantamento: valorAdiantamento };
 }
 
 /** Percentuais por matrícula no formato do link do PDF: "90103398:20,90103430:7.5". Só entra quem tem dedução (> 0). */
@@ -47,6 +79,38 @@ export function lerPercentuaisSerializados(texto: string | null): Map<number, nu
     const matricula = Number(m);
     const percentual = percentualAtivo(p ?? "");
     if (Number.isInteger(matricula) && matricula > 0 && percentual !== null) resultado.set(matricula, percentual);
+  }
+  return resultado;
+}
+
+/** Adiantamentos por matrícula no formato do link do PDF: "90103398:1500,90103430:250.5". Só entra quem tem adiantamento (> 0). */
+export function serializarAdiantamentos(adiantamentos: Map<number, number>): string {
+  return [...adiantamentos].filter(([, v]) => v > 0).map(([matricula, v]) => `${matricula}:${v}`).join(",");
+}
+
+/** Inverso de serializarAdiantamentos — ignora pares malformados e valor 0. */
+export function lerAdiantamentosSerializados(texto: string | null): Map<number, number> {
+  const resultado = new Map<number, number>();
+  for (const par of (texto ?? "").split(",")) {
+    const [m, v] = par.split(":");
+    const matricula = Number(m);
+    const valor = adiantamentoAtivo(v ?? "");
+    if (Number.isInteger(matricula) && matricula > 0 && valor !== null) resultado.set(matricula, valor);
+  }
+  return resultado;
+}
+
+/** O que foi digitado de dedução para UM colaborador (só entra quem tem percentual > 0 ou adiantamento > 0). */
+export interface DeducaoColaborador {
+  percentual: number | null;
+  adiantamento: number;
+}
+
+/** Junta os percentuais e os adiantamentos (links do PDF) numa dedução por colaborador — quem tem só um dos dois entra com o outro vazio. */
+export function juntarDeducoes(percentuais: Map<number, number>, adiantamentos: Map<number, number>): Map<number, DeducaoColaborador> {
+  const resultado = new Map<number, DeducaoColaborador>();
+  for (const matricula of new Set([...percentuais.keys(), ...adiantamentos.keys()])) {
+    resultado.set(matricula, { percentual: percentuais.get(matricula) ?? null, adiantamento: adiantamentos.get(matricula) ?? 0 });
   }
   return resultado;
 }

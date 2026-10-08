@@ -2,15 +2,14 @@
 
 import { useMemo, useState, useSyncExternalStore } from "react";
 
-/** Evento próprio: o "storage" do navegador só dispara em OUTRAS abas, não na que gravou. */
-const EVENTO = "faturamento:percentuais-cobranca";
-
-function assinar(onChange: () => void): () => void {
-  window.addEventListener(EVENTO, onChange);
-  window.addEventListener("storage", onChange);
-  return () => {
-    window.removeEventListener(EVENTO, onChange);
-    window.removeEventListener("storage", onChange);
+function assinar(evento: string) {
+  return (onChange: () => void): (() => void) => {
+    window.addEventListener(evento, onChange);
+    window.addEventListener("storage", onChange);
+    return () => {
+      window.removeEventListener(evento, onChange);
+      window.removeEventListener("storage", onChange);
+    };
   };
 }
 
@@ -31,17 +30,24 @@ function interpretar(json: string): Record<string, string> {
   }
 }
 
+type Setter = (matricula: number, novo: string) => void;
+type Limpar = (matriculas: number[]) => void;
+
 /**
- * Percentual a cobrar de CADA colaborador (texto, como foi digitado) numa competência, lembrado neste
- * navegador. Um único item no localStorage por competência ({ matrícula: texto }) — o card de totais,
- * a tabela de colaboradores e o link "Exportar PDF" leem o mesmo estado.
+ * Texto digitado em um campo POR colaborador numa competência (matrícula -> texto), lembrado neste
+ * navegador. Um único item no localStorage por competência e por campo — o card de totais, a tabela de
+ * colaboradores e os links de PDF leem o mesmo estado. `campo` separa os campos entre si
+ * (percentual, adiantamento) sem um apagar o outro.
  */
-export function usePercentuaisCobranca(
-  competencia: string,
-): readonly [Record<string, string>, (matricula: number, novo: string) => void, (matriculas: number[]) => void] {
-  const chave = `faturamento:percentuais-cobranca:${competencia}`;
+function usePorColaborador(campo: string, competencia: string): readonly [Record<string, string>, Setter, Limpar] {
+  const chave = `faturamento:${campo}:${competencia}`;
+  const evento = `faturamento:${campo}`;
   // No servidor (e na hidratação) nasce vazio; no navegador lê o que ficou lembrado.
-  const json = useSyncExternalStore(assinar, () => lerArmazenado(chave), () => "");
+  const json = useSyncExternalStore(
+    useMemo(() => assinar(evento), [evento]),
+    () => lerArmazenado(chave),
+    () => "",
+  );
   // Sem armazenamento (janela privada, bloqueado) os valores ficam só aqui, pros campos continuarem funcionando.
   const [semArmazenamento, setSemArmazenamento] = useState<{ chave: string; valores: Record<string, string> } | null>(null);
 
@@ -51,7 +57,7 @@ export function usePercentuaisCobranca(
     try {
       if (Object.keys(proximo).length === 0) window.localStorage.removeItem(chave);
       else window.localStorage.setItem(chave, JSON.stringify(proximo));
-      window.dispatchEvent(new Event(EVENTO));
+      window.dispatchEvent(new Event(evento));
     } catch {
       setSemArmazenamento({ chave, valores: proximo });
     }
@@ -64,7 +70,7 @@ export function usePercentuaisCobranca(
     gravar(proximo);
   }
 
-  /** Apaga o percentual de vários colaboradores de uma vez (de uma só gravação — chamar alterar() em laço usaria o estado antigo a cada volta). */
+  /** Apaga o campo de vários colaboradores de uma vez (de uma só gravação — chamar alterar() em laço usaria o estado antigo a cada volta). */
   function limpar(matriculas: number[]) {
     const proximo = { ...valores };
     for (const m of matriculas) delete proximo[String(m)];
@@ -72,4 +78,14 @@ export function usePercentuaisCobranca(
   }
 
   return [valores, alterar, limpar] as const;
+}
+
+/** Percentual a deduzir da Nota Fiscal de cada colaborador (texto digitado). */
+export function usePercentuaisCobranca(competencia: string) {
+  return usePorColaborador("percentuais-cobranca", competencia);
+}
+
+/** Adiantamento, em reais, a deduzir do total de cada colaborador (texto digitado). */
+export function useAdiantamentos(competencia: string) {
+  return usePorColaborador("adiantamentos", competencia);
 }

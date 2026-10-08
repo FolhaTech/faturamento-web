@@ -1,6 +1,6 @@
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import type { RubricaSomada, CcustoResumo } from "../calc/aggregate";
-import { calcularCobranca } from "../percentualCobranca";
+import { calcularCobranca, type DeducaoColaborador } from "../percentualCobranca";
 import { normalizaTexto } from "../text";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -111,21 +111,25 @@ function Footer({ resumo, regimeLabel }: { resumo: CcustoResumo; regimeLabel: st
   );
 }
 
-/** Soma por colaborador do que será cobrado/deduzido — null quando nenhum colaborador desse relatório tem percentual. Sem percentual entra a NF inteira. */
-function somaCobranca(resumo: CcustoResumo, percentuais: Map<number, number>): { cobrar: number; deduzido: number } | null {
-  if (!resumo.colaboradores.some((c) => percentuais.has(c.matricula))) return null;
+/** Soma por colaborador do que será cobrado/deduzido (percentual + adiantamento) — null quando nenhum colaborador desse relatório tem dedução. Sem dedução entra a NF inteira. */
+function somaCobranca(resumo: CcustoResumo, deducoes: Map<number, DeducaoColaborador>): { cobrar: number; deduzido: number; adiantamentos: number } | null {
+  if (!resumo.colaboradores.some((c) => deducoes.has(c.matricula))) return null;
   let cobrar = 0;
   let deduzido = 0;
+  let adiantamentos = 0;
   for (const c of resumo.colaboradores) {
-    const r = calcularCobranca(c.nf, percentuais.get(c.matricula) ?? null);
+    const d = deducoes.get(c.matricula);
+    const r = calcularCobranca(c.nf, d?.percentual ?? null, d?.adiantamento ?? 0);
     cobrar += r.cobrar;
     deduzido += r.deduzido;
+    adiantamentos += r.adiantamento;
   }
-  return { cobrar: Math.round(cobrar * 100) / 100, deduzido: Math.round(deduzido * 100) / 100 };
+  const centavos = (n: number) => Math.round(n * 100) / 100;
+  return { cobrar: centavos(cobrar), deduzido: centavos(deduzido), adiantamentos: centavos(adiantamentos) };
 }
 
-function SummarySection({ resumo, percentuaisCobranca }: { resumo: CcustoResumo; percentuaisCobranca: Map<number, number> }) {
-  const cobranca = somaCobranca(resumo, percentuaisCobranca);
+function SummarySection({ resumo, deducoesCobranca }: { resumo: CcustoResumo; deducoesCobranca: Map<number, DeducaoColaborador> }) {
+  const cobranca = somaCobranca(resumo, deducoesCobranca);
   return (
     <View>
       <Text style={styles.sectionTitle}>Resumo</Text>
@@ -161,6 +165,12 @@ function SummarySection({ resumo, percentuaisCobranca }: { resumo: CcustoResumo;
                 <Text style={styles.summaryLabel}>Deduzido (soma das deduções por colaborador)</Text>
                 <Text style={styles.summaryValue}>{fmt(cobranca.deduzido)}</Text>
               </View>
+              {cobranca.adiantamentos > 0 && (
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>do qual adiantamentos</Text>
+                  <Text style={styles.summaryValue}>{fmt(cobranca.adiantamentos)}</Text>
+                </View>
+              )}
             </>
           )}
         </View>
@@ -310,24 +320,24 @@ function DescontosSection({ resumo }: { resumo: CcustoResumo }) {
   );
 }
 
-/** Larguras da tabela de colaboradores; com percentual a deduzir entram 3 colunas e as demais ficam mais estreitas (somam 100% nos dois casos). */
+/** Larguras da tabela de colaboradores; com dedução (percentual e/ou adiantamento) entram 4 colunas e as demais ficam mais estreitas (somam 100% nos dois casos). */
 const COLAB_LARGURAS = {
-  base: { matricula: "10%", nome: "29%", cc: "9%", despesa: "10%", taxaAdm: "10%", fatura: "10%", impostos: "11%", nf: "11%", pct: "0%", cobrar: "0%", deduzido: "0%" },
-  comCobranca: { matricula: "8%", nome: "19%", cc: "7%", despesa: "8%", taxaAdm: "8%", fatura: "8%", impostos: "8%", nf: "9%", pct: "6%", cobrar: "9%", deduzido: "10%" },
+  base: { matricula: "10%", nome: "29%", cc: "9%", despesa: "10%", taxaAdm: "10%", fatura: "10%", impostos: "11%", nf: "11%", pct: "0%", adiantamento: "0%", cobrar: "0%", deduzido: "0%" },
+  comDeducao: { matricula: "8%", nome: "16%", cc: "6%", despesa: "8%", taxaAdm: "7%", fatura: "8%", impostos: "8%", nf: "9%", pct: "5%", adiantamento: "8%", cobrar: "9%", deduzido: "8%" },
 } as const;
 
 function ColaboradoresSection({
   resumo,
   ccPorMatricula,
-  percentuaisCobranca,
+  deducoesCobranca,
 }: {
   resumo: CcustoResumo;
   ccPorMatricula: Map<number, string | null>;
-  percentuaisCobranca: Map<number, number>;
+  deducoesCobranca: Map<number, DeducaoColaborador>;
 }) {
-  const totais = somaCobranca(resumo, percentuaisCobranca);
-  const comCobranca = totais !== null;
-  const w = comCobranca ? COLAB_LARGURAS.comCobranca : COLAB_LARGURAS.base;
+  const totais = somaCobranca(resumo, deducoesCobranca);
+  const comDeducao = totais !== null;
+  const w = comDeducao ? COLAB_LARGURAS.comDeducao : COLAB_LARGURAS.base;
   return (
     <View break>
       <Text style={styles.sectionTitle}>Detalhamento por colaborador ({resumo.qtdColaboradores})</Text>
@@ -341,17 +351,18 @@ function ColaboradoresSection({
           <Text style={[styles.tHeadCell, { width: w.fatura, textAlign: "right" }]}>Fatura</Text>
           <Text style={[styles.tHeadCell, { width: w.impostos, textAlign: "right" }]}>Tributação</Text>
           <Text style={[styles.tHeadCell, { width: w.nf, textAlign: "right" }]}>Nota Fiscal</Text>
-          {comCobranca && (
+          {comDeducao && (
             <>
               <Text style={[styles.tHeadCell, { width: w.pct, textAlign: "right" }]}>% deduzir</Text>
+              <Text style={[styles.tHeadCell, { width: w.adiantamento, textAlign: "right" }]}>Adiantam.</Text>
               <Text style={[styles.tHeadCell, { width: w.cobrar, textAlign: "right" }]}>A cobrar</Text>
               <Text style={[styles.tHeadCell, { width: w.deduzido, textAlign: "right" }]}>Deduzido</Text>
             </>
           )}
         </View>
         {resumo.colaboradores.map((c, i) => {
-          const percentual = percentuaisCobranca.get(c.matricula) ?? null;
-          const cobranca = calcularCobranca(c.nf, percentual);
+          const deducao = deducoesCobranca.get(c.matricula);
+          const cobranca = calcularCobranca(c.nf, deducao?.percentual ?? null, deducao?.adiantamento ?? 0);
           return (
             <View key={c.matricula} style={i % 2 === 1 ? styles.tRowAlt : styles.tRow} wrap={false}>
               <Text style={[styles.tCell, { width: w.matricula }]}>{c.matricula}</Text>
@@ -362,11 +373,12 @@ function ColaboradoresSection({
               <Text style={[styles.tCellRight, { width: w.fatura }]}>{fmt(c.fatura)}</Text>
               <Text style={[styles.tCellRight, { width: w.impostos }]}>{fmt(c.impostos)}</Text>
               <Text style={[styles.tCellStrong, { width: w.nf }]}>{fmt(c.nf)}</Text>
-              {comCobranca && (
+              {comDeducao && (
                 <>
-                  <Text style={[styles.tCellRight, { width: w.pct }]}>{percentual === null ? "—" : `${percentual.toLocaleString("pt-BR")}%`}</Text>
-                  <Text style={[styles.tCellStrong, { width: w.cobrar }]}>{percentual === null ? "—" : fmt(cobranca.cobrar)}</Text>
-                  <Text style={[styles.tCellRight, { width: w.deduzido }]}>{percentual === null ? "—" : fmt(cobranca.deduzido)}</Text>
+                  <Text style={[styles.tCellRight, { width: w.pct }]}>{deducao?.percentual ? `${deducao.percentual.toLocaleString("pt-BR")}%` : "—"}</Text>
+                  <Text style={[styles.tCellRight, { width: w.adiantamento }]}>{deducao?.adiantamento ? fmt(deducao.adiantamento) : "—"}</Text>
+                  <Text style={[styles.tCellStrong, { width: w.cobrar }]}>{deducao ? fmt(cobranca.cobrar) : "—"}</Text>
+                  <Text style={[styles.tCellRight, { width: w.deduzido }]}>{deducao ? fmt(cobranca.deduzido) : "—"}</Text>
                 </>
               )}
             </View>
@@ -382,6 +394,7 @@ function ColaboradoresSection({
           {totais && (
             <>
               <Text style={[styles.totalsCellRight, { width: w.pct }]} />
+              <Text style={[styles.totalsCellRight, { width: w.adiantamento }]}>{totais.adiantamentos > 0 ? fmt(totais.adiantamentos) : ""}</Text>
               <Text style={[styles.totalsCellRight, { width: w.cobrar }]}>{fmt(totais.cobrar)}</Text>
               <Text style={[styles.totalsCellRight, { width: w.deduzido }]}>{fmt(totais.deduzido)}</Text>
             </>
@@ -396,7 +409,7 @@ export function FaturamentoPdf({
   resumo,
   regimeLabel = null,
   ccPorMatricula,
-  percentuaisCobranca = new Map<number, number>(),
+  deducoesCobranca = new Map<number, DeducaoColaborador>(),
   colaboradorLabel = null,
 }: {
   resumo: CcustoResumo;
@@ -404,8 +417,8 @@ export function FaturamentoPdf({
   regimeLabel?: string | null;
   /** CC (não obrigatório) de cada colaborador — ver ColaboradoresSection. */
   ccPorMatricula: Map<number, string | null>;
-  /** Percentual da Nota Fiscal de cada colaborador a DEDUZIR (campo na tela de Faturamento, matrícula -> %) — vazio = sem as colunas e linhas de cobrança. */
-  percentuaisCobranca?: Map<number, number>;
+  /** Dedução de cada colaborador (percentual da Nota Fiscal e/ou adiantamento em reais, campos na tela de Faturamento) — vazio = sem as colunas e linhas de cobrança. */
+  deducoesCobranca?: Map<number, DeducaoColaborador>;
   /** "NOME (matrícula)" quando o PDF é individual (um colaborador só) — aparece no cabeçalho; null = relatório do centro de custo. */
   colaboradorLabel?: string | null;
 }) {
@@ -433,11 +446,11 @@ export function FaturamentoPdf({
           </View>
         </View>
 
-        <SummarySection resumo={resumo} percentuaisCobranca={percentuaisCobranca} />
+        <SummarySection resumo={resumo} deducoesCobranca={deducoesCobranca} />
 
         <RubricasSection resumo={resumo} />
         <DescontosSection resumo={resumo} />
-        <ColaboradoresSection resumo={resumo} ccPorMatricula={ccPorMatricula} percentuaisCobranca={percentuaisCobranca} />
+        <ColaboradoresSection resumo={resumo} ccPorMatricula={ccPorMatricula} deducoesCobranca={deducoesCobranca} />
 
         <Footer resumo={resumo} regimeLabel={regimeLabel} />
       </Page>
