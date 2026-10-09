@@ -35,8 +35,23 @@ const CODIGOS_EVENTO_VALOR_SO_DEMONSTRATIVO = [8786];
  */
 const EVENTOS_FALTA_DESCONTAM_FATURA = ["DIAS FALTAS", "DIAS FALTAS DSR", "HORAS FALTAS PARCIAL"];
 
-function ehFaltaQueDescontaFatura(evento: string): boolean {
-  return EVENTOS_FALTA_DESCONTAM_FATURA.includes(normalizaTexto(evento));
+/**
+ * Outros descontos do holerite (Tipo D) que também reduzem de verdade o valor cobrado: o 8565 "DESCONTO HORAS
+ * AFAST ACID TRAB 13o RESC" abate do 13º da rescisão as horas de afastamento por acidente de trabalho, que o
+ * cliente não deve pagar — mesma regra das faltas acima (entra na Despesa com valor negativo, passando pelos
+ * encargos cadastrados em Encargos pro código; sem cadastro vai sem encargos, com aviso). Decisão do usuário
+ * em 2026-10-09. Casa pelo código (estável) ou pelo nome do evento.
+ */
+const CODIGOS_DESCONTO_QUE_ABATE_FATURA = [8565];
+const EVENTOS_DESCONTO_QUE_ABATE_FATURA = ["DESCONTO HORAS AFAST ACID TRAB 13O RESC"];
+
+function ehFaltaQueDescontaFatura(mov: Pick<Movimento, "codigo" | "evento">): boolean {
+  const nome = normalizaTexto(mov.evento);
+  return (
+    EVENTOS_FALTA_DESCONTAM_FATURA.includes(nome) ||
+    CODIGOS_DESCONTO_QUE_ABATE_FATURA.includes(mov.codigo) ||
+    EVENTOS_DESCONTO_QUE_ABATE_FATURA.includes(nome)
+  );
 }
 
 /**
@@ -310,7 +325,7 @@ export function calculateLine(mov: Movimento, ctx: EngineContext): CalculateResu
     return { line: zeroLine(mov, tomador, ccusto, "excluido", valorFace, tipo), warning: null };
   }
 
-  if ((tipo === "FGTS" || tipo === "INSS" || tipo === "D" || tipo === "R") && !ehFaltaQueDescontaFatura(mov.evento)) {
+  if ((tipo === "FGTS" || tipo === "INSS" || tipo === "D" || tipo === "R") && !ehFaltaQueDescontaFatura(mov)) {
     return { line: zeroLine(mov, tomador, ccusto, "excluido", valorFace, tipo), warning: null };
   }
 

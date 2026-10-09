@@ -367,6 +367,30 @@ describe("calculateLine — DIAS FALTAS / DIAS FALTAS DSR / HORAS FALTAS PARCIAL
     expect(l.nf).toBeLessThan(0); // reduz Nota Fiscal
   });
 
+  it("8565 DESCONTO HORAS AFAST ACID TRAB 13o RESC (Tipo D) também reduz Despesa/Fatura/NF, mesmo sem cadastro em Encargos", async () => {
+    const mov: Movimento = {
+      id: "1",
+      codigo: 8565,
+      matricula: 90103392,
+      nome: "ADALBERTO ALVARES JUNIOR",
+      evento: "DESCONTO HORAS AFAST ACID TRAB 13o RESC",
+      competencia: "01/2026",
+      valor: 543.91,
+      ref: 1,
+      tipo: "D",
+      forma: "Valor",
+    };
+    const ctx = await buildContext([mov]);
+    const { line } = calculateLine(mov, ctx);
+    const l = line!;
+
+    expect(l.trilha).toBe("encargos"); // não "excluido" — aparece em Detalhamento por evento
+    expect(l.dre).toBe(-543.91);
+    expect(l.base).toBeCloseTo(-543.91, 6); // sem Encargos cadastrado: só o valor, sem INSS/FGTS/provisões
+    expect(l.fatura).toBeLessThan(l.base); // a taxa adm também sai (valor negativo)
+    expect(l.nf).toBeLessThan(0);
+  });
+
   it("nome genérico (\"FALTAS\") continua excluído — só as 3 rubricas específicas descontam de verdade", async () => {
     const mov: Movimento = {
       id: "1",
