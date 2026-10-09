@@ -21,10 +21,19 @@ import {
 import { useAdiantamentos, usePercentuaisCobranca } from "./usePercentuaisCobranca";
 import { RegimeColaborador, type TomadorOpcao } from "./RegimeColaborador";
 import { TomadorCentroCusto } from "./TomadorCentroCusto";
+import { formatarDataBr } from "@/lib/dataBr";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 function fmt(n: number): string {
   return currency.format(n);
+}
+
+/** Admissão e rescisão de um colaborador (datas AAAA-MM-DD) — vêm da planilha mensal Empregados em Excel. */
+export interface VinculoColaborador {
+  matricula: number;
+  admissao: string | null;
+  dataDemissao: string | null;
+  motivoDemissao: string | null;
 }
 
 export function FaturamentoViewer({
@@ -36,6 +45,7 @@ export function FaturamentoViewer({
   colaboradoresCc,
   colaboradoresProvisao,
   colaboradoresTomador,
+  colaboradoresVinculo,
   tomadoresOpcoes,
   previaTotalFaturaPorCcusto,
   eventosExcluidos,
@@ -60,6 +70,8 @@ export function FaturamentoViewer({
   colaboradoresProvisao: ProvisaoColaborador[];
   /** Tomador (Cód Serviço) atual de cada colaborador mostrado e a lista de Tomadores pra escolher — ver RegimeColaborador. */
   colaboradoresTomador: { matricula: number; codServico: number | null }[];
+  /** Admissão e rescisão de cada colaborador mostrado (planilha mensal Empregados em Excel) — colunas do detalhamento por colaborador. */
+  colaboradoresVinculo: VinculoColaborador[];
   tomadoresOpcoes: TomadorOpcao[];
   /** Total fatura (NF) já cobrado na Prévia do mesmo mês, por Centro de Custo — vazio quando a competência atual não é uma Folha ou não tem Prévia correspondente. Ver page.tsx. */
   previaTotalFaturaPorCcusto: { ccustoCodigo: string; totalFatura: number }[];
@@ -127,6 +139,7 @@ export function FaturamentoViewer({
   const encargosPorCodigo = useMemo(() => new Map(encargos.map((e) => [e.codigo, e])), [encargos]);
   const ccPorMatricula = useMemo(() => new Map(colaboradoresCc.map((c) => [c.matricula, c.cc])), [colaboradoresCc]);
   const provisaoPorMatricula = useMemo(() => new Map(colaboradoresProvisao.map((p) => [p.matricula, p])), [colaboradoresProvisao]);
+  const vinculoPorMatricula = useMemo(() => new Map(colaboradoresVinculo.map((v) => [v.matricula, v])), [colaboradoresVinculo]);
   const codServicoPorMatricula = useMemo(() => new Map(colaboradoresTomador.map((c) => [c.matricula, c.codServico])), [colaboradoresTomador]);
   const previaPorCcusto = useMemo(() => new Map(previaTotalFaturaPorCcusto.map((p) => [p.ccustoCodigo, p.totalFatura])), [previaTotalFaturaPorCcusto]);
   const eventosExcluidosPorMatricula = useMemo(() => {
@@ -245,6 +258,7 @@ export function FaturamentoViewer({
             competencia={resumo.competencia}
             provisaoPorMatricula={provisaoPorMatricula}
             codServicoPorMatricula={codServicoPorMatricula}
+            vinculoPorMatricula={vinculoPorMatricula}
             tomadoresOpcoes={tomadoresOpcoes}
             eventosExcluidosPorMatricula={eventosExcluidosPorMatricula}
             onExcluir={excluirEvento}
@@ -631,6 +645,7 @@ function ColaboradoresTable({
   competencia,
   provisaoPorMatricula,
   codServicoPorMatricula,
+  vinculoPorMatricula,
   tomadoresOpcoes,
   eventosExcluidosPorMatricula,
   onExcluir,
@@ -654,6 +669,8 @@ function ColaboradoresTable({
   provisaoPorMatricula: Map<number, ProvisaoColaborador>;
   /** Tomador atual de cada colaborador + Tomadores disponíveis — alimentam o seletor de regime (ver RegimeColaborador). */
   codServicoPorMatricula: Map<number, number | null>;
+  /** Admissão e rescisão de cada colaborador — colunas "Admissão" e "Rescisão" (motivo no tooltip). */
+  vinculoPorMatricula: Map<number, VinculoColaborador>;
   tomadoresOpcoes: TomadorOpcao[];
   /** Eventos excluídos manualmente, por matrícula (ver eventosExcluidos.ts) — pro painel de restaurar dentro do detalhamento de cada colaborador. */
   eventosExcluidosPorMatricula: Map<number, { matricula: number; evento: string }[]>;
@@ -667,12 +684,14 @@ function ColaboradoresTable({
     <div className="flex flex-col gap-2">
       <h3 className="px-1 text-sm font-semibold text-neutral-700">Detalhamento por colaborador — clique numa linha pra ver o detalhamento por evento dele</h3>
       <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-        <table className="w-full min-w-[1420px] text-sm">
+        <table className="w-full min-w-[1620px] text-sm">
           <thead className="bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
             <tr>
               <Th>Matrícula</Th>
               <Th>Nome</Th>
               <Th>CC</Th>
+              <Th>Admissão</Th>
+              <Th>Rescisão</Th>
               <Th right>Despesa</Th>
               <Th right>Taxa Adm</Th>
               <Th right>Fatura</Th>
@@ -710,6 +729,16 @@ function ColaboradoresTable({
                     </Td>
                     <Td onClick={(e) => e.stopPropagation()}>
                       <CcInput matricula={c.matricula} ccInicial={ccPorMatricula.get(c.matricula) ?? null} />
+                    </Td>
+                    <Td mono>{formatarDataBr(vinculoPorMatricula.get(c.matricula)?.admissao) ?? <span className="text-neutral-300">—</span>}</Td>
+                    <Td mono>
+                      {formatarDataBr(vinculoPorMatricula.get(c.matricula)?.dataDemissao) ? (
+                        <span title={vinculoPorMatricula.get(c.matricula)?.motivoDemissao ?? undefined} className="text-red-700">
+                          {formatarDataBr(vinculoPorMatricula.get(c.matricula)?.dataDemissao)}
+                        </span>
+                      ) : (
+                        <span className="text-neutral-300">—</span>
+                      )}
                     </Td>
                     <Td right mono>
                       {fmt(c.despesa)}
@@ -759,7 +788,7 @@ function ColaboradoresTable({
                   </tr>
                   {aberta && (
                     <tr>
-                      <td colSpan={13} className="bg-neutral-50 p-3">
+                      <td colSpan={15} className="bg-neutral-50 p-3">
                         <div className="flex flex-col gap-3">
                           <RegimeColaborador matricula={c.matricula} codServicoAtual={codServicoPorMatricula.get(c.matricula) ?? null} tomadores={tomadoresOpcoes} />
                           {provisaoPorMatricula.has(c.matricula) && (

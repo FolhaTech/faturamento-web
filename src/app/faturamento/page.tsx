@@ -19,7 +19,9 @@ import type { TomadorOpcao } from "./RegimeColaborador";
 import { TomadorPendenteForm, type TomadorPendente } from "./TomadorPendenteForm";
 import { PlrConfigForm } from "./PlrConfigForm";
 import { SalvarFaturaBanner } from "./SalvarFaturaBanner";
+import { UploadEmpregadosForm } from "./UploadEmpregadosForm";
 import { UploadMovimentosForm } from "./UploadMovimentosForm";
+import type { VinculoColaborador } from "./FaturamentoViewer";
 
 export const dynamic = "force-dynamic";
 
@@ -121,6 +123,16 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   const tomadoresPendentes: TomadorPendente[] = todosTomadores
     .filter((t) => t.pendente)
     .map((t) => ({ codigo: t.codigo, nome: t.nome, grossUp: t.grossUp, grossUpOperacao: t.grossUpOperacao }));
+  // Admissão e rescisão (planilha mensal "Empregados em Excel", ver UploadEmpregadosForm) — mostradas no detalhamento por colaborador.
+  const colaboradoresVinculo: VinculoColaborador[] = matriculasNaTela.map((matricula) => {
+    const c = colaboradoresPorMatricula.get(matricula);
+    return {
+      matricula,
+      admissao: c?.admissao ?? null,
+      dataDemissao: c?.dataDemissao ?? null,
+      motivoDemissao: c?.dados.motivo_demissao ? String(c.dados.motivo_demissao) : null,
+    };
+  });
   const colaboradoresTomador = matriculasNaTela.map((matricula) => ({ matricula, codServico: colaboradoresPorMatricula.get(matricula)?.codServico ?? null }));
 
   // Botões Sim/Não de Prov. Férias / Prov. 13º por colaborador (ver DescontoProvisaoColaborador.tsx):
@@ -177,6 +189,8 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
       </header>
 
       <UploadMovimentosForm ccustosCadastrados={ccustosCadastrados} />
+
+      <UploadEmpregadosForm />
 
       <PlrConfigForm valorInicial={plrCeletista} />
 
@@ -316,6 +330,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
             colaboradoresCc={colaboradoresCc}
             colaboradoresProvisao={colaboradoresProvisao}
             colaboradoresTomador={colaboradoresTomador}
+            colaboradoresVinculo={colaboradoresVinculo}
             tomadoresOpcoes={tomadoresOpcoes}
             previaTotalFaturaPorCcusto={previaTotalFaturaPorCcusto}
             eventosExcluidos={eventosExcluidos}

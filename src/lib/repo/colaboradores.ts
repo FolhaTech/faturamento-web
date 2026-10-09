@@ -214,6 +214,61 @@ export async function updateTomadorEmLote(matriculas: number[], tomador: { codig
   return linhas.length;
 }
 
+export interface VinculoParaAtualizar {
+  matricula: number;
+  admissao: string | null;
+  dataDemissao: string | null;
+  motivoDemissao: string | null;
+}
+
+/**
+ * Atualiza, em lote, só a ADMISSÃO e a RESCISÃO (data + motivo) dos colaboradores já cadastrados — vinda da planilha
+ * mensal "Empregados em Excel" (ver /api/colaboradores/vinculos). Não mexe em Tomador, Centro de Custo, situação,
+ * salário nem nos demais dados do cadastro, que seguem sendo mantidos pelo sistema. A admissão da planilha vazia
+ * nunca apaga a que já existe; a data/motivo de demissão seguem a planilha (vazio = sem demissão). Grava na coluna e
+ * no JSON `dados`, e só toca nas linhas que realmente mudaram. Matrícula que não existe no sistema é só contada.
+ */
+export async function atualizarVinculosEmLote(
+  vinculos: VinculoParaAtualizar[],
+): Promise<{ atualizados: number; semAlteracao: number; naoCadastrados: number }> {
+  if (vinculos.length === 0) return { atualizados: 0, semAlteracao: 0, naoCadastrados: 0 };
+  await ensureSchema();
+  const sql = getDb();
+
+  const matriculas = vinculos.map((v) => v.matricula);
+  const existentes = await sql<{ matricula: number }[]>`SELECT matricula FROM colaboradores WHERE matricula = ANY(${matriculas}::int[])`;
+  const cadastradas = new Set(existentes.map((e) => e.matricula));
+  const doSistema = vinculos.filter((v) => cadastradas.has(v.matricula));
+
+  const alteradas = await sql<{ matricula: number }[]>`
+    UPDATE colaboradores c
+    SET admissao = COALESCE(v.admissao, c.admissao),
+        data_demissao = v.data_demissao,
+        dados = (
+          c.dados::jsonb || jsonb_build_object(
+            'admissao', COALESCE(v.admissao, c.admissao),
+            'data_demissao', v.data_demissao,
+            'motivo_demissao', v.motivo_demissao
+          )
+        )::text
+    FROM unnest(
+      ${doSistema.map((v) => v.matricula)}::int[],
+      ${doSistema.map((v) => v.admissao)}::text[],
+      ${doSistema.map((v) => v.dataDemissao)}::text[],
+      ${doSistema.map((v) => v.motivoDemissao)}::text[]
+    ) AS v(matricula, admissao, data_demissao, motivo_demissao)
+    WHERE c.matricula = v.matricula
+      AND (
+        c.admissao IS DISTINCT FROM COALESCE(v.admissao, c.admissao)
+        OR c.data_demissao IS DISTINCT FROM v.data_demissao
+        OR (c.dados::jsonb ->> 'motivo_demissao') IS DISTINCT FROM v.motivo_demissao
+      )
+    RETURNING c.matricula
+  `;
+
+  return { atualizados: alteradas.length, semAlteracao: doSistema.length - alteradas.length, naoCadastrados: vinculos.length - doSistema.length };
+}
+
 /** Define os saldos de férias e de 1/3 do colaborador (edição manual, mantidos separados — ver saldo_ferias/saldo_um_terco em db.ts). */
 export async function updateSaldosFerias(matricula: number, saldoFerias: number, saldoUmTerco: number): Promise<Colaborador> {
   await ensureSchema();

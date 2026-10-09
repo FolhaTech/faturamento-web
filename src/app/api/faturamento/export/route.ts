@@ -59,6 +59,13 @@ export async function GET(request: Request) {
   // CC (não obrigatório, digitado na tela de Faturamento) não vem do motor de cálculo.
   const colaboradoresPorMatricula = await getColaboradoresPorMatriculas(resumo.colaboradores.map((c) => c.matricula));
   const ccPorMatricula = new Map([...colaboradoresPorMatricula].map(([matricula, colaborador]) => [matricula, colaborador.cc]));
+  // Admissão e rescisão (planilha mensal Empregados em Excel, ver /api/colaboradores/vinculos) — colunas e cabeçalho do PDF.
+  const vinculoPorMatricula = new Map(
+    [...colaboradoresPorMatricula].map(([matricula, c]) => [
+      matricula,
+      { admissao: c.admissao, dataDemissao: c.dataDemissao, motivoDemissao: c.dados.motivo_demissao ? String(c.dados.motivo_demissao) : null },
+    ]),
+  );
 
   // @react-pdf/renderer tipa renderToBuffer esperando um <Document> literal; FaturamentoPdf
   // retorna um, mas o elemento em si é tipado pelas próprias props do componente.
@@ -72,6 +79,7 @@ export async function GET(request: Request) {
     ccPorMatricula,
     deducoesCobranca,
     colaboradorLabel,
+    vinculoPorMatricula,
   }) as Parameters<typeof renderToBuffer>[0];
   const buffer = await renderToBuffer(pdfElement);
 

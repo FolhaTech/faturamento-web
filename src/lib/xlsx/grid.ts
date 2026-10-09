@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { lerAbasBiff8 } from "./biffFallback";
 
 /**
  * Leitura de planilhas desacoplada da biblioteca subjacente: os arquivos que
@@ -24,16 +25,25 @@ export interface WorkbookGrid {
 export async function readWorkbookGrid(buffer: Buffer): Promise<WorkbookGrid> {
   const wb = XLSX.read(buffer, { type: "buffer", cellDates: true, raw: true });
 
+  // .xls com o ponteiro da aba quebrado (ex.: "Empregados em Excel" do sistema de folha): a biblioteca devolve o
+  // nome da aba sem nenhuma célula — nesse caso lê pelo leitor de reserva (ver biffFallback.ts), na mesma ordem.
+  const semConteudo = wb.SheetNames.some((n) => !wb.Sheets[n]);
+  const abasDeReserva = semConteudo ? lerAbasBiff8(buffer) : null;
+
   const sheets = new Map<string, SheetGrid>();
-  for (const name of wb.SheetNames) {
+  wb.SheetNames.forEach((name, i) => {
     const ws = wb.Sheets[name];
+    if (!ws) {
+      sheets.set(name, { name, rows: abasDeReserva?.[i] ?? [] });
+      return;
+    }
     const rows = XLSX.utils.sheet_to_json(ws, {
       header: 1,
       raw: true,
       defval: null,
     }) as CellValue[][];
     sheets.set(name, { name, rows });
-  }
+  });
 
   const getSheet = (names: string[]): SheetGrid | null => {
     for (const n of names) {

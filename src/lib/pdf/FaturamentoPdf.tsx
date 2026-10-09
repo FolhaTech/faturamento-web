@@ -1,6 +1,14 @@
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import type { RubricaSomada, CcustoResumo } from "../calc/aggregate";
+import { formatarDataBr } from "../dataBr";
 import { calcularCobranca, somarCobranca, type DeducaoColaborador } from "../percentualCobranca";
+
+/** Admissão e rescisão de um colaborador (datas AAAA-MM-DD) pro PDF. */
+export interface VinculoPdf {
+  admissao: string | null;
+  dataDemissao: string | null;
+  motivoDemissao: string | null;
+}
 import { normalizaTexto } from "../text";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -317,18 +325,20 @@ function DescontosSection({ resumo }: { resumo: CcustoResumo }) {
 
 /** Larguras da tabela de colaboradores; com dedução (percentual e/ou adiantamento) entram 4 colunas e as demais ficam mais estreitas (somam 100% nos dois casos). */
 const COLAB_LARGURAS = {
-  base: { matricula: "10%", nome: "29%", cc: "9%", despesa: "10%", taxaAdm: "10%", fatura: "10%", impostos: "11%", nf: "11%", pct: "0%", adiantamento: "0%", cobrar: "0%", deduzido: "0%" },
-  comDeducao: { matricula: "8%", nome: "16%", cc: "6%", despesa: "8%", taxaAdm: "7%", fatura: "8%", impostos: "8%", nf: "9%", pct: "5%", adiantamento: "8%", cobrar: "9%", deduzido: "8%" },
+  base: { matricula: "8%", nome: "21%", cc: "6%", admissao: "8%", rescisao: "8%", despesa: "9%", taxaAdm: "8%", fatura: "9%", impostos: "9%", nf: "9%", pct: "0%", adiantamento: "0%", cobrar: "0%", deduzido: "0%" },
+  comDeducao: { matricula: "7%", nome: "13%", cc: "4%", admissao: "7%", rescisao: "7%", despesa: "7%", taxaAdm: "6%", fatura: "7%", impostos: "7%", nf: "7%", pct: "4%", adiantamento: "7%", cobrar: "7%", deduzido: "7%" },
 } as const;
 
 function ColaboradoresSection({
   resumo,
   ccPorMatricula,
   deducoesCobranca,
+  vinculoPorMatricula,
 }: {
   resumo: CcustoResumo;
   ccPorMatricula: Map<number, string | null>;
   deducoesCobranca: Map<number, DeducaoColaborador>;
+  vinculoPorMatricula: Map<number, VinculoPdf>;
 }) {
   const totais = somaCobranca(resumo, deducoesCobranca);
   const comDeducao = totais !== null;
@@ -341,6 +351,8 @@ function ColaboradoresSection({
           <Text style={[styles.tHeadCell, { width: w.matricula, textAlign: "left" }]}>Matrícula</Text>
           <Text style={[styles.tHeadCell, { width: w.nome, textAlign: "left" }]}>Nome</Text>
           <Text style={[styles.tHeadCell, { width: w.cc, textAlign: "left" }]}>CC</Text>
+          <Text style={[styles.tHeadCell, { width: w.admissao, textAlign: "left" }]}>Admissão</Text>
+          <Text style={[styles.tHeadCell, { width: w.rescisao, textAlign: "left" }]}>Rescisão</Text>
           <Text style={[styles.tHeadCell, { width: w.despesa, textAlign: "right" }]}>Despesa</Text>
           <Text style={[styles.tHeadCell, { width: w.taxaAdm, textAlign: "right" }]}>Taxa Adm</Text>
           <Text style={[styles.tHeadCell, { width: w.fatura, textAlign: "right" }]}>Fatura</Text>
@@ -363,6 +375,8 @@ function ColaboradoresSection({
               <Text style={[styles.tCell, { width: w.matricula }]}>{c.matricula}</Text>
               <Text style={[styles.tCell, { width: w.nome }]}>{c.nome}</Text>
               <Text style={[styles.tCell, { width: w.cc }]}>{ccPorMatricula.get(c.matricula) ?? ""}</Text>
+              <Text style={[styles.tCell, { width: w.admissao }]}>{formatarDataBr(vinculoPorMatricula.get(c.matricula)?.admissao) ?? "—"}</Text>
+              <Text style={[styles.tCell, { width: w.rescisao }]}>{formatarDataBr(vinculoPorMatricula.get(c.matricula)?.dataDemissao) ?? "—"}</Text>
               <Text style={[styles.tCellRight, { width: w.despesa }]}>{fmt(c.despesa)}</Text>
               <Text style={[styles.tCellRight, { width: w.taxaAdm }]}>{fmt(c.taxaAdm)}</Text>
               <Text style={[styles.tCellRight, { width: w.fatura }]}>{fmt(c.fatura)}</Text>
@@ -380,7 +394,7 @@ function ColaboradoresSection({
           );
         })}
         <View style={styles.totalsRow}>
-          <Text style={[styles.totalsCell, { width: `${parseFloat(w.matricula) + parseFloat(w.nome) + parseFloat(w.cc)}%` }]}>Total</Text>
+          <Text style={[styles.totalsCell, { width: `${parseFloat(w.matricula) + parseFloat(w.nome) + parseFloat(w.cc) + parseFloat(w.admissao) + parseFloat(w.rescisao)}%` }]}>Total</Text>
           <Text style={[styles.totalsCellRight, { width: w.despesa }]}>{fmt(resumo.totalDespesas)}</Text>
           <Text style={[styles.totalsCellRight, { width: w.taxaAdm }]}>{fmt(resumo.taxaAdministrativa)}</Text>
           <Text style={[styles.totalsCellRight, { width: w.fatura }]}>{fmt(resumo.totalFaturaSemEncargos)}</Text>
@@ -406,6 +420,7 @@ export function FaturamentoPdf({
   ccPorMatricula,
   deducoesCobranca = new Map<number, DeducaoColaborador>(),
   colaboradorLabel = null,
+  vinculoPorMatricula = new Map<number, VinculoPdf>(),
 }: {
   resumo: CcustoResumo;
   /** "Terceiro (CLT)" ou "Temporário" quando o export foi filtrado por regime (ver /api/faturamento/export) — null pra fatura sem esse filtro (mistura os dois regimes). */
@@ -416,7 +431,11 @@ export function FaturamentoPdf({
   deducoesCobranca?: Map<number, DeducaoColaborador>;
   /** "NOME (matrícula)" quando o PDF é individual (um colaborador só) — aparece no cabeçalho; null = relatório do centro de custo. */
   colaboradorLabel?: string | null;
+  /** Admissão e rescisão de cada colaborador (planilha mensal Empregados em Excel) — colunas da tabela e, no PDF individual, o cabeçalho. */
+  vinculoPorMatricula?: Map<number, VinculoPdf>;
 }) {
+  // PDF individual: um colaborador só no resumo — mostra a admissão e a rescisão dele no cabeçalho.
+  const vinculoIndividual = colaboradorLabel && resumo.colaboradores.length === 1 ? (vinculoPorMatricula.get(resumo.colaboradores[0].matricula) ?? null) : null;
   const geradoEm = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date());
 
   return (
@@ -432,6 +451,12 @@ export function FaturamentoPdf({
             <Text style={styles.subtitle}>
               {colaboradorLabel ? `${resumo.ccustoNome} · ` : ""}Tomador: {resumo.tomadorNome} · Competência {resumo.competencia}
             </Text>
+            {vinculoIndividual && (
+              <Text style={styles.subtitle}>
+                Admissão: {formatarDataBr(vinculoIndividual.admissao) ?? "—"} · Rescisão: {formatarDataBr(vinculoIndividual.dataDemissao) ?? "—"}
+                {vinculoIndividual.dataDemissao && vinculoIndividual.motivoDemissao ? ` (${vinculoIndividual.motivoDemissao})` : ""}
+              </Text>
+            )}
           </View>
           <View style={styles.metaBlock}>
             <Text style={styles.metaLabel}>Gerado em</Text>
@@ -445,7 +470,7 @@ export function FaturamentoPdf({
 
         <RubricasSection resumo={resumo} />
         <DescontosSection resumo={resumo} />
-        <ColaboradoresSection resumo={resumo} ccPorMatricula={ccPorMatricula} deducoesCobranca={deducoesCobranca} />
+        <ColaboradoresSection resumo={resumo} ccPorMatricula={ccPorMatricula} deducoesCobranca={deducoesCobranca} vinculoPorMatricula={vinculoPorMatricula} />
 
         <Footer resumo={resumo} regimeLabel={regimeLabel} />
       </Page>
