@@ -7,11 +7,19 @@ export interface TomadorOpcao {
   codigo: number;
   nome: string;
   fpas: 515 | 655;
+  /** Taxa administrativa do Tomador como fração (0,12 = 12%) — mostrada no seletor pra ver na hora qual taxa o colaborador/centro de custo vai pagar. */
+  taxaAdm: number;
   pendente: boolean;
 }
 
 function regimeLabel(fpas: 515 | 655): string {
   return fpas === 655 ? "Temporário" : "Terceiro (CLT)";
+}
+
+/** "GRUPO CHAMA DE DISTRIBUICAO LTDA — Temporário · taxa adm 12% (cód. 36)" — texto de cada Tomador nos seletores. */
+export function descricaoTomador(t: TomadorOpcao): string {
+  const taxa = `${(t.taxaAdm * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
+  return `${t.nome} — ${regimeLabel(t.fpas)} · taxa adm ${taxa} (cód. ${t.codigo})${t.pendente ? " · pendente" : ""}`;
 }
 
 /**
@@ -64,7 +72,7 @@ export function RegimeColaborador({ matricula, codServicoAtual, tomadores }: { m
           {codServicoAtual != null && !atualCadastrado && <option value={codServicoAtual}>Tomador cód. {codServicoAtual} (não cadastrado)</option>}
           {ordenados.map((t) => (
             <option key={t.codigo} value={t.codigo}>
-              {t.nome} — {regimeLabel(t.fpas)} (cód. {t.codigo}){t.pendente ? " · pendente" : ""}
+              {descricaoTomador(t)}
             </option>
           ))}
         </select>

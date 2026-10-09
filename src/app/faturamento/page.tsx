@@ -116,7 +116,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
 
   // Seletor de regime (Tomador) por colaborador — ver RegimeColaborador.tsx.
   const todosTomadores = await listTomadores();
-  const tomadoresOpcoes: TomadorOpcao[] = todosTomadores.map((t) => ({ codigo: t.codigo, nome: t.nome, fpas: t.fpas, pendente: t.pendente }));
+  const tomadoresOpcoes: TomadorOpcao[] = todosTomadores.map((t) => ({ codigo: t.codigo, nome: t.nome, fpas: t.fpas, taxaAdm: t.taxaAdm, pendente: t.pendente }));
   // Tomador criado automaticamente pelo upload, ainda sem FPAS/Taxa Adm — preenchido direto na tela (ver TomadorPendenteForm).
   const tomadoresPendentes: TomadorPendente[] = todosTomadores
     .filter((t) => t.pendente)

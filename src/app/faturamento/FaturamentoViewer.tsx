@@ -20,6 +20,7 @@ import {
 } from "@/lib/percentualCobranca";
 import { useAdiantamentos, usePercentuaisCobranca } from "./usePercentuaisCobranca";
 import { RegimeColaborador, type TomadorOpcao } from "./RegimeColaborador";
+import { TomadorCentroCusto } from "./TomadorCentroCusto";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 function fmt(n: number): string {
@@ -223,6 +224,12 @@ export function FaturamentoViewer({
               limparPercentuais([...percentuaisDoCcusto.keys()]);
               limparAdiantamentos([...adiantamentosDoCcusto.keys()]);
             }}
+          />
+          <TomadorCentroCusto
+            ccustoNome={resumo.ccustoNome}
+            matriculas={resumo.colaboradores.map((c) => c.matricula)}
+            codServicoAtuais={resumo.colaboradores.map((c) => codServicoPorMatricula.get(c.matricula) ?? null)}
+            tomadores={tomadoresOpcoes}
           />
           <RubricasTable rubricas={resumo.rubricas} encargosPorCodigo={encargosPorCodigo} />
           <DescontosTable rubricas={resumo.rubricas} />

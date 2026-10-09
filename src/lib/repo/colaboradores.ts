@@ -185,6 +185,35 @@ export async function updateTomadorDoColaborador(matricula: number, tomador: { c
   return (await getColaborador(matricula))!;
 }
 
+/**
+ * Troca o Tomador (Cód Serviço) de VÁRIOS colaboradores de uma vez — usado pelo seletor "Tomador do centro
+ * de custo" no Faturamento (ver TomadorCentroCusto.tsx), pra unificar a taxa adm/regime de um centro de
+ * custo inteiro sem editar um por um. Recebe as matrículas exatas (e não o nome do centro de custo): um
+ * centro de custo genérico como "GERAL" é reaproveitado por várias empresas e nunca deve ser trocado em
+ * bloco por nome. Atualiza a coluna e o JSON `dados` (que a base de Colaboradores também lê); cadastro
+ * pendente que ganha Tomador vira "Trabalhando", igual ao vínculo automático do upload. Retorna quantos mudaram.
+ */
+export async function updateTomadorEmLote(matriculas: number[], tomador: { codigo: number; nome: string }): Promise<number> {
+  const unicas = [...new Set(matriculas)].filter((m) => Number.isInteger(m));
+  if (unicas.length === 0) return 0;
+  await ensureSchema();
+  const sql = getDb();
+  const linhas = await sql<{ matricula: number }[]>`
+    UPDATE colaboradores
+    SET cod_servico = ${tomador.codigo},
+        descricao_servico = ${tomador.nome},
+        situacao = CASE WHEN situacao = ${SITUACAO_CADASTRO_PENDENTE} THEN ${SITUACAO_TRABALHANDO} ELSE situacao END,
+        dados = (
+          dados::jsonb
+          || jsonb_build_object('cod_servico', ${tomador.codigo}::int, 'descricao_servico', ${tomador.nome}::text)
+          || CASE WHEN situacao = ${SITUACAO_CADASTRO_PENDENTE} THEN jsonb_build_object('situacao', ${SITUACAO_TRABALHANDO}::text) ELSE '{}'::jsonb END
+        )::text
+    WHERE matricula IN ${sql(unicas)}
+    RETURNING matricula
+  `;
+  return linhas.length;
+}
+
 /** Define os saldos de férias e de 1/3 do colaborador (edição manual, mantidos separados — ver saldo_ferias/saldo_um_terco em db.ts). */
 export async function updateSaldosFerias(matricula: number, saldoFerias: number, saldoUmTerco: number): Promise<Colaborador> {
   await ensureSchema();
