@@ -2,6 +2,7 @@ import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import type { RubricaSomada, CcustoResumo } from "../calc/aggregate";
 import { formatarDataBr } from "../dataBr";
 import { tipoLabel } from "../export/relatorio";
+import { calcularRetencoesSobreCobrado } from "../calc/retencoesCobranca";
 import { calcularCobranca, somarCobranca, type DeducaoColaborador } from "../percentualCobranca";
 
 /** Admissão e rescisão de um colaborador (datas AAAA-MM-DD) pro PDF. */
@@ -127,6 +128,9 @@ function somaCobranca(resumo: CcustoResumo, deducoes: Map<number, DeducaoColabor
 
 function SummarySection({ resumo, deducoesCobranca }: { resumo: CcustoResumo; deducoesCobranca: Map<number, DeducaoColaborador> }) {
   const cobranca = somaCobranca(resumo, deducoesCobranca);
+  // Com deduções por colaborador, as retenções incidem sobre o valor a cobrar (não sobre o Total fatura) e o líquido sai delas.
+  const sobre = calcularRetencoesSobreCobrado(resumo, deducoesCobranca);
+  const ret = sobre?.retencoes ?? resumo.retencoes;
   return (
     <View>
       <Text style={styles.sectionTitle}>Resumo</Text>
@@ -172,39 +176,39 @@ function SummarySection({ resumo, deducoesCobranca }: { resumo: CcustoResumo; de
           )}
         </View>
         <View style={styles.summaryCol}>
+          {sobre && (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Base das retenções (valor a cobrar)</Text>
+              <Text style={styles.summaryValue}>{fmt(sobre.baseRetencoes)}</Text>
+            </View>
+          )}
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Retenção IRRF (1%)</Text>
-            <Text style={styles.summaryValue}>{fmt(resumo.retencoes.irrf)}</Text>
+            <Text style={styles.summaryValue}>{fmt(ret.irrf)}</Text>
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Retenção CSLL (1%)</Text>
-            <Text style={styles.summaryValue}>{fmt(resumo.retencoes.csll)}</Text>
+            <Text style={styles.summaryValue}>{fmt(ret.csll)}</Text>
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Retenção COFINS (3%)</Text>
-            <Text style={styles.summaryValue}>{fmt(resumo.retencoes.cofins)}</Text>
+            <Text style={styles.summaryValue}>{fmt(ret.cofins)}</Text>
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Retenção PIS (0,65%)</Text>
-            <Text style={styles.summaryValue}>{fmt(resumo.retencoes.pis)}</Text>
+            <Text style={styles.summaryValue}>{fmt(ret.pis)}</Text>
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Retenção ISS (2%)</Text>
-            <Text style={styles.summaryValue}>{fmt(resumo.retencoes.iss)}</Text>
+            <Text style={styles.summaryValue}>{fmt(ret.iss)}</Text>
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Retenção INSS (11%, s/ VT-VR-VA-Bonif.)</Text>
-            <Text style={styles.summaryValue}>{fmt(resumo.retencoes.inss)}</Text>
+            <Text style={styles.summaryValue}>{fmt(ret.inss)}</Text>
           </View>
-          {cobranca && (
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Deduções por colaborador (% e adiantamento)</Text>
-              <Text style={styles.summaryValue}>{fmt(-cobranca.deduzido)}</Text>
-            </View>
-          )}
           <View style={styles.summaryRowStrong}>
             <Text style={styles.summaryLabelStrong}>Valor líquido a receber</Text>
-            <Text style={styles.summaryValueStrong}>{fmt(resumo.valorLiquido - (cobranca?.deduzido ?? 0))}</Text>
+            <Text style={styles.summaryValueStrong}>{fmt(sobre ? sobre.valorLiquido : resumo.valorLiquido)}</Text>
           </View>
         </View>
       </View>

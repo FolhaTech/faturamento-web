@@ -16,7 +16,26 @@ const CATEGORIAS_EXCLUIDAS_BASE_INSS = ["VALE TRANSPORTE", "VALE REFEI", "VALE A
 const ALIQUOTAS_ENCARGOS = { pis: 0.0165, cofins: 0.076, iss: 0.02, csll: 0.01, irrf: 0.01 };
 const ALIQUOTA_ENCARGOS_TOTAL = Object.values(ALIQUOTAS_ENCARGOS).reduce((a, b) => a + b, 0);
 
-function ehBeneficioExcluidoDaBaseInss(evento: string): boolean {
+/**
+ * Retenções na fonte sobre uma base: IRRF 1%, CSLL 1%, COFINS 3%, PIS 0,65% e ISS 2% incidem sobre `base` (o valor
+ * faturado); o INSS (11%) incide sobre `baseInss` (a mesma base sem VT/VR/VA/Bonificação — ver CATEGORIAS_EXCLUIDAS_BASE_INSS).
+ * Normalmente `base` é o Total fatura; com deduções por colaborador na tela, é o valor a cobrar (ver calc/retencoesCobranca.ts).
+ */
+export function calcularRetencoes(base: number, baseInss: number): RetencoesFonte {
+  const r: RetencoesFonte = {
+    irrf: base * 0.01,
+    csll: base * 0.01,
+    cofins: base * 0.03,
+    pis: base * 0.0065,
+    iss: base * 0.02,
+    inss: baseInss * 0.11,
+    total: 0,
+  };
+  r.total = r.irrf + r.csll + r.cofins + r.pis + r.iss + r.inss;
+  return r;
+}
+
+export function ehBeneficioExcluidoDaBaseInss(evento: string): boolean {
   const n = normalizaTexto(evento);
   return CATEGORIAS_EXCLUIDAS_BASE_INSS.some((cat) => n.includes(cat));
 }
@@ -205,16 +224,7 @@ export function aggregateByCcusto(lines: CalculatedLine[], competencia: string):
     );
     const baseRetencaoInss = totalFatura - faturaExcluidaInss;
 
-    const retencoes: RetencoesFonte = {
-      irrf: totalFatura * 0.01,
-      csll: totalFatura * 0.01,
-      cofins: totalFatura * 0.03,
-      pis: totalFatura * 0.0065,
-      iss: totalFatura * 0.02,
-      inss: baseRetencaoInss * 0.11,
-      total: 0,
-    };
-    retencoes.total = retencoes.irrf + retencoes.csll + retencoes.cofins + retencoes.pis + retencoes.iss + retencoes.inss;
+    const retencoes = calcularRetencoes(totalFatura, baseRetencaoInss);
 
     const valorLiquido = totalFatura - retencoes.total;
 

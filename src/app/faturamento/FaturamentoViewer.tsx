@@ -18,6 +18,7 @@ import {
   somarCobranca,
   type DeducaoColaborador,
 } from "@/lib/percentualCobranca";
+import { calcularRetencoesSobreCobrado } from "@/lib/calc/retencoesCobranca";
 import { useAdiantamentos, usePercentuaisCobranca } from "./usePercentuaisCobranca";
 import { RegimeColaborador, type TomadorOpcao } from "./RegimeColaborador";
 import { TomadorCentroCusto } from "./TomadorCentroCusto";
@@ -334,17 +335,26 @@ function TotalsCard({
   /** Apaga os percentuais e adiantamentos desse centro de custo (volta tudo ao valor normal). */
   onLimparDeducoes: () => void;
 }) {
-  // As deduções digitadas por colaborador (percentual + adiantamento) também reduzem o "Valor líquido a receber".
-  const deduzido = somarCobranca(resumo.colaboradores, deducoes).deduzido;
+  // Com deduções por colaborador (percentual + adiantamento), os tributos incidem sobre o VALOR A COBRAR — o que de fato
+  // será faturado — e não sobre o Total fatura inteiro; o líquido é o valor a cobrar menos essas retenções.
+  const sobre = calcularRetencoesSobreCobrado(resumo, deducoes);
   const rows: [string, number, boolean?][] = [
     ["Total de despesas", resumo.totalDespesas],
     ["Taxa administrativa", resumo.taxaAdministrativa],
     ["Fatura (despesas + taxa)", resumo.totalFaturaSemEncargos],
     ["Encargos (PIS/COFINS/ISS/CSLL/IRRF)", resumo.encargosFatura.total],
     ["Total fatura (com encargos)", resumo.totalFatura, true],
-    ["Retenções na fonte", -resumo.retencoes.total],
-    ...(deduzido > 0 ? ([["Deduções por colaborador (% e adiantamento)", -deduzido]] as [string, number, boolean?][]) : []),
-    ["Valor líquido a receber", resumo.valorLiquido - deduzido, true],
+    ...(sobre
+      ? ([
+          ["Deduções por colaborador (% e adiantamento)", -sobre.deduzido],
+          ["Valor a cobrar", sobre.cobrar, true],
+          ["Retenções na fonte (sobre o valor a cobrar)", -sobre.retencoes.total],
+          ["Valor líquido a receber", sobre.valorLiquido, true],
+        ] as [string, number, boolean?][])
+      : ([
+          ["Retenções na fonte", -resumo.retencoes.total],
+          ["Valor líquido a receber", resumo.valorLiquido, true],
+        ] as [string, number, boolean?][])),
   ];
   const complementar = previaTotalFatura == null ? null : resumo.totalFatura - previaTotalFatura;
   return (
@@ -924,7 +934,7 @@ function CobrancaResumo({ resumo, deducoes, onLimpar }: { resumo: CcustoResumo; 
         </div>
       </dl>
       <p className="mt-1 text-xs text-neutral-500">
-        {deducoes.size} colaborador(es) com dedução — os demais entram com a Nota Fiscal inteira. O valor deduzido também reduz o &quot;Valor líquido a receber&quot; acima (as retenções continuam sobre o Total fatura). 0% / R$ 0 ou campo vazio deixa o valor normal. Preencha as colunas &quot;% a deduzir&quot; e &quot;Adiantamento&quot; do detalhamento por colaborador; o PDF exportado leva esses valores.
+        {deducoes.size} colaborador(es) com dedução — os demais entram com a Nota Fiscal inteira. As retenções (tributos) incidem sobre o &quot;Valor a cobrar&quot;, e não sobre o Total fatura, e o &quot;Valor líquido a receber&quot; acima já sai delas. 0% / R$ 0 ou campo vazio deixa o valor normal. Preencha as colunas &quot;% a deduzir&quot; e &quot;Adiantamento&quot; do detalhamento por colaborador; o PDF exportado leva esses valores.
       </p>
     </div>
   );

@@ -1,5 +1,6 @@
 import type { CcustoResumo, RubricaSomada } from "../calc/aggregate";
 import { formatarDataBr } from "../dataBr";
+import { calcularRetencoesSobreCobrado } from "../calc/retencoesCobranca";
 import { calcularCobranca, somarCobranca, type DeducaoColaborador } from "../percentualCobranca";
 import { normalizaTexto } from "../text";
 
@@ -249,7 +250,8 @@ function montarColaboradores(
 /** Monta o relatório inteiro (cabeçalho, resumo e as três tabelas) a partir do que a rota de exportação já carregou. */
 export function montarRelatorio(entrada: EntradaRelatorio): RelatorioDados {
   const { resumo, regimeLabel, ccPorMatricula, deducoes, vinculoPorMatricula, colaboradorLabel } = entrada;
-  const cobranca = resumo.colaboradores.some((c) => deducoes.has(c.matricula)) ? somarCobranca(resumo.colaboradores, deducoes) : null;
+  // Com deduções por colaborador (percentual e/ou adiantamento), os tributos incidem sobre o valor a cobrar — não sobre o Total fatura.
+  const cobranca = calcularRetencoesSobreCobrado(resumo, deducoes);
 
   const totais: LinhaResumo[] = [
     { rotulo: "Total de despesas", valor: resumo.totalDespesas },
@@ -266,16 +268,17 @@ export function montarRelatorio(entrada: EntradaRelatorio): RelatorioDados {
     if (cobranca.adiantamentos > 0) totais.push({ rotulo: "do qual adiantamentos", valor: cobranca.adiantamentos });
   }
 
+  const r = cobranca?.retencoes ?? resumo.retencoes;
   const retencoes: LinhaResumo[] = [
-    { rotulo: "Retenção IRRF (1%)", valor: resumo.retencoes.irrf },
-    { rotulo: "Retenção CSLL (1%)", valor: resumo.retencoes.csll },
-    { rotulo: "Retenção COFINS (3%)", valor: resumo.retencoes.cofins },
-    { rotulo: "Retenção PIS (0,65%)", valor: resumo.retencoes.pis },
-    { rotulo: "Retenção ISS (2%)", valor: resumo.retencoes.iss },
-    { rotulo: "Retenção INSS (11%, s/ VT-VR-VA-Bonif.)", valor: resumo.retencoes.inss },
+    ...(cobranca ? [{ rotulo: "Base das retenções (valor a cobrar)", valor: cobranca.baseRetencoes }] : []),
+    { rotulo: "Retenção IRRF (1%)", valor: r.irrf },
+    { rotulo: "Retenção CSLL (1%)", valor: r.csll },
+    { rotulo: "Retenção COFINS (3%)", valor: r.cofins },
+    { rotulo: "Retenção PIS (0,65%)", valor: r.pis },
+    { rotulo: "Retenção ISS (2%)", valor: r.iss },
+    { rotulo: "Retenção INSS (11%, s/ VT-VR-VA-Bonif.)", valor: r.inss },
+    { rotulo: "Valor líquido a receber", valor: cobranca ? cobranca.valorLiquido : resumo.valorLiquido, destaque: true },
   ];
-  if (cobranca) retencoes.push({ rotulo: "Deduções por colaborador (% e adiantamento)", valor: -cobranca.deduzido });
-  retencoes.push({ rotulo: "Valor líquido a receber", valor: resumo.valorLiquido - (cobranca?.deduzido ?? 0), destaque: true });
 
   // Relatório individual: um colaborador só no resumo — a admissão e a rescisão dele ficam no cabeçalho.
   const unico = colaboradorLabel && resumo.colaboradores.length === 1 ? resumo.colaboradores[0] : null;

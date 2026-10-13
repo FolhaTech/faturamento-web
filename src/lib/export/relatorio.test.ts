@@ -89,9 +89,15 @@ describe("montarRelatorio", () => {
     // 20% de 625 = 125 + 100 de adiantamento = 225 deduzidos; cobra 400.
     expect(com.colaboradores.linhas[0].slice(-4)).toEqual([20, 100, 400, 225]);
     expect(com.colaboradores.linhas[1].slice(-4)).toEqual([null, null, null, null]);
-    expect(com.resumo.retencoes.at(-1)!.valor).toBe(791.88); // 1016,875 − 225
-    expect(com.resumo.retencoes.at(-2)).toMatchObject({ rotulo: "Deduções por colaborador (% e adiantamento)", valor: -225 });
+    // As retenções passam a incidir sobre o valor a cobrar (400 + 625 = 1.025,00), não sobre o Total fatura (1.250,00):
+    // 1.025 − (1% + 1% + 3% + 0,65% + 2% = 7,65% de 1.025 = 78,41 e INSS 11% de 1.025 = 112,75) = 833,84.
+    expect(com.resumo.retencoes[0]).toMatchObject({ rotulo: "Base das retenções (valor a cobrar)", valor: 1025 });
+    expect(com.resumo.retencoes.find((l) => l.rotulo === "Retenção IRRF (1%)")!.valor).toBe(10.25);
+    expect(com.resumo.retencoes.at(-1)).toMatchObject({ rotulo: "Valor líquido a receber", valor: 833.84 });
     expect(com.resumo.totais.map((l) => l.rotulo)).toContain("do qual adiantamentos");
+    // Sem deduções nada muda: as retenções seguem sobre o Total fatura.
+    expect(sem.resumo.retencoes.find((l) => l.rotulo === "Retenção IRRF (1%)")!.valor).toBe(12.5);
+    expect(sem.resumo.retencoes.map((l) => l.rotulo)).not.toContain("Base das retenções (valor a cobrar)");
   });
 
   it("relatório individual leva o nome no título e a admissão/rescisão (com motivo) no cabeçalho", () => {
