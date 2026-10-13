@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { listTimelineFaturas } from "@/lib/repo/faturasSalvas";
 
 function fmtData(iso: string): string {
@@ -10,7 +11,16 @@ function fmtData(iso: string): string {
  * entradas de outros usuários aparecem, mas fecham: são só histórico/referência, não afetam o
  * que o usuário atual vê ou calcula (ver getFaturaSalvaDoUsuario).
  */
-export async function FaturaTimeline({ competencia, usuarioEmail }: { competencia: string; usuarioEmail: string | null }) {
+export async function FaturaTimeline({
+  competencia,
+  usuarioEmail,
+  versaoAberta = null,
+}: {
+  competencia: string;
+  usuarioEmail: string | null;
+  /** Id da versão que a tela está mostrando agora (?versao=), se houver — recebe o selo "você está vendo". */
+  versaoAberta?: string | null;
+}) {
   const timeline = await listTimelineFaturas(competencia);
   if (timeline.length === 0) return null;
 
@@ -35,12 +45,25 @@ export async function FaturaTimeline({ competencia, usuarioEmail }: { competenci
               <span className="text-neutral-500">salvou em {fmtData(f.salvoEm)}</span>
               {éAtiva ? (
                 <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-800">
-                  {éMinha ? "sua versão ativa" : "ativa — fechada, só quem salvou vê"}
+                  {éMinha ? "sua versão ativa" : "ativa — só quem salvou vê por padrão"}
                 </span>
               ) : (
                 <span className="ml-auto rounded-full bg-neutral-200 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-600">
                   {f.descartada ? "descartada" : "substituída"}
                 </span>
+              )}
+              {f.id === versaoAberta ? (
+                <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-800">você está vendo esta</span>
+              ) : (
+                // A versão ativa do próprio usuário já é a que ele vê por padrão — o link serve às demais (de outras pessoas, antigas, descartadas).
+                !(éMinha && éAtiva) && (
+                  <Link
+                    href={`/faturamento?competencia=${encodeURIComponent(competencia)}&versao=${encodeURIComponent(f.id)}`}
+                    className="rounded-md border border-sky-300 bg-white px-2 py-0.5 text-xs font-medium text-sky-800 hover:bg-sky-50"
+                  >
+                    Ver esta versão
+                  </Link>
+                )
               )}
             </li>
           );

@@ -46,7 +46,8 @@ export async function GET(request: Request) {
   // mudou depois) na tela desse usuário — mesma fonte de dados de src/app/faturamento/page.tsx.
   const usuario = await getUsuarioAtual();
   // Os avisos do cálculo ficam só na tela (painel "aviso(s) durante o cálculo") — não saem no PDF.
-  const { lines: allLines } = await carregarEngineLines(competencia, usuario?.email ?? null);
+  // ?versao=: fatura salva por outra pessoa aberta na tela (ver VersaoDeOutroBanner) — o arquivo sai exatamente dela.
+  const { lines: allLines } = await carregarEngineLines(competencia, usuario?.email ?? null, url.searchParams.get("versao")?.trim() || null);
   if (allLines.length === 0) {
     return NextResponse.json({ error: `Nenhum lançamento encontrado para a competência ${competencia}.` }, { status: 404 });
   }

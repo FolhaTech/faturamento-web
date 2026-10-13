@@ -1,4 +1,4 @@
-import { getFaturaSalvaDoUsuario } from "../repo/faturasSalvas";
+import { getFaturaSalvaDoUsuario, getFaturaSalvaPorId } from "../repo/faturasSalvas";
 import { listEventosExcluidosKeys } from "../repo/eventosExcluidos";
 import { listMovimentosByCompetencia } from "../repo/movimentos";
 import { aggregateByCcusto } from "./aggregate";
@@ -24,6 +24,8 @@ export interface EngineLinesCarregadas {
    * calcularPreviaTotalFaturaPorCcusto) ou a foto é antiga/não tem Prévia correspondente.
    */
   previaTotalFaturaPorCcusto: PreviaTotalPorCcusto[] | null;
+  /** Quando as linhas vêm de uma versão salva escolhida pelo id (?versao=) — de quem é — e não da versão ativa do próprio usuário. */
+  versaoDe: { id: string; usuarioEmail: string; usuarioNome: string } | null;
 }
 
 /**
@@ -46,13 +48,27 @@ export async function calcularLinesAoVivo(competencia: string): Promise<{ lines:
  * deles salvou. `usuarioEmail` null (sessão sem usuário) sempre cai no cálculo ao vivo.
  * Reaproveitado pela tela de Faturamento e pelo export de PDF, pra nunca divergir.
  */
-export async function carregarEngineLines(competencia: string, usuarioEmail: string | null): Promise<EngineLinesCarregadas> {
+export async function carregarEngineLines(competencia: string, usuarioEmail: string | null, versaoId: string | null = null): Promise<EngineLinesCarregadas> {
+  // Versão salva por OUTRA pessoa (ou uma antiga) aberta só pra ver (?versao= na tela de Faturamento): vale por cima da versão ativa
+  // do usuário, sem mudar a dele nem a de quem salvou. Id inexistente/de outra competência cai no fluxo normal.
+  if (versaoId) {
+    const versao = await getFaturaSalvaPorId(competencia, versaoId);
+    if (versao) {
+      return {
+        lines: versao.lines,
+        warnings: versao.warnings,
+        salvoEm: versao.salvoEm,
+        previaTotalFaturaPorCcusto: versao.previaTotalFaturaPorCcusto,
+        versaoDe: { id: versao.id, usuarioEmail: versao.usuarioEmail, usuarioNome: versao.usuarioNome },
+      };
+    }
+  }
   const salva = usuarioEmail ? await getFaturaSalvaDoUsuario(competencia, usuarioEmail) : null;
   if (salva) {
-    return { lines: salva.lines, warnings: salva.warnings, salvoEm: salva.salvoEm, previaTotalFaturaPorCcusto: salva.previaTotalFaturaPorCcusto };
+    return { lines: salva.lines, warnings: salva.warnings, salvoEm: salva.salvoEm, previaTotalFaturaPorCcusto: salva.previaTotalFaturaPorCcusto, versaoDe: null };
   }
   const { lines, warnings } = await calcularLinesAoVivo(competencia);
-  return { lines, warnings, salvoEm: null, previaTotalFaturaPorCcusto: null };
+  return { lines, warnings, salvoEm: null, previaTotalFaturaPorCcusto: null, versaoDe: null };
 }
 
 /**

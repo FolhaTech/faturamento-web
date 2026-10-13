@@ -63,6 +63,35 @@ export async function getFaturaSalvaDoUsuario(competencia: string, usuarioEmail:
   return toFaturaSalva(row);
 }
 
+/**
+ * Uma foto salva específica dessa competência, de QUALQUER usuário (inclusive substituída/descartada) — pra um usuário abrir,
+ * só pra ver, a versão que outra pessoa salvou (link "Ver esta versão" da timeline). Não muda a versão ativa de ninguém.
+ * null quando o id não existe ou é de outra competência.
+ */
+export async function getFaturaSalvaPorId(competencia: string, id: string): Promise<FaturaSalva | null> {
+  await ensureSchema();
+  const rows = await getDb()<Row[]>`SELECT * FROM faturas_salvas WHERE id = ${id} AND competencia = ${competencia} LIMIT 1`;
+  return rows[0] ? toFaturaSalva(rows[0]) : null;
+}
+
+/**
+ * Copia uma foto salva (de qualquer usuário) como uma NOVA entrada atribuída a `usuario` — vira a versão ativa dele, igual a um
+ * "Salvar" feito com os mesmos números. A original continua intacta na timeline (nunca é alterada nem tomada de quem salvou).
+ * null quando o id não existe ou é de outra competência.
+ */
+export async function adotarFaturaSalva(competencia: string, id: string, usuario: { email: string; nome: string }): Promise<FaturaSalva | null> {
+  await ensureSchema();
+  const novoId = randomUUID();
+  const rows = await getDb()<Row[]>`
+    INSERT INTO faturas_salvas (id, competencia, usuario_email, usuario_nome, lines, warnings, salvo_em, descartada, previa_total_fatura)
+    SELECT ${novoId}, competencia, ${usuario.email}, ${usuario.nome}, lines, warnings, now(), false, previa_total_fatura
+    FROM faturas_salvas
+    WHERE id = ${id} AND competencia = ${competencia}
+    RETURNING *
+  `;
+  return rows[0] ? toFaturaSalva(rows[0]) : null;
+}
+
 /** Salva uma NOVA foto da competência, atribuída a quem salvou — nunca sobrescreve uma foto já existente (nem a de outro usuário, nem uma anterior deste mesmo usuário): fica tudo na timeline (ver listTimelineFaturas). */
 export async function salvarFatura(
   competencia: string,

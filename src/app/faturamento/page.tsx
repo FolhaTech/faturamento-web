@@ -19,6 +19,7 @@ import type { TomadorOpcao } from "./RegimeColaborador";
 import { TomadorPendenteForm, type TomadorPendente } from "./TomadorPendenteForm";
 import { PlrConfigForm } from "./PlrConfigForm";
 import { SalvarFaturaBanner } from "./SalvarFaturaBanner";
+import { VersaoDeOutroBanner } from "./VersaoDeOutroBanner";
 import { UploadEmpregadosForm } from "./UploadEmpregadosForm";
 import { UploadMovimentosForm } from "./UploadMovimentosForm";
 import type { VinculoColaborador } from "./FaturamentoViewer";
@@ -34,6 +35,8 @@ interface SearchParams {
   regime?: string;
   /** Matrícula escolhida na lista de colaboradores da tela — ver FiltrosColaborador.colaborador. */
   colaborador?: string;
+  /** Id de uma fatura salva (de qualquer usuário) aberta só pra ver, pelo "Ver esta versão" da timeline — ver carregarEngineLines. */
+  versao?: string;
 }
 
 export default async function FaturamentoPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -70,6 +73,8 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   let resumos: ReturnType<typeof aggregateByCcusto> = [];
   let warnings: string[] = [];
   let faturaSalvaEm: string | null = null;
+  // Preenchido quando a tela mostra uma fatura salva por outra pessoa (?versao=) — ver VersaoDeOutroBanner.
+  let versaoDe: { id: string; usuarioEmail: string; usuarioNome: string } | null = null;
   // Opções do filtro "Colaborador" — todo mundo com lançamento nessa competência, ANTES de
   // aplicar esse mesmo filtro (senão escolher um colaborador faria os demais desaparecerem da
   // lista). Não muda com os outros filtros ativos, igual aos selects de Cargo/Dpto abaixo.
@@ -95,7 +100,9 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
       warnings: engineWarnings,
       salvoEm,
       previaTotalFaturaPorCcusto: previaCongelada,
-    } = await carregarEngineLines(competenciaAtual, usuarioEmail);
+      versaoDe: versaoAberta,
+    } = await carregarEngineLines(competenciaAtual, usuarioEmail, sp.versao?.trim() || null);
+    versaoDe = versaoAberta;
     warnings = engineWarnings;
     faturaSalvaEm = salvoEm;
 
@@ -160,10 +167,15 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   if (descricaoDpto) filtrosQuery.set("descricaoDpto", descricaoDpto);
   if (regime) filtrosQuery.set("regime", regime);
   if (colaborador) filtrosQuery.set("colaborador", colaborador);
+  // Os links de exportação (PDF/Word/Excel) levam a versão aberta, pra saírem exatamente do que está na tela.
+  if (versaoDe) filtrosQuery.set("versao", versaoDe.id);
 
   function filterHref(overrides: Partial<SearchParams>): string {
     const params = new URLSearchParams();
-    const merged = { competencia: competenciaAtual ?? undefined, codEmp, descricaoCargo, descricaoDpto, regime, colaborador, ...overrides };
+    const merged = { competencia: competenciaAtual ?? undefined, codEmp, descricaoCargo, descricaoDpto, regime, colaborador, versao: versaoDe?.id, ...overrides };
+    // A versão aberta pertence a uma competência: ao trocar de competência ela não vale mais.
+    if (overrides.competencia !== undefined && overrides.competencia !== competenciaAtual) merged.versao = undefined;
+    if (merged.versao) params.set("versao", merged.versao);
     if (merged.competencia) params.set("competencia", merged.competencia);
     if (merged.codEmp) params.set("codEmp", merged.codEmp);
     if (merged.descricaoCargo) params.set("descricaoCargo", merged.descricaoCargo);
@@ -238,11 +250,22 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
             ))}
           </div>
 
-          {competenciaAtual && <SalvarFaturaBanner competencia={competenciaAtual} salvoEm={faturaSalvaEm} />}
-          {competenciaAtual && <FaturaTimeline competencia={competenciaAtual} usuarioEmail={usuarioEmail} />}
+          {competenciaAtual && versaoDe && faturaSalvaEm ? (
+            <VersaoDeOutroBanner
+              competencia={competenciaAtual}
+              versao={versaoDe.id}
+              autor={versaoDe.usuarioNome}
+              eMinha={versaoDe.usuarioEmail === usuarioEmail}
+              salvoEm={faturaSalvaEm}
+            />
+          ) : (
+            competenciaAtual && <SalvarFaturaBanner competencia={competenciaAtual} salvoEm={faturaSalvaEm} />
+          )}
+          {competenciaAtual && <FaturaTimeline competencia={competenciaAtual} usuarioEmail={usuarioEmail} versaoAberta={versaoDe?.id ?? null} />}
 
           <form method="GET" className="flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-4">
             {competenciaAtual && <input type="hidden" name="competencia" value={competenciaAtual} />}
+            {versaoDe && <input type="hidden" name="versao" value={versaoDe.id} />}
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-neutral-500">Colaborador</label>
               <select name="colaborador" defaultValue={colaborador} className="min-w-56 rounded-md border border-neutral-300 px-3 py-1.5 text-sm">
