@@ -79,7 +79,7 @@ export function FaturamentoViewer({
   /** Admissão e rescisão de cada colaborador mostrado (planilha mensal Empregados em Excel) — colunas do detalhamento por colaborador. */
   colaboradoresVinculo: VinculoColaborador[];
   /** Valores compartilhados (% a deduzir, adiantamento, base das retenções) da competência, como estavam no banco ao abrir a página. */
-  camposIniciais: { competencia: string; valores: CamposCompartilhados };
+  camposIniciais: { competencia: string; valores: CamposCompartilhados; somenteLocal: boolean };
   tomadoresOpcoes: TomadorOpcao[];
   /** Total fatura (NF) já cobrado na Prévia do mesmo mês, por Centro de Custo — vazio quando a competência atual não é uma Folha ou não tem Prévia correspondente. Ver page.tsx. */
   previaTotalFaturaPorCcusto: { ccustoCodigo: string; totalFatura: number }[];
@@ -96,7 +96,7 @@ export function FaturamentoViewer({
   // colaborador nem entra nestes mapas.
   // Esses valores são COMPARTILHADOS entre todos os usuários (gravados no banco — ver useCamposCompartilhados): o que um digita
   // aparece pra todos, e o PDF/Word/Excel de qualquer pessoa sai com eles.
-  const compartilhados = useCamposCompartilhados(camposIniciais.competencia, camposIniciais.valores);
+  const compartilhados = useCamposCompartilhados(camposIniciais.competencia, camposIniciais.valores, camposIniciais.somenteLocal);
   const percentuaisTexto = compartilhados.valores.percentual;
   const setPercentualColaborador = (matricula: number, novo: string) => compartilhados.alterar("percentual", String(matricula), novo);
   const limparPercentuais = (matriculas: number[]) => compartilhados.limpar("percentual", matriculas.map(String));
@@ -272,6 +272,13 @@ export function FaturamentoViewer({
       </div>
 
       {warnings.length > 0 && <WarningsPanel warnings={warnings} />}
+
+      {camposIniciais.somenteLocal && (
+        <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm text-sky-900">
+          Os valores de <strong>% a deduzir, adiantamento e base das retenções</strong> abaixo são os que foram gravados junto com esta versão
+          (quando ela não tem, são os atuais). O que você digitar aqui só muda esta tela — não é gravado e não altera os valores que valem para todos.
+        </div>
+      )}
 
       {compartilhados.migrados > 0 && (
         <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm text-sky-900">

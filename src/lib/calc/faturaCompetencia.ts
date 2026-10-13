@@ -1,3 +1,4 @@
+import type { CamposCompartilhados } from "../camposCompartilhados";
 import { getFaturaSalvaDoUsuario, getFaturaSalvaPorId } from "../repo/faturasSalvas";
 import { listEventosExcluidosKeys } from "../repo/eventosExcluidos";
 import { listMovimentosByCompetencia } from "../repo/movimentos";
@@ -26,6 +27,8 @@ export interface EngineLinesCarregadas {
   previaTotalFaturaPorCcusto: PreviaTotalPorCcusto[] | null;
   /** Quando as linhas vêm de uma versão salva escolhida pelo id (?versao=) — de quem é — e não da versão ativa do próprio usuário. */
   versaoDe: { id: string; usuarioEmail: string; usuarioNome: string } | null;
+  /** % a deduzir, adiantamento e base das retenções guardados junto com a versão salva mostrada — null no cálculo ao vivo e em versões de antes de esses valores serem guardados. */
+  campos: CamposCompartilhados | null;
 }
 
 /**
@@ -60,15 +63,16 @@ export async function carregarEngineLines(competencia: string, usuarioEmail: str
         salvoEm: versao.salvoEm,
         previaTotalFaturaPorCcusto: versao.previaTotalFaturaPorCcusto,
         versaoDe: { id: versao.id, usuarioEmail: versao.usuarioEmail, usuarioNome: versao.usuarioNome },
+        campos: versao.campos,
       };
     }
   }
   const salva = usuarioEmail ? await getFaturaSalvaDoUsuario(competencia, usuarioEmail) : null;
   if (salva) {
-    return { lines: salva.lines, warnings: salva.warnings, salvoEm: salva.salvoEm, previaTotalFaturaPorCcusto: salva.previaTotalFaturaPorCcusto, versaoDe: null };
+    return { lines: salva.lines, warnings: salva.warnings, salvoEm: salva.salvoEm, previaTotalFaturaPorCcusto: salva.previaTotalFaturaPorCcusto, versaoDe: null, campos: salva.campos };
   }
   const { lines, warnings } = await calcularLinesAoVivo(competencia);
-  return { lines, warnings, salvoEm: null, previaTotalFaturaPorCcusto: null, versaoDe: null };
+  return { lines, warnings, salvoEm: null, previaTotalFaturaPorCcusto: null, versaoDe: null, campos: null };
 }
 
 /**

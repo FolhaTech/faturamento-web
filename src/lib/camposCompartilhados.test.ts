@@ -1,5 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { aplicarAlteracao, camposVazios, ehCampo, mesclarComPendentes, valoresFaltandoNoServidor } from "./camposCompartilhados";
+import { aplicarAlteracao, camposVazios, ehCampo, lerCamposSalvos, mesclarComPendentes, valoresFaltandoNoServidor } from "./camposCompartilhados";
+
+describe("lerCamposSalvos", () => {
+  it("devolve null quando a versão salva não tem os valores guardados (versão antiga) ou o JSON é inválido", () => {
+    expect(lerCamposSalvos(null)).toBeNull();
+    expect(lerCamposSalvos(undefined)).toBeNull();
+    expect(lerCamposSalvos("")).toBeNull();
+    expect(lerCamposSalvos("{nao é json")).toBeNull();
+    expect(lerCamposSalvos("[]")).toBeNull();
+    expect(lerCamposSalvos("42")).toBeNull();
+    expect(lerCamposSalvos("null")).toBeNull();
+  });
+
+  it("lê o que foi guardado ao salvar", () => {
+    const guardado = JSON.stringify({ percentual: { "90103375": "20,5" }, adiantamento: { "90103375": "1.500,00" }, base: { "0001": "9.274,42" } });
+    expect(lerCamposSalvos(guardado)).toEqual({ percentual: { "90103375": "20,5" }, adiantamento: { "90103375": "1.500,00" }, base: { "0001": "9.274,42" } });
+  });
+
+  it("um JSON vazio é uma foto válida de 'nada digitado' (diferente de não ter foto)", () => {
+    expect(lerCamposSalvos("{}")).toEqual({ percentual: {}, adiantamento: {}, base: {} });
+  });
+
+  it("ignora campos desconhecidos, valores vazios e o que não é texto", () => {
+    const guardado = JSON.stringify({ percentual: { "1": "10", "2": "", "3": "  ", "4": 5, "5": null }, adiantamento: "lixo", outro: { "1": "x" } });
+    expect(lerCamposSalvos(guardado)).toEqual({ percentual: { "1": "10" }, adiantamento: {}, base: {} });
+  });
+});
 
 describe("ehCampo / camposVazios", () => {
   it("aceita só os três campos conhecidos", () => {

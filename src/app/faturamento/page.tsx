@@ -104,6 +104,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
       salvoEm,
       previaTotalFaturaPorCcusto: previaCongelada,
       versaoDe: versaoAberta,
+      campos: camposDaVersao,
     } = await carregarEngineLines(competenciaAtual, usuarioEmail, sp.versao?.trim() || null);
     versaoDe = versaoAberta;
     warnings = engineWarnings;
@@ -119,7 +120,9 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
     previaTotalFaturaPorCcusto = previaCongelada ?? (await calcularPreviaTotalFaturaPorCcusto(competenciaAtual, usuarioEmail));
     eventosExcluidos = await listEventosExcluidos(competenciaAtual);
     // % a deduzir, adiantamento e base das retenções digitados por qualquer usuário (compartilhados — ver useCamposCompartilhados).
-    camposIniciais = await listCampos(competenciaAtual);
+    // Numa versão salva por outra pessoa (?versao=), os valores são os que foram guardados junto com ela (as versões de antes disso
+    // não têm — aí valem os atuais).
+    camposIniciais = (versaoAberta ? camposDaVersao : null) ?? (await listCampos(competenciaAtual));
   }
 
   // CC (não obrigatório, digitado na própria tela de Faturamento — ver ColaboradoresTable em
@@ -350,7 +353,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
           )}
 
           <FaturamentoViewer
-            key={competenciaAtual ?? "sem-competencia"}
+            key={`${competenciaAtual ?? "sem-competencia"}|${versaoDe?.id ?? ""}`}
             resumos={resumos}
             warnings={warnings}
             filtrosQuery={filtrosQuery.toString()}
@@ -360,7 +363,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
             colaboradoresProvisao={colaboradoresProvisao}
             colaboradoresTomador={colaboradoresTomador}
             colaboradoresVinculo={colaboradoresVinculo}
-            camposIniciais={{ competencia: competenciaAtual ?? "", valores: camposIniciais }}
+            camposIniciais={{ competencia: competenciaAtual ?? "", valores: camposIniciais, somenteLocal: Boolean(versaoDe) }}
             tomadoresOpcoes={tomadoresOpcoes}
             previaTotalFaturaPorCcusto={previaTotalFaturaPorCcusto}
             eventosExcluidos={eventosExcluidos}

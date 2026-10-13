@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { descarregarCamposPendentes } from "./useCamposCompartilhados";
 
 /** Data ISO (vinda do banco) formatada como "dd/mm/aaaa hh:mm", no fuso do navegador. */
 function fmtData(iso: string): string {
@@ -17,6 +18,12 @@ export function SalvarFaturaBanner({ competencia, salvoEm }: { competencia: stri
     setError(null);
     setBusy(true);
     try {
+      // O que foi digitado em % a deduzir / adiantamento / base das retenções e ainda está esperando o atraso de gravação vai pro banco
+      // antes — a versão salva leva exatamente o que está na tela.
+      if (!(await descarregarCamposPendentes())) {
+        setError("Ainda há valores digitados que não foram gravados no banco — espere alguns segundos e salve de novo.");
+        return;
+      }
       const res = await fetch("/api/faturamento/salvar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -58,7 +65,8 @@ export function SalvarFaturaBanner({ competencia, salvoEm }: { competencia: stri
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-900">
         <span>
           <strong>Você salvou esta fatura</strong> em {fmtData(salvoEm)} — os valores abaixo estão congelados desse jeito, só pra você, e não
-          mudam sozinhos se editar checkboxes de INSS/FGTS/Provisões, Gross Up ou PLR depois. Se outro usuário também salvou essa competência,
+          mudam sozinhos se editar checkboxes de INSS/FGTS/Provisões, Gross Up ou PLR depois. Cada vez que salvar, os valores de % a deduzir,
+          adiantamento e base das retenções também são gravados no banco junto com a versão. Se outro usuário também salvou essa competência,
           a versão dele é independente da sua — veja a timeline abaixo.
         </span>
         <div className="ml-auto flex gap-2">

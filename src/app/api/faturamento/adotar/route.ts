@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getUsuarioAtual } from "@/lib/auth/sessao";
+import { completarCampos } from "@/lib/repo/camposFaturamento";
 import { adotarFaturaSalva } from "@/lib/repo/faturasSalvas";
 
 export const runtime = "nodejs";
@@ -19,5 +20,8 @@ export async function POST(request: Request) {
 
   const fatura = await adotarFaturaSalva(competencia, versao, usuario);
   if (!fatura) return NextResponse.json({ error: "Versão não encontrada nessa competência." }, { status: 404 });
+  // Os valores de % a deduzir / adiantamento / base guardados nessa versão passam a valer também no banco compartilhado, mas só onde
+  // ainda não há nada digitado — o que alguém já preencheu lá não é sobrescrito.
+  if (fatura.campos) await completarCampos(competencia, fatura.campos, usuario.email);
   return NextResponse.json({ salvoEm: fatura.salvoEm });
 }

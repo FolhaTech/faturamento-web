@@ -172,6 +172,11 @@ CREATE INDEX IF NOT EXISTS idx_faturas_salvas_usuario ON faturas_salvas (compete
 -- correspondente (ou a competência é a própria Prévia, ou é antiga e nunca teve esse campo).
 ALTER TABLE faturas_salvas ADD COLUMN IF NOT EXISTS previa_total_fatura TEXT NOT NULL DEFAULT '[]';
 
+-- % a deduzir, adiantamento e base das retenções (JSON { percentual, adiantamento, base } — ver camposCompartilhados.ts) como
+-- estavam NO MOMENTO de salvar: ficam guardados junto com a versão, pra quem abrir a versão de outra pessoa ver os mesmos valores
+-- e pra "Usar como minha versão" levar esses valores junto. NULL = versão de antes disso (sem foto dos valores).
+ALTER TABLE faturas_salvas ADD COLUMN IF NOT EXISTS campos TEXT;
+
 -- Evento excluído manualmente da fatura de UM colaborador numa competência (ver
 -- eventosExcluidos.ts) — some da tabela de eventos e do total faturado só pra ele, não afeta os
 -- demais colaboradores do mesmo Centro de Custo. Separado de Movimentos de propósito, igual

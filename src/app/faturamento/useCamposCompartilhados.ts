@@ -24,6 +24,18 @@ const CHAVE_ANTIGA: Record<Campo, string> = { percentual: "percentuais-cobranca"
 
 export type EstadoSalvamento = "ok" | "salvando" | "erro";
 
+/** Hooks montados agora — cada um sabe enviar na hora o que ainda está esperando o atraso de gravação (ver descarregarCamposPendentes). */
+const descarregadores = new Set<() => Promise<boolean>>();
+
+/**
+ * Grava no banco, já, tudo o que foi digitado e ainda não foi enviado — chamado antes de "Salvar fatura", pra a versão salva levar
+ * exatamente o que está na tela. Devolve false se algo não foi gravado (sem rede, servidor ocupado): quem chama não deve salvar a fatura.
+ */
+export async function descarregarCamposPendentes(): Promise<boolean> {
+  const resultados = await Promise.all([...descarregadores].map((d) => d()));
+  return resultados.every(Boolean);
+}
+
 interface Pendente {
   campo: Campo;
   chave: string;
@@ -82,8 +94,11 @@ function removerAntigo(competencia: string, campo: Campo) {
  * - a cada 20 s e ao voltar pra aba, busca o que os outros digitaram, sem mexer no que está sendo digitado aqui;
  * - valores que ficaram só neste navegador (de antes do compartilhamento) são enviados uma única vez, sem sobrescrever o que o
  *   servidor já tem, e o aviso `migrados` diz quantos.
+ *
+ * `somenteLocal` (tela de uma versão salva por outra pessoa): os valores mostrados são os guardados nessa versão e o que for digitado
+ * só muda a tela — nada é gravado, buscado nem recuperado do navegador, pra não mexer nos valores que valem pra todos.
  */
-export function useCamposCompartilhados(competencia: string, iniciais: CamposCompartilhados) {
+export function useCamposCompartilhados(competencia: string, iniciais: CamposCompartilhados, somenteLocal = false) {
   const [valores, setValores] = useState<CamposCompartilhados>(iniciais);
   const [estado, setEstado] = useState<EstadoSalvamento>("ok");
   const [migrados, setMigrados] = useState(0);
@@ -113,9 +128,29 @@ export function useCamposCompartilhados(competencia: string, iniciais: CamposCom
     };
   }, [competencia]);
 
+  // Registra este hook pra "Salvar fatura" poder gravar agora o que ainda está esperando o atraso.
+  useEffect(() => {
+    if (somenteLocal) return;
+    const descarregar = async () => {
+      const itens = [...pendentes.current.values()];
+      if (itens.length === 0) return true;
+      for (const i of itens) {
+        if (i.timer) clearTimeout(i.timer);
+        i.timer = null;
+      }
+      await enviarLoteRef.current(itens);
+      return pendentes.current.size === 0;
+    };
+    descarregadores.add(descarregar);
+    return () => {
+      descarregadores.delete(descarregar);
+    };
+  }, [somenteLocal]);
+
   const alterar = useCallback(
     (campo: Campo, chave: string, novo: string) => {
       setValores((v) => ({ ...v, [campo]: aplicarAlteracao(v[campo], chave, novo) }));
+      if (somenteLocal) return;
       const k = `${campo}|${chave}`;
       const anterior = pendentes.current.get(k);
       if (anterior?.timer) clearTimeout(anterior.timer);
@@ -123,7 +158,7 @@ export function useCamposCompartilhados(competencia: string, iniciais: CamposCom
       item.timer = setTimeout(() => void enviarLote([item]), ATRASO_SALVAR_MS);
       pendentes.current.set(k, item);
     },
-    [enviarLote],
+    [enviarLote, somenteLocal],
   );
 
   /** Apaga o campo de várias chaves de uma vez (uma gravação só). */
@@ -131,6 +166,7 @@ export function useCamposCompartilhados(competencia: string, iniciais: CamposCom
     (campo: Campo, chaves: string[]) => {
       if (chaves.length === 0) return;
       setValores((v) => ({ ...v, [campo]: chaves.reduce((acc, chave) => aplicarAlteracao(acc, chave, null), v[campo]) }));
+      if (somenteLocal) return;
       const itens = chaves.map((chave): Pendente => {
         const anterior = pendentes.current.get(`${campo}|${chave}`);
         if (anterior?.timer) clearTimeout(anterior.timer);
@@ -140,7 +176,7 @@ export function useCamposCompartilhados(competencia: string, iniciais: CamposCom
       });
       void enviarLote(itens);
     },
-    [enviarLote],
+    [enviarLote, somenteLocal],
   );
 
   const atualizar = useCallback(async () => {
@@ -158,7 +194,7 @@ export function useCamposCompartilhados(competencia: string, iniciais: CamposCom
 
   // Atualização periódica e ao voltar pra aba: o que outro usuário digitou aparece sem recarregar a página.
   useEffect(() => {
-    if (competencia === "") return;
+    if (competencia === "" || somenteLocal) return;
     const id = setInterval(() => void atualizar(), INTERVALO_ATUALIZAR_MS);
     const aoVoltar = () => void atualizar();
     window.addEventListener("focus", aoVoltar);
@@ -166,11 +202,11 @@ export function useCamposCompartilhados(competencia: string, iniciais: CamposCom
       clearInterval(id);
       window.removeEventListener("focus", aoVoltar);
     };
-  }, [competencia, atualizar]);
+  }, [competencia, somenteLocal, atualizar]);
 
   // Recupera, uma única vez, os valores que ficaram só neste navegador (de antes de serem compartilhados).
   useEffect(() => {
-    if (competencia === "") return;
+    if (competencia === "" || somenteLocal) return;
     let ativo = true;
     (async () => {
       const antigos = Object.fromEntries(CAMPOS.map((c) => [c, lerAntigo(competencia, c)])) as Record<Campo, Valores>;
@@ -195,7 +231,7 @@ export function useCamposCompartilhados(competencia: string, iniciais: CamposCom
     return () => {
       ativo = false;
     };
-  }, [competencia]);
+  }, [competencia, somenteLocal]);
 
   return { valores, alterar, limpar, estado, migrados };
 }

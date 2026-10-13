@@ -1,4 +1,4 @@
-import { camposVazios, type Campo, type CamposCompartilhados, LIMITES } from "../camposCompartilhados";
+import { CAMPOS, camposVazios, type Campo, type CamposCompartilhados, LIMITES, valoresFaltandoNoServidor } from "../camposCompartilhados";
 import { ensureSchema, getDb } from "../db";
 
 /** Todos os valores compartilhados de uma competência (percentuais, adiantamentos e bases das retenções). */
@@ -11,6 +11,21 @@ export async function listCampos(competencia: string): Promise<CamposCompartilha
   `;
   for (const r of rows) if (r.campo in resultado) resultado[r.campo as Campo][r.chave] = r.valor;
   return resultado;
+}
+
+/**
+ * Leva os valores de `campos` (ex.: os guardados numa fatura salva que o usuário adotou) pro banco compartilhado, mas só os que
+ * AINDA NÃO existem lá — nunca sobrescreve o que alguém já digitou. Devolve quantos valores entraram.
+ */
+export async function completarCampos(competencia: string, campos: CamposCompartilhados, usuarioEmail: string | null): Promise<number> {
+  const atuais = await listCampos(competencia);
+  let entraram = 0;
+  for (const campo of CAMPOS) {
+    const faltando = valoresFaltandoNoServidor(campos[campo], atuais[campo]);
+    if (Object.keys(faltando).length === 0) continue;
+    entraram += await salvarCampos(competencia, campo, faltando, usuarioEmail);
+  }
+  return entraram;
 }
 
 /**

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { PreviaTotalPorCcusto } from "../calc/faturaCompetencia";
 import type { CalculatedLine } from "../calc/engine";
+import { lerCamposSalvos, type CamposCompartilhados } from "../camposCompartilhados";
 import { ensureSchema, getDb } from "../db";
 
 export interface FaturaSalva {
@@ -15,6 +16,8 @@ export interface FaturaSalva {
   descartada: boolean;
   /** Total já cobrado na Prévia correspondente, por Ccusto, congelado no momento de salvar — ver calcularPreviaTotalFaturaPorCcusto em faturaCompetencia.ts. Array vazio quando não havia Prévia (ou é a própria Prévia, ou a foto é antiga). */
   previaTotalFaturaPorCcusto: PreviaTotalPorCcusto[];
+  /** % a deduzir, adiantamento e base das retenções como estavam no momento de salvar (ver camposCompartilhados.ts). null = versão de antes de esses valores serem guardados junto. */
+  campos: CamposCompartilhados | null;
 }
 
 interface Row {
@@ -27,6 +30,7 @@ interface Row {
   salvo_em: string;
   descartada: boolean;
   previa_total_fatura: string;
+  campos: string | null;
 }
 
 function toFaturaSalva(row: Row): FaturaSalva {
@@ -40,6 +44,7 @@ function toFaturaSalva(row: Row): FaturaSalva {
     salvoEm: row.salvo_em,
     descartada: row.descartada,
     previaTotalFaturaPorCcusto: JSON.parse(row.previa_total_fatura) as PreviaTotalPorCcusto[],
+    campos: lerCamposSalvos(row.campos),
   };
 }
 
@@ -83,8 +88,8 @@ export async function adotarFaturaSalva(competencia: string, id: string, usuario
   await ensureSchema();
   const novoId = randomUUID();
   const rows = await getDb()<Row[]>`
-    INSERT INTO faturas_salvas (id, competencia, usuario_email, usuario_nome, lines, warnings, salvo_em, descartada, previa_total_fatura)
-    SELECT ${novoId}, competencia, ${usuario.email}, ${usuario.nome}, lines, warnings, now(), false, previa_total_fatura
+    INSERT INTO faturas_salvas (id, competencia, usuario_email, usuario_nome, lines, warnings, salvo_em, descartada, previa_total_fatura, campos)
+    SELECT ${novoId}, competencia, ${usuario.email}, ${usuario.nome}, lines, warnings, now(), false, previa_total_fatura, campos
     FROM faturas_salvas
     WHERE id = ${id} AND competencia = ${competencia}
     RETURNING *
@@ -92,19 +97,23 @@ export async function adotarFaturaSalva(competencia: string, id: string, usuario
   return rows[0] ? toFaturaSalva(rows[0]) : null;
 }
 
-/** Salva uma NOVA foto da competência, atribuída a quem salvou — nunca sobrescreve uma foto já existente (nem a de outro usuário, nem uma anterior deste mesmo usuário): fica tudo na timeline (ver listTimelineFaturas). */
+/**
+ * Salva uma NOVA foto da competência, atribuída a quem salvou — nunca sobrescreve uma foto já existente (nem a de outro usuário, nem uma anterior deste mesmo usuário): fica tudo na timeline (ver listTimelineFaturas).
+ * `campos` = % a deduzir, adiantamento e base das retenções no momento de salvar; ficam guardados no banco junto com a versão.
+ */
 export async function salvarFatura(
   competencia: string,
   usuario: { email: string; nome: string },
   lines: CalculatedLine[],
   warnings: string[],
   previaTotalFaturaPorCcusto: PreviaTotalPorCcusto[],
+  campos: CamposCompartilhados | null = null,
 ): Promise<FaturaSalva> {
   await ensureSchema();
   const id = randomUUID();
   const rows = await getDb()<Row[]>`
-    INSERT INTO faturas_salvas (id, competencia, usuario_email, usuario_nome, lines, warnings, salvo_em, descartada, previa_total_fatura)
-    VALUES (${id}, ${competencia}, ${usuario.email}, ${usuario.nome}, ${JSON.stringify(lines)}, ${JSON.stringify(warnings)}, now(), false, ${JSON.stringify(previaTotalFaturaPorCcusto)})
+    INSERT INTO faturas_salvas (id, competencia, usuario_email, usuario_nome, lines, warnings, salvo_em, descartada, previa_total_fatura, campos)
+    VALUES (${id}, ${competencia}, ${usuario.email}, ${usuario.nome}, ${JSON.stringify(lines)}, ${JSON.stringify(warnings)}, now(), false, ${JSON.stringify(previaTotalFaturaPorCcusto)}, ${campos ? JSON.stringify(campos) : null})
     RETURNING *
   `;
   return toFaturaSalva(rows[0]);

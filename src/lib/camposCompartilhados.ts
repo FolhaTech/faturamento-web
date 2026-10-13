@@ -19,6 +19,30 @@ export function camposVazios(): CamposCompartilhados {
   return { percentual: {}, adiantamento: {}, base: {} };
 }
 
+/**
+ * Lê o JSON dos valores guardados numa fatura salva (coluna campos). null quando não há (versão de antes de os valores serem
+ * guardados) ou o texto não é um JSON utilizável; dentro dele, só ficam os valores em texto não vazio dos três campos conhecidos.
+ */
+export function lerCamposSalvos(json: string | null | undefined): CamposCompartilhados | null {
+  if (!json) return null;
+  let bruto: unknown;
+  try {
+    bruto = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (!bruto || typeof bruto !== "object" || Array.isArray(bruto)) return null;
+  const resultado = camposVazios();
+  for (const campo of CAMPOS) {
+    const valores = (bruto as Record<string, unknown>)[campo];
+    if (!valores || typeof valores !== "object" || Array.isArray(valores)) continue;
+    for (const [chave, valor] of Object.entries(valores)) {
+      if (typeof valor === "string" && valor.trim() !== "") resultado[campo][chave] = valor;
+    }
+  }
+  return resultado;
+}
+
 /** Limites do que a API aceita gravar — texto digitado curto, nada de lixo no banco. */
 export const LIMITES = { competencia: 100, chave: 100, valor: 40, alteracoes: 1000 } as const;
 

@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { CalculatedLine } from "../calc/engine";
 import { resetDbForTests } from "../db";
 import {
+  adotarFaturaSalva,
   descartarFaturaSalva,
   getFaturaSalvaDoUsuario,
+  getFaturaSalvaPorId,
   listCompetenciasComFaturaSalva,
   listMinhasCompetenciasComFaturaSalva,
   listTimelineFaturas,
@@ -78,6 +80,32 @@ describe("faturasSalvas repo — timeline de fotos congeladas do faturamento, po
     await salvarFatura("01/2026 (Folha)", ALICE, [linha()], [], [{ ccustoCodigo: "10", totalFatura: 2035.54 }]);
     const salva = await getFaturaSalvaDoUsuario("01/2026 (Folha)", ALICE.email);
     expect(salva!.previaTotalFaturaPorCcusto).toEqual([{ ccustoCodigo: "10", totalFatura: 2035.54 }]);
+  });
+
+  it("guarda no banco, junto com a versão, o % a deduzir / adiantamento / base das retenções do momento de salvar", async () => {
+    const campos = { percentual: { "1": "20,5" }, adiantamento: { "1": "1.500,00" }, base: { "10": "9.274,42" } };
+    const salva = await salvarFatura("01/2026", ALICE, [linha()], [], [], campos);
+    expect(salva.campos).toEqual(campos);
+
+    const lida = await getFaturaSalvaPorId("01/2026", salva.id);
+    expect(lida!.campos).toEqual(campos);
+  });
+
+  it("versão salva sem os valores (ou de antes de eles serem guardados) volta com campos null", async () => {
+    const salva = await salvarFatura("01/2026", ALICE, [linha()], [], []);
+    expect(salva.campos).toBeNull();
+    expect((await getFaturaSalvaDoUsuario("01/2026", ALICE.email))!.campos).toBeNull();
+  });
+
+  it("adotar a versão de outra pessoa leva os valores guardados junto; a original continua intacta", async () => {
+    const campos = { percentual: { "1": "30" }, adiantamento: {}, base: {} };
+    const doBob = await salvarFatura("01/2026", BOB, [linha()], [], [], campos);
+
+    const adotada = await adotarFaturaSalva("01/2026", doBob.id, ALICE);
+    expect(adotada!.usuarioEmail).toBe(ALICE.email);
+    expect(adotada!.campos).toEqual(campos);
+    expect((await getFaturaSalvaDoUsuario("01/2026", ALICE.email))!.campos).toEqual(campos);
+    expect((await getFaturaSalvaPorId("01/2026", doBob.id))!.campos).toEqual(campos);
   });
 
   it("dois usuários salvando a mesma competência não se sobrescrevem — cada um vê a própria versão", async () => {

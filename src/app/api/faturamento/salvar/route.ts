@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getUsuarioAtual } from "@/lib/auth/sessao";
 import { calcularLinesAoVivo, calcularPreviaTotalFaturaPorCcusto } from "@/lib/calc/faturaCompetencia";
+import { listCampos } from "@/lib/repo/camposFaturamento";
 import { descartarFaturaSalva, salvarFatura } from "@/lib/repo/faturasSalvas";
 import { listMovimentosByCompetencia } from "@/lib/repo/movimentos";
 
@@ -31,11 +32,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: `Nenhum lançamento encontrado para a competência ${competencia}.` }, { status: 404 });
   }
 
-  const [{ lines, warnings }, previaTotalFaturaPorCcusto] = await Promise.all([
+  const [{ lines, warnings }, previaTotalFaturaPorCcusto, campos] = await Promise.all([
     calcularLinesAoVivo(competencia),
     calcularPreviaTotalFaturaPorCcusto(competencia, usuario.email),
+    // % a deduzir, adiantamento e base das retenções como estão agora no banco — ficam guardados junto com a versão.
+    listCampos(competencia),
   ]);
-  const fatura = await salvarFatura(competencia, usuario, lines, warnings, previaTotalFaturaPorCcusto);
+  const fatura = await salvarFatura(competencia, usuario, lines, warnings, previaTotalFaturaPorCcusto, campos);
 
   return NextResponse.json({ salvoEm: fatura.salvoEm });
 }
