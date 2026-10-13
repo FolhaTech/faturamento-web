@@ -397,7 +397,7 @@ function TotalsCard({
                 ["Valor a cobrar", sobre.cobrar, true],
               ] as [string, number, boolean?][])
             : []),
-          ...(sobre.baseInformada ? ([["Base das retenções (informada)", sobre.baseRetencoes]] as [string, number, boolean?][]) : []),
+          [sobre.baseInformada ? "Base das retenções (informada)" : "Base das retenções (= valor a cobrar)", sobre.baseRetencoes],
           [sobre.baseInformada ? "Retenções na fonte (sobre a base informada)" : "Retenções na fonte (sobre o valor a cobrar)", -sobre.retencoes.total],
           ["Valor líquido a receber", sobre.valorLiquido, true],
         ] as [string, number, boolean?][])

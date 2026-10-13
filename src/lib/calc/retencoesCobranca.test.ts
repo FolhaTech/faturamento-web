@@ -118,10 +118,30 @@ describe("calcularRetencoesSobreCobrado", () => {
     expect(sem.baseRetencoes).toBe(10110);
   });
 
-  it("adiantamento maior que o total do colaborador zera a base dele (nunca base negativa)", () => {
+  it("adiantamento maior que o total de um colaborador: ele fica negativo e a base das retenções é exatamente o valor a cobrar", () => {
     const resumo = resumoChama(dois());
     const r = calcularRetencoesSobreCobrado(resumo, new Map([[1, { percentual: null, adiantamento: 20000 }]]))!;
-    expect(r.baseRetencoes).toBe(9190.91); // só o colaborador 2
-    expect(r.cobrar).toBe(-1618.18); // o valor a cobrar exibido continua negativo: (9190,91 − 20000) + 9190,91
+    expect(r.cobrar).toBe(-1618.18); // (9190,91 − 20000) + 9190,91
+    expect(r.baseRetencoes).toBe(r.cobrar); // a base não ignora o colaborador negativo
+    expect(r.retencoes.irrf).toBeCloseTo(-16.1818, 6); // 1% de −1.618,18: devolve valor ao cliente
+    expect(r.retencoes.total).toBeLessThan(0);
+    expect(r.valorLiquido).toBeCloseTo(r.cobrar - r.retencoes.total, 2);
+  });
+
+  it("Fatura − Adiantamento = A cobrar = Base das retenções (91.086,66 − 91.415,82 = −329,16)", () => {
+    // Dois colaboradores: um fica positivo e o outro negativo (adiantamento maior que a própria NF).
+    const resumo = resumoChama([colaborador(1, 50000), colaborador(2, 41086.66)]);
+    const r = calcularRetencoesSobreCobrado(
+      resumo,
+      new Map([
+        [1, { percentual: null, adiantamento: 30000 }], // 50.000,00 − 30.000,00 = 20.000,00
+        [2, { percentual: null, adiantamento: 61415.82 }], // 41.086,66 − 61.415,82 = −20.329,16
+      ]),
+    )!;
+    expect(resumo.totalFatura).toBe(91086.66);
+    expect(r.adiantamentos).toBe(91415.82);
+    expect(r.cobrar).toBe(-329.16);
+    expect(r.baseRetencoes).toBe(-329.16);
+    expect(r.retencoes.irrf).toBeCloseTo(-3.2916, 6);
   });
 });

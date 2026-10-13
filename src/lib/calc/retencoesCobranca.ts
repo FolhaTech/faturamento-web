@@ -8,7 +8,7 @@ export interface RetencoesSobreCobrado {
   deduzido: number;
   /** Parte do deduzido que é adiantamento. */
   adiantamentos: number;
-  /** Base das retenções: o valor a cobrar (nunca negativo — um adiantamento maior que o total do colaborador zera a base dele) ou, quando informada à mão, a base informada. */
+  /** Base das retenções: o valor a cobrar (Fatura − Adiantamento, pode ficar negativo: o adiantamento que passa da NF de um colaborador abate dos demais e devolve valor ao cliente) ou, quando informada à mão, a base informada. */
   baseRetencoes: number;
   /** true = a base das retenções foi digitada pelo usuário (campo "Base das retenções" do card), não calculada. */
   baseInformada: boolean;
@@ -55,7 +55,9 @@ export function calcularRetencoesSobreCobrado(
     deduzido += r.deduzido;
     adiantamentos += r.adiantamento;
 
-    const sobra = Math.max(0, r.cobrar);
+    // A base é exatamente o valor a cobrar: quem tem adiantamento maior que a própria NF fica negativo e abate dos demais (o centro
+    // de custo devolve esse valor ao cliente) — nada é zerado, senão a base deixaria de bater com Fatura − Adiantamento.
+    const sobra = r.cobrar;
     baseRetencoes += sobra;
     // Parte da NF do colaborador que não é VT/VR/VA/Bonificação (benefícios não entram na base do INSS), na proporção do que sobra.
     const beneficiosExcluidos = c.rubricas.filter((x) => x.trilha === "beneficio" && ehBeneficioExcluidoDaBaseInss(x.evento)).reduce((s, x) => s + x.valorBruto, 0);
@@ -65,7 +67,7 @@ export function calcularRetencoesSobreCobrado(
 
   if (baseInformada !== null) {
     // Base digitada: o INSS segue a proporção que a base calculada tem de VT/VR/VA/Bonificação.
-    baseInss = baseRetencoes > 0 ? baseInss * (baseInformada / baseRetencoes) : 0;
+    baseInss = baseRetencoes !== 0 ? baseInss * (baseInformada / baseRetencoes) : 0;
     baseRetencoes = baseInformada;
   }
 
