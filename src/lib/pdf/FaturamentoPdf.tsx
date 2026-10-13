@@ -126,10 +126,18 @@ function somaCobranca(resumo: CcustoResumo, deducoes: Map<number, DeducaoColabor
   return somarCobranca(resumo.colaboradores, deducoes);
 }
 
-function SummarySection({ resumo, deducoesCobranca }: { resumo: CcustoResumo; deducoesCobranca: Map<number, DeducaoColaborador> }) {
+function SummarySection({
+  resumo,
+  deducoesCobranca,
+  baseRetencoesInformada,
+}: {
+  resumo: CcustoResumo;
+  deducoesCobranca: Map<number, DeducaoColaborador>;
+  baseRetencoesInformada: number | null;
+}) {
   const cobranca = somaCobranca(resumo, deducoesCobranca);
-  // Com deduções por colaborador, as retenções incidem sobre o valor a cobrar (não sobre o Total fatura) e o líquido sai delas.
-  const sobre = calcularRetencoesSobreCobrado(resumo, deducoesCobranca);
+  // Com deduções por colaborador as retenções incidem sobre o valor a cobrar, e com base informada à mão sobre ela (não sobre o Total fatura); o líquido sai delas.
+  const sobre = calcularRetencoesSobreCobrado(resumo, deducoesCobranca, baseRetencoesInformada);
   const ret = sobre?.retencoes ?? resumo.retencoes;
   return (
     <View>
@@ -178,7 +186,7 @@ function SummarySection({ resumo, deducoesCobranca }: { resumo: CcustoResumo; de
         <View style={styles.summaryCol}>
           {sobre && (
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Base das retenções (valor a cobrar)</Text>
+              <Text style={styles.summaryLabel}>{sobre.baseInformada ? "Base das retenções (informada)" : "Base das retenções (valor a cobrar)"}</Text>
               <Text style={styles.summaryValue}>{fmt(sobre.baseRetencoes)}</Text>
             </View>
           )}
@@ -417,6 +425,7 @@ export function FaturamentoPdf({
   ccPorMatricula,
   deducoesCobranca = new Map<number, DeducaoColaborador>(),
   colaboradorLabel = null,
+  baseRetencoesInformada = null,
   vinculoPorMatricula = new Map<number, VinculoPdf>(),
 }: {
   resumo: CcustoResumo;
@@ -428,6 +437,8 @@ export function FaturamentoPdf({
   deducoesCobranca?: Map<number, DeducaoColaborador>;
   /** "NOME (matrícula)" quando o PDF é individual (um colaborador só) — aparece no cabeçalho; null = relatório do centro de custo. */
   colaboradorLabel?: string | null;
+  /** Base das retenções (R$) digitada à mão no card do centro de custo — null = a calculada (valor a cobrar ou Total fatura). */
+  baseRetencoesInformada?: number | null;
   /** Admissão e rescisão de cada colaborador (planilha mensal Empregados em Excel) — colunas da tabela e, no PDF individual, o cabeçalho. */
   vinculoPorMatricula?: Map<number, VinculoPdf>;
 }) {
@@ -463,7 +474,7 @@ export function FaturamentoPdf({
           </View>
         </View>
 
-        <SummarySection resumo={resumo} deducoesCobranca={deducoesCobranca} />
+        <SummarySection resumo={resumo} deducoesCobranca={deducoesCobranca} baseRetencoesInformada={baseRetencoesInformada} />
 
         <RubricasSection resumo={resumo} />
         <DescontosSection resumo={resumo} />

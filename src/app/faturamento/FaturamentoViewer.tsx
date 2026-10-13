@@ -19,7 +19,7 @@ import {
   type DeducaoColaborador,
 } from "@/lib/percentualCobranca";
 import { calcularRetencoesSobreCobrado } from "@/lib/calc/retencoesCobranca";
-import { useAdiantamentos, usePercentuaisCobranca } from "./usePercentuaisCobranca";
+import { useAdiantamentos, useBasesRetencoes, usePercentuaisCobranca } from "./usePercentuaisCobranca";
 import { RegimeColaborador, type TomadorOpcao } from "./RegimeColaborador";
 import { TomadorCentroCusto } from "./TomadorCentroCusto";
 import { formatarDataBr } from "@/lib/dataBr";
@@ -92,6 +92,10 @@ export function FaturamentoViewer({
   // colaborador nem entra nestes mapas.
   const [percentuaisTexto, setPercentualColaborador, limparPercentuais] = usePercentuaisCobranca(resumo?.competencia ?? "");
   const [adiantamentosTexto, setAdiantamentoColaborador, limparAdiantamentos] = useAdiantamentos(resumo?.competencia ?? "");
+  // Base das retenções digitada à mão, por centro de custo (chave = código do centro de custo). > 0 vale; vazio/0/inválido = base calculada.
+  const [basesTexto, setBaseRetencoes] = useBasesRetencoes(resumo?.competencia ?? "");
+  const baseInformadaTexto = resumo ? (basesTexto[resumo.ccustoCodigo] ?? "") : "";
+  const baseInformada = adiantamentoAtivo(baseInformadaTexto);
   const percentuaisDoCcusto = useMemo(() => {
     const doCcusto = new Set((resumo?.colaboradores ?? []).map((c) => c.matricula));
     const mapa = new Map<number, number>();
@@ -147,7 +151,9 @@ export function FaturamentoViewer({
     if (!resumo) return "#";
     return `/api/faturamento/export?competencia=${encodeURIComponent(resumo.competencia)}&ccusto=${encodeURIComponent(resumo.ccustoCodigo)}${
       filtrosQuery ? `&${filtrosQuery}` : ""
-    }&formato=${formato}${deducoesDoCcusto.size > 0 ? `&${paramsDeducoes()}` : ""}`;
+    }&formato=${formato}${deducoesDoCcusto.size > 0 ? `&${paramsDeducoes()}` : ""}${
+      baseInformada !== null ? `&baseRetencoes=${encodeURIComponent(String(baseInformada))}` : ""
+    }`;
   }
   const encargosPorCodigo = useMemo(() => new Map(encargos.map((e) => [e.codigo, e])), [encargos]);
   const ccPorMatricula = useMemo(() => new Map(colaboradoresCc.map((c) => [c.matricula, c.cc])), [colaboradoresCc]);
@@ -264,6 +270,9 @@ export function FaturamentoViewer({
               limparPercentuais([...percentuaisDoCcusto.keys()]);
               limparAdiantamentos([...adiantamentosDoCcusto.keys()]);
             }}
+            baseInformada={baseInformada}
+            baseInformadaTexto={baseInformadaTexto}
+            onBaseInformadaChange={(novo) => setBaseRetencoes(resumo.ccustoCodigo, novo)}
           />
           <TomadorCentroCusto
             ccustoNome={resumo.ccustoNome}
@@ -325,6 +334,9 @@ function TotalsCard({
   previaTotalFatura,
   deducoes,
   onLimparDeducoes,
+  baseInformada,
+  baseInformadaTexto,
+  onBaseInformadaChange,
 }: {
   resumo: CcustoResumo;
   regimeLabel: string | null;
@@ -334,10 +346,15 @@ function TotalsCard({
   deducoes: Map<number, DeducaoColaborador>;
   /** Apaga os percentuais e adiantamentos desse centro de custo (volta tudo ao valor normal). */
   onLimparDeducoes: () => void;
+  /** Base das retenções (R$) digitada à mão neste centro de custo (> 0) — null = usa a calculada. */
+  baseInformada: number | null;
+  baseInformadaTexto: string;
+  onBaseInformadaChange: (novo: string) => void;
 }) {
   // Com deduções por colaborador (percentual + adiantamento), os tributos incidem sobre o VALOR A COBRAR — o que de fato
-  // será faturado — e não sobre o Total fatura inteiro; o líquido é o valor a cobrar menos essas retenções.
-  const sobre = calcularRetencoesSobreCobrado(resumo, deducoes);
+  // será faturado — e não sobre o Total fatura inteiro; com uma base informada à mão, incidem sobre ela. O líquido é
+  // essa base menos as retenções.
+  const sobre = calcularRetencoesSobreCobrado(resumo, deducoes, baseInformada);
   const rows: [string, number, boolean?][] = [
     ["Total de despesas", resumo.totalDespesas],
     ["Taxa administrativa", resumo.taxaAdministrativa],
@@ -346,9 +363,14 @@ function TotalsCard({
     ["Total fatura (com encargos)", resumo.totalFatura, true],
     ...(sobre
       ? ([
-          ["Deduções por colaborador (% e adiantamento)", -sobre.deduzido],
-          ["Valor a cobrar", sobre.cobrar, true],
-          ["Retenções na fonte (sobre o valor a cobrar)", -sobre.retencoes.total],
+          ...(deducoes.size > 0
+            ? ([
+                ["Deduções por colaborador (% e adiantamento)", -sobre.deduzido],
+                ["Valor a cobrar", sobre.cobrar, true],
+              ] as [string, number, boolean?][])
+            : []),
+          ...(sobre.baseInformada ? ([["Base das retenções (informada)", sobre.baseRetencoes]] as [string, number, boolean?][]) : []),
+          [sobre.baseInformada ? "Retenções na fonte (sobre a base informada)" : "Retenções na fonte (sobre o valor a cobrar)", -sobre.retencoes.total],
           ["Valor líquido a receber", sobre.valorLiquido, true],
         ] as [string, number, boolean?][])
       : ([
@@ -385,6 +407,7 @@ function TotalsCard({
           </div>
         ))}
       </dl>
+      <BaseRetencoesInput texto={baseInformadaTexto} invalido={baseInformadaTexto.trim() !== "" && baseInformada === null} onChange={onBaseInformadaChange} />
       <CobrancaResumo resumo={resumo} deducoes={deducoes} onLimpar={onLimparDeducoes} />
       {complementar != null && (
         <div className="mt-4 rounded-md border border-sky-200 bg-sky-50 p-3">
@@ -904,6 +927,35 @@ function AdiantamentoInput({ texto, invalido, aviso, onChange }: { texto: string
         className={`w-24 rounded-md border px-2 py-1 text-right text-xs text-neutral-900 ${invalido ? "border-red-400 bg-red-50" : "border-neutral-300"}`}
       />
     </span>
+  );
+}
+
+/**
+ * Base das retenções (R$) informada à mão para este centro de custo: IRRF, CSLL, COFINS, PIS, ISS e INSS passam a ser calculados
+ * sobre ela (e o "Valor líquido a receber" sai dela), na tela e nos PDF/Word/Excel. Vazio = a base calculada (valor a cobrar,
+ * ou o Total fatura quando não há deduções). Lembrada neste navegador, por competência e centro de custo.
+ */
+function BaseRetencoesInput({ texto, invalido, onChange }: { texto: string; invalido: boolean; onChange: (novo: string) => void }) {
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-3 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2">
+      <label className="flex items-center gap-2 text-xs font-medium text-neutral-600">
+        Base das retenções (R$)
+        <span className="flex items-center gap-1">
+          <span className="text-neutral-500">R$</span>
+          <input
+            value={texto}
+            onChange={(e) => onChange(e.target.value)}
+            inputMode="decimal"
+            placeholder="ex.: 9.274,42"
+            aria-label="Base das retenções em reais"
+            className={`w-32 rounded-md border px-2 py-1 text-right text-sm font-normal text-neutral-900 ${invalido ? "border-red-400 bg-red-50" : "border-neutral-300 bg-white"}`}
+          />
+        </span>
+      </label>
+      <span className="text-xs text-neutral-500">
+        Opcional. Informe o valor sobre o qual os tributos (IRRF, CSLL, COFINS, PIS, ISS e INSS) devem incidir; vazio usa o valor calculado.
+      </span>
+    </div>
   );
 }
 

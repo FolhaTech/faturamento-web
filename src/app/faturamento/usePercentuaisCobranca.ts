@@ -30,14 +30,16 @@ function interpretar(json: string): Record<string, string> {
   }
 }
 
-type Setter = (matricula: number, novo: string) => void;
-type Limpar = (matriculas: number[]) => void;
+/** Chave do campo: matrícula do colaborador (percentual, adiantamento) ou código do centro de custo (base das retenções). */
+type Chave = number | string;
+type Setter = (chave: Chave, novo: string) => void;
+type Limpar = (chaves: Chave[]) => void;
 
 /**
- * Texto digitado em um campo POR colaborador numa competência (matrícula -> texto), lembrado neste
+ * Texto digitado em um campo POR colaborador (ou por centro de custo) numa competência (chave -> texto), lembrado neste
  * navegador. Um único item no localStorage por competência e por campo — o card de totais, a tabela de
  * colaboradores e os links de PDF leem o mesmo estado. `campo` separa os campos entre si
- * (percentual, adiantamento) sem um apagar o outro.
+ * (percentual, adiantamento, base das retenções) sem um apagar o outro.
  */
 function usePorColaborador(campo: string, competencia: string): readonly [Record<string, string>, Setter, Limpar] {
   const chave = `faturamento:${campo}:${competencia}`;
@@ -63,17 +65,17 @@ function usePorColaborador(campo: string, competencia: string): readonly [Record
     }
   }
 
-  function alterar(matricula: number, novo: string) {
+  function alterar(chaveCampo: Chave, novo: string) {
     const proximo = { ...valores };
-    if (novo.trim() === "") delete proximo[String(matricula)];
-    else proximo[String(matricula)] = novo;
+    if (novo.trim() === "") delete proximo[String(chaveCampo)];
+    else proximo[String(chaveCampo)] = novo;
     gravar(proximo);
   }
 
-  /** Apaga o campo de vários colaboradores de uma vez (de uma só gravação — chamar alterar() em laço usaria o estado antigo a cada volta). */
-  function limpar(matriculas: number[]) {
+  /** Apaga o campo de várias chaves de uma vez (de uma só gravação — chamar alterar() em laço usaria o estado antigo a cada volta). */
+  function limpar(chaves: Chave[]) {
     const proximo = { ...valores };
-    for (const m of matriculas) delete proximo[String(m)];
+    for (const k of chaves) delete proximo[String(k)];
     gravar(proximo);
   }
 
@@ -88,4 +90,9 @@ export function usePercentuaisCobranca(competencia: string) {
 /** Adiantamento, em reais, a deduzir do total de cada colaborador (texto digitado). */
 export function useAdiantamentos(competencia: string) {
   return usePorColaborador("adiantamentos", competencia);
+}
+
+/** Base das retenções (R$) informada à mão em cada centro de custo, por código do centro de custo (texto digitado). */
+export function useBasesRetencoes(competencia: string) {
+  return usePorColaborador("bases-retencoes", competencia);
 }

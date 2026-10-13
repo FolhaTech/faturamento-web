@@ -74,6 +74,8 @@ export interface EntradaRelatorio {
   vinculoPorMatricula: Map<number, VinculoRelatorio>;
   /** "NOME (matrícula)" quando o relatório é individual (um colaborador só) — null = relatório do centro de custo. */
   colaboradorLabel: string | null;
+  /** Base das retenções (R$) digitada à mão no card do centro de custo — null/ausente = a base calculada (valor a cobrar ou Total fatura). */
+  baseRetencoesInformada?: number | null;
   geradoEm?: Date;
 }
 
@@ -250,8 +252,11 @@ function montarColaboradores(
 /** Monta o relatório inteiro (cabeçalho, resumo e as três tabelas) a partir do que a rota de exportação já carregou. */
 export function montarRelatorio(entrada: EntradaRelatorio): RelatorioDados {
   const { resumo, regimeLabel, ccPorMatricula, deducoes, vinculoPorMatricula, colaboradorLabel } = entrada;
-  // Com deduções por colaborador (percentual e/ou adiantamento), os tributos incidem sobre o valor a cobrar — não sobre o Total fatura.
-  const cobranca = calcularRetencoesSobreCobrado(resumo, deducoes);
+  // Com deduções por colaborador (percentual e/ou adiantamento) os tributos incidem sobre o valor a cobrar, e com uma base
+  // informada à mão (campo do card) incidem sobre ela — nos dois casos, não sobre o Total fatura inteiro.
+  const sobre = calcularRetencoesSobreCobrado(resumo, deducoes, entrada.baseRetencoesInformada ?? null);
+  const temDeducao = resumo.colaboradores.some((c) => deducoes.has(c.matricula));
+  const cobranca = temDeducao ? sobre : null;
 
   const totais: LinhaResumo[] = [
     { rotulo: "Total de despesas", valor: resumo.totalDespesas },
@@ -268,16 +273,16 @@ export function montarRelatorio(entrada: EntradaRelatorio): RelatorioDados {
     if (cobranca.adiantamentos > 0) totais.push({ rotulo: "do qual adiantamentos", valor: cobranca.adiantamentos });
   }
 
-  const r = cobranca?.retencoes ?? resumo.retencoes;
+  const r = sobre?.retencoes ?? resumo.retencoes;
   const retencoes: LinhaResumo[] = [
-    ...(cobranca ? [{ rotulo: "Base das retenções (valor a cobrar)", valor: cobranca.baseRetencoes }] : []),
+    ...(sobre ? [{ rotulo: sobre.baseInformada ? "Base das retenções (informada)" : "Base das retenções (valor a cobrar)", valor: sobre.baseRetencoes }] : []),
     { rotulo: "Retenção IRRF (1%)", valor: r.irrf },
     { rotulo: "Retenção CSLL (1%)", valor: r.csll },
     { rotulo: "Retenção COFINS (3%)", valor: r.cofins },
     { rotulo: "Retenção PIS (0,65%)", valor: r.pis },
     { rotulo: "Retenção ISS (2%)", valor: r.iss },
     { rotulo: "Retenção INSS (11%, s/ VT-VR-VA-Bonif.)", valor: r.inss },
-    { rotulo: "Valor líquido a receber", valor: cobranca ? cobranca.valorLiquido : resumo.valorLiquido, destaque: true },
+    { rotulo: "Valor líquido a receber", valor: sobre ? sobre.valorLiquido : resumo.valorLiquido, destaque: true },
   ];
 
   // Relatório individual: um colaborador só no resumo — a admissão e a rescisão dele ficam no cabeçalho.

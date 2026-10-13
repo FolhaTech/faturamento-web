@@ -8,7 +8,7 @@ import { filtrarLinesPorColaborador } from "@/lib/calc/filtroColaboradores";
 import { gerarExcel } from "@/lib/export/excel";
 import { montarRelatorio } from "@/lib/export/relatorio";
 import { gerarWord } from "@/lib/export/word";
-import { juntarDeducoes, lerAdiantamentosSerializados, lerPercentuaisSerializados } from "@/lib/percentualCobranca";
+import { adiantamentoAtivo, juntarDeducoes, lerAdiantamentosSerializados, lerPercentuaisSerializados } from "@/lib/percentualCobranca";
 import { FaturamentoPdf } from "@/lib/pdf/FaturamentoPdf";
 import { getColaboradoresPorMatriculas } from "@/lib/repo/colaboradores";
 
@@ -33,6 +33,9 @@ export async function GET(request: Request) {
     lerPercentuaisSerializados(url.searchParams.get("percentuais")),
     lerAdiantamentosSerializados(url.searchParams.get("adiantamentos")),
   );
+  // Base das retenções (R$) digitada à mão no card do centro de custo (?baseRetencoes=9274.42): os tributos saem dela em vez do
+  // valor calculado. Ausente, vazia ou inválida = base calculada.
+  const baseRetencoesInformada = adiantamentoAtivo(url.searchParams.get("baseRetencoes") ?? "");
 
   if (!competencia) {
     return NextResponse.json({ error: "Informe a competência (?competencia=MM/AAAA)." }, { status: 400 });
@@ -89,10 +92,11 @@ export async function GET(request: Request) {
       deducoesCobranca,
       colaboradorLabel,
       vinculoPorMatricula,
+      baseRetencoesInformada,
     }) as Parameters<typeof renderToBuffer>[0];
     buffer = await renderToBuffer(pdfElement);
   } else {
-    const dados = montarRelatorio({ resumo, regimeLabel, ccPorMatricula, deducoes: deducoesCobranca, vinculoPorMatricula, colaboradorLabel });
+    const dados = montarRelatorio({ resumo, regimeLabel, ccPorMatricula, deducoes: deducoesCobranca, vinculoPorMatricula, colaboradorLabel, baseRetencoesInformada });
     buffer = formato.extensao === "docx" ? await gerarWord(dados) : await gerarExcel(dados);
   }
 

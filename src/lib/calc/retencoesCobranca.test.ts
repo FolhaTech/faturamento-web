@@ -88,6 +88,36 @@ describe("calcularRetencoesSobreCobrado", () => {
     expect(r.retencoes.inss).toBeCloseTo(13096.365 * 0.11, 2); // 11% da base do INSS (a dedução já vem arredondada em centavos)
   });
 
+  it("base informada à mão (sem nenhuma dedução): os tributos saem dela, e o líquido é ela menos as retenções", () => {
+    const resumo = resumoChama(dois());
+    const r = calcularRetencoesSobreCobrado(resumo, new Map(), 9274.42)!;
+    expect(r.baseInformada).toBe(true);
+    expect(r.baseRetencoes).toBe(9274.42);
+    expect(r.retencoes.irrf).toBeCloseTo(92.7442, 6); // 1% de 9.274,42 (e não de 18.381,82)
+    expect(r.retencoes.cofins).toBeCloseTo(278.2326, 6);
+    // INSS: mesma proporção de benefícios (VR) do centro de custo: 17.461,82 de base sobre 18.381,82.
+    expect(r.baseInss).toBeCloseTo(9274.42 * (17461.82 / 18381.82), 1);
+    expect(r.valorLiquido).toBeCloseTo(9274.42 - r.retencoes.total, 2);
+    expect(r.deduzido).toBe(0);
+  });
+
+  it("base informada vale mais que o valor a cobrar calculado com deduções", () => {
+    const resumo = resumoChama(dois());
+    const r = calcularRetencoesSobreCobrado(resumo, new Map([[1, { percentual: 50, adiantamento: 0 }]]), 5000)!;
+    expect(r.baseInformada).toBe(true);
+    expect(r.baseRetencoes).toBe(5000);
+    expect(r.retencoes.irrf).toBeCloseTo(50, 6);
+    expect(r.cobrar).toBe(13786.36); // o valor a cobrar por colaborador continua sendo calculado: (9190,91 − 4595,46) + 9190,91
+    expect(r.valorLiquido).toBeCloseTo(5000 - r.retencoes.total, 2);
+  });
+
+  it("sem base informada o resultado é o de antes (valor a cobrar)", () => {
+    const resumo = resumoChama(dois());
+    const sem = calcularRetencoesSobreCobrado(resumo, new Map([[1, { percentual: 90, adiantamento: 0 }]]), null)!;
+    expect(sem.baseInformada).toBe(false);
+    expect(sem.baseRetencoes).toBe(10110);
+  });
+
   it("adiantamento maior que o total do colaborador zera a base dele (nunca base negativa)", () => {
     const resumo = resumoChama(dois());
     const r = calcularRetencoesSobreCobrado(resumo, new Map([[1, { percentual: null, adiantamento: 20000 }]]))!;

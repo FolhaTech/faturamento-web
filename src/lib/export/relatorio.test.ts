@@ -100,6 +100,15 @@ describe("montarRelatorio", () => {
     expect(sem.resumo.retencoes.map((l) => l.rotulo)).not.toContain("Base das retenções (valor a cobrar)");
   });
 
+  it("base das retenções informada: retenções e líquido saem dela (sem criar linhas de dedução)", () => {
+    const r = montarRelatorio(entrada({ baseRetencoesInformada: 1000 }));
+    expect(r.resumo.retencoes[0]).toMatchObject({ rotulo: "Base das retenções (informada)", valor: 1000 });
+    expect(r.resumo.retencoes.find((l) => l.rotulo === "Retenção IRRF (1%)")!.valor).toBe(10);
+    // 1.000 − (1% + 1% + 3% + 0,65% + 2% = 76,50 e INSS 11% sobre a mesma proporção sem benefícios = 110) = 813,50
+    expect(r.resumo.retencoes.at(-1)).toMatchObject({ rotulo: "Valor líquido a receber", valor: 813.5 });
+    expect(r.resumo.totais.map((l) => l.rotulo)).not.toContain("Valor a cobrar (soma por colaborador)");
+  });
+
   it("relatório individual leva o nome no título e a admissão/rescisão (com motivo) no cabeçalho", () => {
     const r = montarRelatorio(
       entrada({
