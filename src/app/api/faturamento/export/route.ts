@@ -5,11 +5,15 @@ import { getUsuarioAtual } from "@/lib/auth/sessao";
 import { aggregateByCcusto } from "@/lib/calc/aggregate";
 import { carregarEngineLines } from "@/lib/calc/faturaCompetencia";
 import { filtrarLinesPorColaborador } from "@/lib/calc/filtroColaboradores";
+import { gerarExcel } from "@/lib/export/excel";
+import { montarRelatorio } from "@/lib/export/relatorio";
+import { gerarWord } from "@/lib/export/word";
 import { juntarDeducoes, lerAdiantamentosSerializados, lerPercentuaisSerializados } from "@/lib/percentualCobranca";
 import { FaturamentoPdf } from "@/lib/pdf/FaturamentoPdf";
 import { getColaboradoresPorMatriculas } from "@/lib/repo/colaboradores";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -67,31 +71,46 @@ export async function GET(request: Request) {
     ]),
   );
 
-  // @react-pdf/renderer tipa renderToBuffer esperando um <Document> literal; FaturamentoPdf
-  // retorna um, mas o elemento em si é tipado pelas próprias props do componente.
   // PDF individual: o filtro por matrícula deixa um único colaborador no resumo — o nome vai no cabeçalho e no arquivo.
   const individual = colaborador && resumo.colaboradores.length === 1 ? resumo.colaboradores[0] : null;
   const colaboradorLabel = individual ? `${individual.nome} (${individual.matricula})` : null;
 
-  const pdfElement = createElement(FaturamentoPdf, {
-    resumo,
-    regimeLabel,
-    ccPorMatricula,
-    deducoesCobranca,
-    colaboradorLabel,
-    vinculoPorMatricula,
-  }) as Parameters<typeof renderToBuffer>[0];
-  const buffer = await renderToBuffer(pdfElement);
+  // Mesmo relatório em três formatos (?formato=pdf|docx|xlsx, padrão pdf): os três mostram as mesmas informações.
+  const formato = FORMATOS[url.searchParams.get("formato") ?? "pdf"] ?? FORMATOS.pdf;
 
-  const filename = `Faturamento-${resumo.ccustoNome}-${competencia.replace("/", "-")}${regimeLabel ? `-${regimeLabel}` : ""}${individual ? `-${individual.nome}` : ""}.pdf`.replace(
+  let buffer: Buffer | Uint8Array;
+  if (formato.extensao === "pdf") {
+    // @react-pdf/renderer tipa renderToBuffer esperando um <Document> literal; FaturamentoPdf
+    // retorna um, mas o elemento em si é tipado pelas próprias props do componente.
+    const pdfElement = createElement(FaturamentoPdf, {
+      resumo,
+      regimeLabel,
+      ccPorMatricula,
+      deducoesCobranca,
+      colaboradorLabel,
+      vinculoPorMatricula,
+    }) as Parameters<typeof renderToBuffer>[0];
+    buffer = await renderToBuffer(pdfElement);
+  } else {
+    const dados = montarRelatorio({ resumo, regimeLabel, ccPorMatricula, deducoes: deducoesCobranca, vinculoPorMatricula, colaboradorLabel });
+    buffer = formato.extensao === "docx" ? await gerarWord(dados) : await gerarExcel(dados);
+  }
+
+  const filename = `Faturamento-${resumo.ccustoNome}-${competencia.replace("/", "-")}${regimeLabel ? `-${regimeLabel}` : ""}${individual ? `-${individual.nome}` : ""}.${formato.extensao}`.replace(
     /[^a-zA-Z0-9._-]+/g,
     "_",
   );
 
   return new NextResponse(buffer as unknown as BodyInit, {
     headers: {
-      "Content-Type": "application/pdf",
+      "Content-Type": formato.contentType,
       "Content-Disposition": `attachment; filename="${filename}"`,
     },
   });
 }
+
+const FORMATOS: Record<string, { extensao: "pdf" | "docx" | "xlsx"; contentType: string }> = {
+  pdf: { extensao: "pdf", contentType: "application/pdf" },
+  docx: { extensao: "docx", contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
+  xlsx: { extensao: "xlsx", contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+};

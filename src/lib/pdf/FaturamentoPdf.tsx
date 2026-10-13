@@ -1,6 +1,7 @@
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import type { RubricaSomada, CcustoResumo } from "../calc/aggregate";
 import { formatarDataBr } from "../dataBr";
+import { tipoLabel } from "../export/relatorio";
 import { calcularCobranca, somarCobranca, type DeducaoColaborador } from "../percentualCobranca";
 
 /** Admissão e rescisão de um colaborador (datas AAAA-MM-DD) pro PDF. */
@@ -9,7 +10,6 @@ export interface VinculoPdf {
   dataDemissao: string | null;
   motivoDemissao: string | null;
 }
-import { normalizaTexto } from "../text";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 function fmt(n: number): string {
@@ -283,13 +283,6 @@ function RubricasSection({ resumo }: { resumo: CcustoResumo }) {
       )}
     </View>
   );
-}
-
-function tipoLabel(tipo: RubricaSomada["tipo"], evento: string): string {
-  if (normalizaTexto(evento).includes("REEMBOLSO")) return "Reembolso";
-  if (tipo === "D" || tipo === "R") return "Desconto";
-  if (tipo === "FGTS" || tipo === "INSS") return "Informativo";
-  return tipo;
 }
 
 function DescontosSection({ resumo }: { resumo: CcustoResumo }) {

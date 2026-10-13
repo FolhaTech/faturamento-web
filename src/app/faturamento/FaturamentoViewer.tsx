@@ -28,6 +28,9 @@ function fmt(n: number): string {
   return currency.format(n);
 }
 
+/** Formatos do relatório exportado (?formato= em /api/faturamento/export): as mesmas informações em PDF, Word ou Excel. */
+type FormatoExport = "pdf" | "docx" | "xlsx";
+
 /** Admissão e rescisão de um colaborador (datas AAAA-MM-DD) — vêm da planilha mensal Empregados em Excel. */
 export interface VinculoColaborador {
   matricula: number;
@@ -125,16 +128,25 @@ export function FaturamentoViewer({
     return partes.join("&");
   }
 
-  /** Link do PDF individual de um colaborador: mesmos filtros da tela, mas só a matrícula dele (e o percentual dele, se houver). */
-  function hrefPdfColaborador(matricula: number): string {
+  /** Link do relatório individual de um colaborador (PDF, Word ou Excel): mesmos filtros da tela, mas só a matrícula dele (e as deduções dele, se houver). */
+  function hrefExportColaborador(matricula: number, formato: FormatoExport): string {
     const params = new URLSearchParams(filtrosQuery ?? "");
     if (resumo) {
       params.set("competencia", resumo.competencia);
       params.set("ccusto", resumo.ccustoCodigo);
     }
     params.set("colaborador", String(matricula));
+    params.set("formato", formato);
     const deducoes = paramsDeducoes(matricula);
     return `/api/faturamento/export?${params.toString()}${deducoes ? `&${deducoes}` : ""}`;
+  }
+
+  /** Link do relatório do centro de custo inteiro (PDF, Word ou Excel), com os filtros da tela e as deduções digitadas. */
+  function hrefExport(formato: FormatoExport): string {
+    if (!resumo) return "#";
+    return `/api/faturamento/export?competencia=${encodeURIComponent(resumo.competencia)}&ccusto=${encodeURIComponent(resumo.ccustoCodigo)}${
+      filtrosQuery ? `&${filtrosQuery}` : ""
+    }&formato=${formato}${deducoesDoCcusto.size > 0 ? `&${paramsDeducoes()}` : ""}`;
   }
   const encargosPorCodigo = useMemo(() => new Map(encargos.map((e) => [e.codigo, e])), [encargos]);
   const ccPorMatricula = useMemo(() => new Map(colaboradoresCc.map((c) => [c.matricula, c.cc])), [colaboradoresCc]);
@@ -205,14 +217,28 @@ export function FaturamentoViewer({
         </label>
 
         {resumo && (
-          <a
-            href={`/api/faturamento/export?competencia=${encodeURIComponent(resumo.competencia)}&ccusto=${encodeURIComponent(resumo.ccustoCodigo)}${
-              filtrosQuery ? `&${filtrosQuery}` : ""
-            }${deducoesDoCcusto.size > 0 ? `&${paramsDeducoes()}` : ""}`}
-            className="ml-auto flex items-center gap-2 rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
-          >
-            Exportar PDF
-          </a>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <a
+              href={hrefExport("pdf")}
+              className="flex items-center gap-2 rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+            >
+              Exportar PDF
+            </a>
+            <a
+              href={hrefExport("docx")}
+              title="Mesmas informações do PDF, em Word (.docx)"
+              className="flex items-center gap-2 rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800"
+            >
+              Exportar Word
+            </a>
+            <a
+              href={hrefExport("xlsx")}
+              title="Mesmas informações do PDF, em Excel (.xlsx) — uma aba por seção"
+              className="flex items-center gap-2 rounded-md bg-green-800 px-4 py-2 text-sm font-medium text-white hover:bg-green-900"
+            >
+              Exportar Excel
+            </a>
+          </div>
         )}
         {resumo && previaPorCcusto.has(resumo.ccustoCodigo) && (
           <a
@@ -254,7 +280,7 @@ export function FaturamentoViewer({
             onPercentualChange={setPercentualColaborador}
             adiantamentosTexto={adiantamentosTexto}
             onAdiantamentoChange={setAdiantamentoColaborador}
-            hrefPdfColaborador={hrefPdfColaborador}
+            hrefExportColaborador={hrefExportColaborador}
             competencia={resumo.competencia}
             provisaoPorMatricula={provisaoPorMatricula}
             codServicoPorMatricula={codServicoPorMatricula}
@@ -641,7 +667,7 @@ function ColaboradoresTable({
   onPercentualChange,
   adiantamentosTexto,
   onAdiantamentoChange,
-  hrefPdfColaborador,
+  hrefExportColaborador,
   competencia,
   provisaoPorMatricula,
   codServicoPorMatricula,
@@ -662,8 +688,8 @@ function ColaboradoresTable({
   /** Adiantamento em reais digitado de cada colaborador (matrícula -> texto) e o setter — ver AdiantamentoInput. */
   adiantamentosTexto: Record<string, string>;
   onAdiantamentoChange: (matricula: number, novo: string) => void;
-  /** Link do PDF individual de um colaborador (botão "PDF" da linha dele). */
-  hrefPdfColaborador: (matricula: number) => string;
+  /** Link do relatório individual de um colaborador (botões PDF / Word / Excel da linha dele). */
+  hrefExportColaborador: (matricula: number, formato: FormatoExport) => string;
   /** Competência mostrada — pra qual os botões de Prov. Férias / Prov. 13º lançam o desconto. */
   competencia: string;
   provisaoPorMatricula: Map<number, ProvisaoColaborador>;
@@ -777,13 +803,29 @@ function ColaboradoresTable({
                       {!temDeducao ? <span className="text-neutral-300">—</span> : fmt(cobranca.deduzido)}
                     </Td>
                     <Td right onClick={(e) => e.stopPropagation()}>
-                      <a
-                        href={hrefPdfColaborador(c.matricula)}
-                        title={`Exportar o PDF individual de ${c.nome}`}
-                        className="inline-block rounded-md bg-emerald-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-800"
-                      >
-                        PDF
-                      </a>
+                      <span className="inline-flex gap-1">
+                        <a
+                          href={hrefExportColaborador(c.matricula, "pdf")}
+                          title={`Exportar o PDF individual de ${c.nome}`}
+                          className="inline-block rounded-md bg-emerald-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-800"
+                        >
+                          PDF
+                        </a>
+                        <a
+                          href={hrefExportColaborador(c.matricula, "docx")}
+                          title={`Exportar o Word individual de ${c.nome}`}
+                          className="inline-block rounded-md bg-blue-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-800"
+                        >
+                          Word
+                        </a>
+                        <a
+                          href={hrefExportColaborador(c.matricula, "xlsx")}
+                          title={`Exportar o Excel individual de ${c.nome}`}
+                          className="inline-block rounded-md bg-green-800 px-2.5 py-1 text-xs font-medium text-white hover:bg-green-900"
+                        >
+                          Excel
+                        </a>
+                      </span>
                     </Td>
                   </tr>
                   {aberta && (
