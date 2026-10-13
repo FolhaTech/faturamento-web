@@ -229,6 +229,20 @@ CREATE TABLE IF NOT EXISTS sessoes (
   expira_em TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sessoes_expira_em ON sessoes(expira_em);
+
+-- Valores digitados na tela de Faturamento que valem pra TODOS os usuários (antes ficavam só no navegador de quem
+-- digitou, e a outra pessoa nunca via): % a deduzir e adiantamento de cada colaborador, e a base das retenções de cada
+-- centro de custo. Um valor (texto, como foi digitado) por competência + campo + chave (matrícula ou código do centro
+-- de custo) — ver repo/camposFaturamento.ts. Campo vazio apaga a linha.
+CREATE TABLE IF NOT EXISTS faturamento_campos (
+  competencia TEXT NOT NULL,
+  campo TEXT NOT NULL,
+  chave TEXT NOT NULL,
+  valor TEXT NOT NULL,
+  atualizado_por TEXT,
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (competencia, campo, chave)
+);
 `;
 
 export type Sql = ReturnType<typeof postgres>;

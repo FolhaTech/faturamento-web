@@ -4,6 +4,8 @@ import { aggregateByCcusto } from "@/lib/calc/aggregate";
 import { calcularPreviaTotalFaturaPorCcusto, carregarEngineLines, type PreviaTotalPorCcusto } from "@/lib/calc/faturaCompetencia";
 import { filtrarLinesPorColaborador, type FiltrosColaborador } from "@/lib/calc/filtroColaboradores";
 import { listarAcumuladoLiquido } from "@/lib/calc/descontoProvisaoAcumulada";
+import { camposVazios, type CamposCompartilhados } from "@/lib/camposCompartilhados";
+import { listCampos } from "@/lib/repo/camposFaturamento";
 import { listEventosExcluidos } from "@/lib/repo/eventosExcluidos";
 import { listDescontosSaldoPorCompetencias } from "@/lib/repo/descontosSaldo";
 import { listMinhasCompetenciasComFaturaSalva } from "@/lib/repo/faturasSalvas";
@@ -91,6 +93,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   // somem do cálculo ao vivo (carregarEngineLines abaixo aplica o filtro), essa lista aqui é só
   // pra mostrar o painel de "excluídos" com opção de restaurar (ver FaturamentoViewer.tsx).
   let eventosExcluidos: { matricula: number; evento: string }[] = [];
+  let camposIniciais: CamposCompartilhados = camposVazios();
   if (competenciaAtual) {
     // Competência já salva (ver faturasSalvas.ts): mostra a foto congelada em vez de recalcular
     // ao vivo, pra não mudar retroativamente um mês fechado quando alguém edita uma configuração
@@ -115,6 +118,8 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
 
     previaTotalFaturaPorCcusto = previaCongelada ?? (await calcularPreviaTotalFaturaPorCcusto(competenciaAtual, usuarioEmail));
     eventosExcluidos = await listEventosExcluidos(competenciaAtual);
+    // % a deduzir, adiantamento e base das retenções digitados por qualquer usuário (compartilhados — ver useCamposCompartilhados).
+    camposIniciais = await listCampos(competenciaAtual);
   }
 
   // CC (não obrigatório, digitado na própria tela de Faturamento — ver ColaboradoresTable em
@@ -345,6 +350,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
           )}
 
           <FaturamentoViewer
+            key={competenciaAtual ?? "sem-competencia"}
             resumos={resumos}
             warnings={warnings}
             filtrosQuery={filtrosQuery.toString()}
@@ -354,6 +360,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
             colaboradoresProvisao={colaboradoresProvisao}
             colaboradoresTomador={colaboradoresTomador}
             colaboradoresVinculo={colaboradoresVinculo}
+            camposIniciais={{ competencia: competenciaAtual ?? "", valores: camposIniciais }}
             tomadoresOpcoes={tomadoresOpcoes}
             previaTotalFaturaPorCcusto={previaTotalFaturaPorCcusto}
             eventosExcluidos={eventosExcluidos}

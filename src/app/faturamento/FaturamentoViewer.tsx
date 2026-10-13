@@ -19,7 +19,8 @@ import {
   type DeducaoColaborador,
 } from "@/lib/percentualCobranca";
 import { calcularRetencoesSobreCobrado } from "@/lib/calc/retencoesCobranca";
-import { useAdiantamentos, useBasesRetencoes, usePercentuaisCobranca } from "./usePercentuaisCobranca";
+import type { CamposCompartilhados } from "@/lib/camposCompartilhados";
+import { useCamposCompartilhados } from "./useCamposCompartilhados";
 import { RegimeColaborador, type TomadorOpcao } from "./RegimeColaborador";
 import { TomadorCentroCusto } from "./TomadorCentroCusto";
 import { formatarDataBr } from "@/lib/dataBr";
@@ -50,6 +51,7 @@ export function FaturamentoViewer({
   colaboradoresProvisao,
   colaboradoresTomador,
   colaboradoresVinculo,
+  camposIniciais,
   tomadoresOpcoes,
   previaTotalFaturaPorCcusto,
   eventosExcluidos,
@@ -76,6 +78,8 @@ export function FaturamentoViewer({
   colaboradoresTomador: { matricula: number; codServico: number | null }[];
   /** Admissão e rescisão de cada colaborador mostrado (planilha mensal Empregados em Excel) — colunas do detalhamento por colaborador. */
   colaboradoresVinculo: VinculoColaborador[];
+  /** Valores compartilhados (% a deduzir, adiantamento, base das retenções) da competência, como estavam no banco ao abrir a página. */
+  camposIniciais: { competencia: string; valores: CamposCompartilhados };
   tomadoresOpcoes: TomadorOpcao[];
   /** Total fatura (NF) já cobrado na Prévia do mesmo mês, por Centro de Custo — vazio quando a competência atual não é uma Folha ou não tem Prévia correspondente. Ver page.tsx. */
   previaTotalFaturaPorCcusto: { ccustoCodigo: string; totalFatura: number }[];
@@ -90,10 +94,18 @@ export function FaturamentoViewer({
   // adiantamento em reais — os dois saem do total dele. O card de totais soma e os links de PDF levam só
   // os do centro de custo mostrado. 0% / R$ 0 (ou vazio) é "sem dedução": o valor fica normal e o
   // colaborador nem entra nestes mapas.
-  const [percentuaisTexto, setPercentualColaborador, limparPercentuais] = usePercentuaisCobranca(resumo?.competencia ?? "");
-  const [adiantamentosTexto, setAdiantamentoColaborador, limparAdiantamentos] = useAdiantamentos(resumo?.competencia ?? "");
+  // Esses valores são COMPARTILHADOS entre todos os usuários (gravados no banco — ver useCamposCompartilhados): o que um digita
+  // aparece pra todos, e o PDF/Word/Excel de qualquer pessoa sai com eles.
+  const compartilhados = useCamposCompartilhados(camposIniciais.competencia, camposIniciais.valores);
+  const percentuaisTexto = compartilhados.valores.percentual;
+  const setPercentualColaborador = (matricula: number, novo: string) => compartilhados.alterar("percentual", String(matricula), novo);
+  const limparPercentuais = (matriculas: number[]) => compartilhados.limpar("percentual", matriculas.map(String));
+  const adiantamentosTexto = compartilhados.valores.adiantamento;
+  const setAdiantamentoColaborador = (matricula: number, novo: string) => compartilhados.alterar("adiantamento", String(matricula), novo);
+  const limparAdiantamentos = (matriculas: number[]) => compartilhados.limpar("adiantamento", matriculas.map(String));
   // Base das retenções digitada à mão, por centro de custo (chave = código do centro de custo). > 0 vale; vazio/0/inválido = base calculada.
-  const [basesTexto, setBaseRetencoes] = useBasesRetencoes(resumo?.competencia ?? "");
+  const basesTexto = compartilhados.valores.base;
+  const setBaseRetencoes = (ccustoCodigoChave: string, novo: string) => compartilhados.alterar("base", ccustoCodigoChave, novo);
   const baseInformadaTexto = resumo ? (basesTexto[resumo.ccustoCodigo] ?? "") : "";
   const baseInformada = adiantamentoAtivo(baseInformadaTexto);
   const percentuaisDoCcusto = useMemo(() => {
@@ -245,6 +257,8 @@ export function FaturamentoViewer({
             >
               Exportar Excel
             </a>
+            {compartilhados.estado === "salvando" && <span className="text-xs text-neutral-500">Salvando para todos…</span>}
+            {compartilhados.estado === "erro" && <span className="text-xs font-medium text-red-700">Não consegui salvar — tentando de novo…</span>}
           </div>
         )}
         {resumo && previaPorCcusto.has(resumo.ccustoCodigo) && (
@@ -258,6 +272,13 @@ export function FaturamentoViewer({
       </div>
 
       {warnings.length > 0 && <WarningsPanel warnings={warnings} />}
+
+      {compartilhados.migrados > 0 && (
+        <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm text-sky-900">
+          {compartilhados.migrados} valor(es) de % a deduzir, adiantamento ou base das retenções que estavam salvos só neste navegador foram enviados e
+          <strong> agora valem para todos os usuários</strong>. Confira nas colunas do detalhamento por colaborador.
+        </div>
+      )}
 
       {resumo && (
         <>
