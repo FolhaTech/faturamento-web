@@ -13,6 +13,11 @@ export function lerPercentual(texto: string): number | null {
   return Number.isFinite(n) && n >= 0 && n <= 100 ? n : null;
 }
 
+/** Percentual para exibir em rótulos: 2 -> "2%", 5.5 -> "5,5%" (vírgula, sem casas à toa). */
+export function formatarPercentualBr(percentual: number): string {
+  return `${String(Math.round(percentual * 100) / 100).replace(".", ",")}%`;
+}
+
 /** O percentual aplicado de verdade: 0% (ou vazio/inválido) é "sem dedução" — o valor do colaborador fica normal. */
 export function percentualAtivo(texto: string): number | null {
   const p = lerPercentual(texto);

@@ -1,7 +1,7 @@
-import type { CcustoResumo, RubricaSomada } from "../calc/aggregate";
+import { PERCENTUAL_ISS_PADRAO, type CcustoResumo, type RubricaSomada } from "../calc/aggregate";
 import { formatarDataBr } from "../dataBr";
 import { calcularRetencoesSobreCobrado } from "../calc/retencoesCobranca";
-import { calcularCobranca, somarCobranca, type DeducaoColaborador } from "../percentualCobranca";
+import { calcularCobranca, formatarPercentualBr, somarCobranca, type DeducaoColaborador } from "../percentualCobranca";
 import { normalizaTexto } from "../text";
 
 /**
@@ -76,8 +76,8 @@ export interface EntradaRelatorio {
   colaboradorLabel: string | null;
   /** Base das retenções (R$) digitada à mão no card do centro de custo — null/ausente = a base calculada (valor a cobrar ou Total fatura). */
   baseRetencoesInformada?: number | null;
-  /** ISS (R$) digitado à mão no card do centro de custo — null/ausente = o ISS calculado. Substitui o calculado e entra no total das retenções e no líquido. */
-  issInformado?: number | null;
+  /** Percentual do ISS (em %) digitado à mão no card do centro de custo — null/ausente = o padrão (2%). Entra no total das retenções e no líquido. */
+  issPercentual?: number | null;
   geradoEm?: Date;
 }
 
@@ -256,8 +256,8 @@ export function montarRelatorio(entrada: EntradaRelatorio): RelatorioDados {
   const { resumo, regimeLabel, ccPorMatricula, deducoes, vinculoPorMatricula, colaboradorLabel } = entrada;
   // Com deduções por colaborador (percentual e/ou adiantamento) os tributos incidem sobre o valor a cobrar, e com uma base
   // informada à mão (campo do card) incidem sobre ela — nos dois casos, não sobre o Total fatura inteiro.
-  // Um ISS digitado à mão troca o ISS calculado e entra no total das retenções (e no líquido).
-  const sobre = calcularRetencoesSobreCobrado(resumo, deducoes, entrada.baseRetencoesInformada ?? null, entrada.issInformado ?? null);
+  // Um percentual de ISS digitado à mão troca os 2% padrão e o ISS resultante entra no total das retenções (e no líquido).
+  const sobre = calcularRetencoesSobreCobrado(resumo, deducoes, entrada.baseRetencoesInformada ?? null, entrada.issPercentual ?? null);
   const temDeducao = resumo.colaboradores.some((c) => deducoes.has(c.matricula));
   const cobranca = temDeducao ? sobre : null;
 
@@ -285,7 +285,7 @@ export function montarRelatorio(entrada: EntradaRelatorio): RelatorioDados {
     { rotulo: "Retenção CSLL (1%)", valor: r.csll },
     { rotulo: "Retenção COFINS (3%)", valor: r.cofins },
     { rotulo: "Retenção PIS (0,65%)", valor: r.pis },
-    { rotulo: sobre?.issInformado ? "Retenção ISS (informado)" : "Retenção ISS (2%)", valor: r.iss },
+    { rotulo: `Retenção ISS (${formatarPercentualBr(sobre?.issPercentual ?? PERCENTUAL_ISS_PADRAO)}${sobre?.issInformado ? ", informado" : ""})`, valor: r.iss },
     { rotulo: "Base do INSS (base − VT/VR/VA/Bonif.)", valor: sobre ? sobre.baseInss : resumo.baseRetencaoInss },
     { rotulo: "Retenção INSS (11%, s/ VT-VR-VA-Bonif.)", valor: r.inss },
     { rotulo: "Total das retenções", valor: r.total },

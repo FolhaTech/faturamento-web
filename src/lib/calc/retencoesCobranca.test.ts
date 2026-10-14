@@ -97,66 +97,81 @@ describe("calcularRetencoesSobreCobrado", () => {
     expect(r.retencoes.inss).toBeCloseTo(resumo.retencoes.inss, 6);
   });
 
-  describe("ISS digitado à mão", () => {
-    it("substitui o ISS calculado (2% da base) e o valor digitado entra na soma das retenções e no valor líquido", () => {
+  describe("ISS em % digitado à mão", () => {
+    it("o ISS passa a ser o percentual digitado da base (no lugar dos 2%) e entra na soma das retenções e no valor líquido", () => {
       const resumo = resumoChama(dois());
       const deducoes = new Map([[1, { percentual: 50, adiantamento: 0 }]]);
       const calculado = calcularRetencoesSobreCobrado(resumo, deducoes)!;
-      const informado = calcularRetencoesSobreCobrado(resumo, deducoes, null, 100)!;
+      const informado = calcularRetencoesSobreCobrado(resumo, deducoes, null, 5)!;
 
       expect(calculado.issInformado).toBe(false);
-      expect(informado.issInformado).toBe(true);
+      expect(calculado.issPercentual).toBe(2);
       expect(calculado.retencoes.iss).toBeCloseTo(calculado.baseRetencoes * 0.02, 6);
-      expect(informado.retencoes.iss).toBe(100);
+      expect(informado.issInformado).toBe(true);
+      expect(informado.issPercentual).toBe(5);
+      expect(informado.retencoes.iss).toBeCloseTo(informado.baseRetencoes * 0.05, 6);
       // As demais retenções (inclusive o INSS) não mudam; o total troca só o ISS.
+      expect(informado.baseRetencoes).toBe(calculado.baseRetencoes);
       expect(informado.retencoes.irrf).toBeCloseTo(calculado.retencoes.irrf, 9);
       expect(informado.retencoes.inss).toBeCloseTo(calculado.retencoes.inss, 9);
       expect(informado.baseInss).toBe(calculado.baseInss);
-      expect(informado.retencoes.total).toBeCloseTo(calculado.retencoes.total - calculado.retencoes.iss + 100, 9);
+      expect(informado.retencoes.total).toBeCloseTo(calculado.retencoes.total - calculado.retencoes.iss + informado.retencoes.iss, 9);
       const outras = informado.retencoes.irrf + informado.retencoes.csll + informado.retencoes.cofins + informado.retencoes.pis + informado.retencoes.inss;
-      expect(informado.retencoes.total).toBeCloseTo(outras + 100, 9);
-      // O líquido sai da base menos as retenções COM o ISS digitado.
+      expect(informado.retencoes.total).toBeCloseTo(outras + informado.retencoes.iss, 9);
+      // O líquido sai da base menos as retenções COM o ISS no novo percentual.
       expect(informado.valorLiquido).toBe(Math.round((informado.baseRetencoes - informado.retencoes.total) * 100) / 100);
       expect(informado.valorLiquido).not.toBe(calculado.valorLiquido);
     });
 
-    it("ISS maior que o calculado reduz o líquido; menor aumenta", () => {
+    it("percentual maior reduz o líquido; menor aumenta (cada ponto percentual mexe 1% da base)", () => {
       const resumo = resumoChama(dois());
       const deducoes = new Map([[1, { percentual: 50, adiantamento: 0 }]]);
-      const calculado = calcularRetencoesSobreCobrado(resumo, deducoes)!;
-      const maior = calcularRetencoesSobreCobrado(resumo, deducoes, null, calculado.retencoes.iss + 100)!;
-      const menor = calcularRetencoesSobreCobrado(resumo, deducoes, null, calculado.retencoes.iss - 100)!;
-      expect(maior.valorLiquido).toBeCloseTo(calculado.valorLiquido - 100, 1);
-      expect(menor.valorLiquido).toBeCloseTo(calculado.valorLiquido + 100, 1);
+      const padrao = calcularRetencoesSobreCobrado(resumo, deducoes)!;
+      const maior = calcularRetencoesSobreCobrado(resumo, deducoes, null, 3)!;
+      const menor = calcularRetencoesSobreCobrado(resumo, deducoes, null, 1)!;
+      expect(maior.valorLiquido).toBeCloseTo(padrao.valorLiquido - padrao.baseRetencoes * 0.01, 1);
+      expect(menor.valorLiquido).toBeCloseTo(padrao.valorLiquido + padrao.baseRetencoes * 0.01, 1);
+    });
+
+    it("aceita percentual fracionado (2,5%)", () => {
+      const resumo = resumoChama(dois());
+      const r = calcularRetencoesSobreCobrado(resumo, new Map(), null, 2.5)!;
+      expect(r.issPercentual).toBe(2.5);
+      expect(r.retencoes.iss).toBeCloseTo(resumo.totalFatura * 0.025, 6);
     });
 
     it("vale sozinho (sem dedução nem base informada): as outras retenções continuam sobre o Total fatura", () => {
       const resumo = resumoChama(dois());
-      const r = calcularRetencoesSobreCobrado(resumo, new Map(), null, 300)!;
+      const r = calcularRetencoesSobreCobrado(resumo, new Map(), null, 5)!;
       expect(r).not.toBeNull();
       expect(r.baseRetencoes).toBe(resumo.totalFatura);
       expect(r.retencoes.irrf).toBeCloseTo(resumo.retencoes.irrf, 9);
       expect(r.retencoes.inss).toBeCloseTo(resumo.retencoes.inss, 9);
-      expect(r.retencoes.iss).toBe(300);
-      expect(r.retencoes.total).toBeCloseTo(resumo.retencoes.total - resumo.retencoes.iss + 300, 9);
+      expect(r.retencoes.iss).toBeCloseTo(resumo.totalFatura * 0.05, 6);
+      expect(r.retencoes.total).toBeCloseTo(resumo.retencoes.total - resumo.retencoes.iss + resumo.totalFatura * 0.05, 9);
       expect(r.valorLiquido).toBeCloseTo(resumo.totalFatura - r.retencoes.total, 2);
     });
 
-    it("0 é um valor válido (ISS zerado); sem valor informado volta ao calculado", () => {
+    it("2% informado dá o mesmo resultado do padrão; 0% zera o ISS; sem percentual volta ao padrão", () => {
       const resumo = resumoChama(dois());
+      const igual = calcularRetencoesSobreCobrado(resumo, new Map(), null, 2)!;
+      expect(igual.retencoes.iss).toBeCloseTo(resumo.retencoes.iss, 9);
+      expect(igual.retencoes.total).toBeCloseTo(resumo.retencoes.total, 9);
+
       const zerado = calcularRetencoesSobreCobrado(resumo, new Map(), null, 0)!;
       expect(zerado.issInformado).toBe(true);
       expect(zerado.retencoes.iss).toBe(0);
       expect(zerado.retencoes.total).toBeCloseTo(resumo.retencoes.total - resumo.retencoes.iss, 9);
+
       expect(calcularRetencoesSobreCobrado(resumo, new Map(), null, null)).toBeNull();
     });
 
-    it("junto com a base informada à mão: a base muda os outros tributos e o ISS digitado entra no total", () => {
+    it("junto com a base informada à mão: o percentual incide sobre a base informada", () => {
       const resumo = resumoChama(dois());
-      const r = calcularRetencoesSobreCobrado(resumo, new Map(), 9274.42, 150)!;
+      const r = calcularRetencoesSobreCobrado(resumo, new Map(), 9274.42, 5)!;
       expect(r.baseRetencoes).toBe(9274.42);
       expect(r.retencoes.irrf).toBeCloseTo(92.7442, 6);
-      expect(r.retencoes.iss).toBe(150);
+      expect(r.retencoes.iss).toBeCloseTo(463.721, 6); // 5% de 9.274,42
       expect(r.valorLiquido).toBeCloseTo(9274.42 - r.retencoes.total, 2);
     });
   });

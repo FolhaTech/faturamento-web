@@ -2,7 +2,7 @@
 
 import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CcustoResumo, ColaboradorResumo, RubricaSomada } from "@/lib/calc/aggregate";
+import { PERCENTUAL_ISS_PADRAO, type CcustoResumo, type ColaboradorResumo, type RubricaSomada } from "@/lib/calc/aggregate";
 import { normalizaTexto } from "@/lib/text";
 import type { Encargo } from "@/lib/types";
 import { DescontoProvisaoColaborador, type ProvisaoColaborador } from "./DescontoProvisaoColaborador";
@@ -10,6 +10,7 @@ import { GrossUpConfigForm } from "./GrossUpConfigForm";
 import {
   adiantamentoAtivo,
   calcularCobranca,
+  formatarPercentualBr,
   lerPercentual,
   lerValorReais,
   percentualAtivo,
@@ -28,11 +29,6 @@ import { formatarDataBr } from "@/lib/dataBr";
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 function fmt(n: number): string {
   return currency.format(n);
-}
-const numeroBr = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-/** Número em pt-BR com 2 casas, sem o símbolo R$ (dentro de campos que já têm o R$ ao lado). */
-function fmtNumero(n: number): string {
-  return numeroBr.format(n);
 }
 
 /** Formatos do relatório exportado (?formato= em /api/faturamento/export): as mesmas informações em PDF, Word ou Excel. */
@@ -113,12 +109,13 @@ export function FaturamentoViewer({
   const setBaseRetencoes = (ccustoCodigoChave: string, novo: string) => compartilhados.alterar("base", ccustoCodigoChave, novo);
   const baseInformadaTexto = resumo ? (basesTexto[resumo.ccustoCodigo] ?? "") : "";
   const baseInformada = adiantamentoAtivo(baseInformadaTexto);
-  // ISS (R$) digitado à mão, por centro de custo (chave = código do centro de custo): substitui o ISS calculado e entra no total das
-  // retenções e no valor líquido. Diferente da base, 0 vale (ISS zerado); só vazio/inválido volta ao calculado.
+  // Percentual do ISS (%) digitado à mão, por centro de custo (chave = código do centro de custo): o ISS passa a ser esse percentual da
+  // base das retenções (no lugar dos 2% padrão) e entra no total das retenções e no valor líquido. Diferente da base, 0 vale (ISS
+  // zerado); só vazio/inválido volta ao padrão.
   const issTexto = compartilhados.valores.iss;
-  const setIssInformado = (ccustoCodigoChave: string, novo: string) => compartilhados.alterar("iss", ccustoCodigoChave, novo);
-  const issInformadoTexto = resumo ? (issTexto[resumo.ccustoCodigo] ?? "") : "";
-  const issInformado = lerValorReais(issInformadoTexto);
+  const setIssPercentual = (ccustoCodigoChave: string, novo: string) => compartilhados.alterar("iss", ccustoCodigoChave, novo);
+  const issPercentualTexto = resumo ? (issTexto[resumo.ccustoCodigo] ?? "") : "";
+  const issPercentual = lerPercentual(issPercentualTexto);
   const percentuaisDoCcusto = useMemo(() => {
     const doCcusto = new Set((resumo?.colaboradores ?? []).map((c) => c.matricula));
     const mapa = new Map<number, number>();
@@ -176,7 +173,7 @@ export function FaturamentoViewer({
       filtrosQuery ? `&${filtrosQuery}` : ""
     }&formato=${formato}${deducoesDoCcusto.size > 0 ? `&${paramsDeducoes()}` : ""}${
       baseInformada !== null ? `&baseRetencoes=${encodeURIComponent(String(baseInformada))}` : ""
-    }${issInformado !== null ? `&iss=${encodeURIComponent(String(issInformado))}` : ""}`;
+    }${issPercentual !== null ? `&iss=${encodeURIComponent(String(issPercentual))}` : ""}`;
   }
   const encargosPorCodigo = useMemo(() => new Map(encargos.map((e) => [e.codigo, e])), [encargos]);
   const ccPorMatricula = useMemo(() => new Map(colaboradoresCc.map((c) => [c.matricula, c.cc])), [colaboradoresCc]);
@@ -312,9 +309,9 @@ export function FaturamentoViewer({
             baseInformada={baseInformada}
             baseInformadaTexto={baseInformadaTexto}
             onBaseInformadaChange={(novo) => setBaseRetencoes(resumo.ccustoCodigo, novo)}
-            issInformado={issInformado}
-            issInformadoTexto={issInformadoTexto}
-            onIssInformadoChange={(novo) => setIssInformado(resumo.ccustoCodigo, novo)}
+            issPercentual={issPercentual}
+            issPercentualTexto={issPercentualTexto}
+            onIssPercentualChange={(novo) => setIssPercentual(resumo.ccustoCodigo, novo)}
           />
           <TomadorCentroCusto
             ccustoNome={resumo.ccustoNome}
@@ -379,9 +376,9 @@ function TotalsCard({
   baseInformada,
   baseInformadaTexto,
   onBaseInformadaChange,
-  issInformado,
-  issInformadoTexto,
-  onIssInformadoChange,
+  issPercentual,
+  issPercentualTexto,
+  onIssPercentualChange,
 }: {
   resumo: CcustoResumo;
   regimeLabel: string | null;
@@ -395,17 +392,17 @@ function TotalsCard({
   baseInformada: number | null;
   baseInformadaTexto: string;
   onBaseInformadaChange: (novo: string) => void;
-  /** ISS (R$) digitado à mão neste centro de custo (0 vale) — null = usa o calculado. Entra no total das retenções e no valor líquido. */
-  issInformado: number | null;
-  issInformadoTexto: string;
-  onIssInformadoChange: (novo: string) => void;
+  /** Percentual do ISS (%) digitado à mão neste centro de custo (0 vale) — null = usa o padrão (2%). O ISS resultante entra no total das retenções e no valor líquido. */
+  issPercentual: number | null;
+  issPercentualTexto: string;
+  onIssPercentualChange: (novo: string) => void;
 }) {
   // Com deduções por colaborador (percentual + adiantamento), os tributos incidem sobre o VALOR A COBRAR — o que de fato
   // será faturado — e não sobre o Total fatura inteiro; com uma base informada à mão, incidem sobre ela. O líquido é
-  // essa base menos as retenções. Um ISS informado à mão troca o ISS calculado nesse total.
-  const sobre = calcularRetencoesSobreCobrado(resumo, deducoes, baseInformada, issInformado);
-  // ISS que o sistema calcularia (sem o digitado) — mostrado como referência ao lado do campo.
-  const issCalculado = (issInformado === null ? sobre : calcularRetencoesSobreCobrado(resumo, deducoes, baseInformada))?.retencoes.iss ?? resumo.retencoes.iss;
+  // essa base menos as retenções. Um percentual de ISS informado à mão troca os 2% padrão nesse total.
+  const sobre = calcularRetencoesSobreCobrado(resumo, deducoes, baseInformada, issPercentual);
+  // ISS padrão (2%) que o sistema calcularia sem o percentual digitado — mostrado como referência ao lado do campo.
+  const issPadrao = (issPercentual === null ? sobre : calcularRetencoesSobreCobrado(resumo, deducoes, baseInformada))?.retencoes.iss ?? resumo.retencoes.iss;
   const rows: [string, number, boolean?][] = [
     ["Total de despesas", resumo.totalDespesas],
     ["Taxa administrativa", resumo.taxaAdministrativa],
@@ -425,7 +422,9 @@ function TotalsCard({
             sobre.baseRetencoes,
           ],
           ["Base do INSS (base − VT/VR/VA/Bonif.)", sobre.baseInss],
-          ...(sobre.issInformado ? ([["ISS (informado, já somado nas retenções)", -sobre.retencoes.iss]] as [string, number, boolean?][]) : []),
+          ...(sobre.issInformado
+            ? ([[`ISS (${formatarPercentualBr(sobre.issPercentual)} da base, já somado nas retenções)`, -sobre.retencoes.iss]] as [string, number, boolean?][])
+            : []),
           [
             sobre.baseInformada ? "Retenções na fonte (sobre a base informada)" : deducoes.size > 0 ? "Retenções na fonte (sobre o valor a cobrar)" : "Retenções na fonte",
             -sobre.retencoes.total,
@@ -470,10 +469,10 @@ function TotalsCard({
         texto={baseInformadaTexto}
         invalido={baseInformadaTexto.trim() !== "" && baseInformada === null}
         onChange={onBaseInformadaChange}
-        issTexto={issInformadoTexto}
-        issInvalido={issInformadoTexto.trim() !== "" && issInformado === null}
-        issCalculado={issCalculado}
-        onIssChange={onIssInformadoChange}
+        issTexto={issPercentualTexto}
+        issInvalido={issPercentualTexto.trim() !== "" && issPercentual === null}
+        issPadrao={issPadrao}
+        onIssChange={onIssPercentualChange}
       />
       <CobrancaResumo resumo={resumo} deducoes={deducoes} onLimpar={onLimparDeducoes} />
       {complementar != null && (
@@ -1001,8 +1000,8 @@ function AdiantamentoInput({ texto, invalido, aviso, onChange }: { texto: string
  * Valores digitados à mão para este centro de custo, gravados no banco e iguais pra todos os usuários:
  * - Base das retenções (R$): IRRF, CSLL, COFINS, PIS, ISS e INSS passam a ser calculados sobre ela (e o "Valor líquido a receber"
  *   sai dela). Vazio = a base calculada (valor a cobrar, ou o Total fatura quando não há deduções).
- * - ISS (R$): troca o ISS calculado (2% da base); o valor digitado entra no total das retenções e, por isso, no valor líquido a receber.
- *   Vazio = o ISS calculado (que aparece ao lado como referência); 0 zera o ISS.
+ * - ISS (%): percentual do ISS sobre a base das retenções, no lugar dos 2% padrão; o ISS resultante entra no total das retenções e,
+ *   por isso, no valor líquido a receber. Vazio = 2%; 0 zera o ISS.
  * Na tela e nos PDF/Word/Excel.
  */
 function BaseRetencoesInput({
@@ -1011,7 +1010,7 @@ function BaseRetencoesInput({
   onChange,
   issTexto,
   issInvalido,
-  issCalculado,
+  issPadrao,
   onIssChange,
 }: {
   texto: string;
@@ -1019,8 +1018,8 @@ function BaseRetencoesInput({
   onChange: (novo: string) => void;
   issTexto: string;
   issInvalido: boolean;
-  /** ISS que o sistema calcularia sem o valor digitado — só referência. */
-  issCalculado: number;
+  /** ISS que o sistema calcularia com o percentual padrão (2%), sem o digitado — só referência. */
+  issPadrao: number;
   onIssChange: (novo: string) => void;
 }) {
   return (
@@ -1046,21 +1045,22 @@ function BaseRetencoesInput({
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-xs font-medium text-neutral-600">
-          ISS (R$)
+          ISS (%)
           <span className="flex items-center gap-1">
-            <span className="text-neutral-500">R$</span>
             <input
               value={issTexto}
               onChange={(e) => onIssChange(e.target.value)}
               inputMode="decimal"
-              placeholder={fmtNumero(issCalculado)}
-              aria-label="ISS em reais"
-              className={`w-32 rounded-md border px-2 py-1 text-right text-sm font-normal text-neutral-900 ${issInvalido ? "border-red-400 bg-red-50" : "border-neutral-300 bg-white"}`}
+              placeholder={String(PERCENTUAL_ISS_PADRAO)}
+              aria-label="Percentual do ISS"
+              className={`w-24 rounded-md border px-2 py-1 text-right text-sm font-normal text-neutral-900 ${issInvalido ? "border-red-400 bg-red-50" : "border-neutral-300 bg-white"}`}
             />
+            <span className="text-neutral-500">%</span>
           </span>
         </label>
         <span className="text-xs text-neutral-500">
-          Opcional. O valor digitado substitui o ISS calculado ({fmt(issCalculado)}) e é somado nas retenções e no valor líquido a receber; vazio usa o calculado.
+          Opcional. Percentual do ISS sobre a base das retenções, no lugar dos {formatarPercentualBr(PERCENTUAL_ISS_PADRAO)} padrão ({fmt(issPadrao)}); o ISS
+          resultante é somado nas retenções e no valor líquido a receber. Vazio usa {formatarPercentualBr(PERCENTUAL_ISS_PADRAO)}.
         </span>
       </div>
     </div>

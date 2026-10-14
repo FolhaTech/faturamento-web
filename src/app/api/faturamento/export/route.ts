@@ -8,7 +8,7 @@ import { filtrarLinesPorColaborador } from "@/lib/calc/filtroColaboradores";
 import { gerarExcel } from "@/lib/export/excel";
 import { montarRelatorio } from "@/lib/export/relatorio";
 import { gerarWord } from "@/lib/export/word";
-import { adiantamentoAtivo, juntarDeducoes, lerAdiantamentosSerializados, lerPercentuaisSerializados, lerValorReais } from "@/lib/percentualCobranca";
+import { adiantamentoAtivo, juntarDeducoes, lerAdiantamentosSerializados, lerPercentual, lerPercentuaisSerializados } from "@/lib/percentualCobranca";
 import { FaturamentoPdf } from "@/lib/pdf/FaturamentoPdf";
 import { getColaboradoresPorMatriculas } from "@/lib/repo/colaboradores";
 
@@ -36,9 +36,9 @@ export async function GET(request: Request) {
   // Base das retenções (R$) digitada à mão no card do centro de custo (?baseRetencoes=9274.42): os tributos saem dela em vez do
   // valor calculado. Ausente, vazia ou inválida = base calculada.
   const baseRetencoesInformada = adiantamentoAtivo(url.searchParams.get("baseRetencoes") ?? "");
-  // ISS (R$) digitado à mão no card (?iss=1821.73): troca o ISS calculado e entra no total das retenções e no líquido. Vazio ou
-  // inválido = ISS calculado; 0 vale (ISS zerado).
-  const issInformado = lerValorReais(url.searchParams.get("iss") ?? "");
+  // Percentual do ISS (em %) digitado à mão no card (?iss=5 ou ?iss=2,5): o ISS passa a ser esse percentual da base das retenções em
+  // vez dos 2% padrão e entra no total das retenções e no líquido. Vazio ou inválido = 2%; 0 vale (ISS zerado).
+  const issPercentual = lerPercentual(url.searchParams.get("iss") ?? "");
 
   if (!competencia) {
     return NextResponse.json({ error: "Informe a competência (?competencia=MM/AAAA)." }, { status: 400 });
@@ -97,11 +97,11 @@ export async function GET(request: Request) {
       colaboradorLabel,
       vinculoPorMatricula,
       baseRetencoesInformada,
-      issInformado,
+      issPercentual,
     }) as Parameters<typeof renderToBuffer>[0];
     buffer = await renderToBuffer(pdfElement);
   } else {
-    const dados = montarRelatorio({ resumo, regimeLabel, ccPorMatricula, deducoes: deducoesCobranca, vinculoPorMatricula, colaboradorLabel, baseRetencoesInformada, issInformado });
+    const dados = montarRelatorio({ resumo, regimeLabel, ccPorMatricula, deducoes: deducoesCobranca, vinculoPorMatricula, colaboradorLabel, baseRetencoesInformada, issPercentual });
     buffer = formato.extensao === "docx" ? await gerarWord(dados) : await gerarExcel(dados);
   }
 

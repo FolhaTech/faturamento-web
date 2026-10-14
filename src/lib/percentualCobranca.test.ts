@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   adiantamentoAtivo,
   calcularCobranca,
+  formatarPercentualBr,
   juntarDeducoes,
   lerAdiantamentosSerializados,
   lerPercentual,
@@ -29,6 +30,21 @@ describe("lerPercentual", () => {
     expect(lerPercentual("abc")).toBeNull();
     expect(lerPercentual("-5")).toBeNull();
     expect(lerPercentual("101")).toBeNull();
+  });
+});
+
+describe("formatarPercentualBr", () => {
+  it("usa vírgula e não inventa casas decimais", () => {
+    expect(formatarPercentualBr(2)).toBe("2%");
+    expect(formatarPercentualBr(5)).toBe("5%");
+    expect(formatarPercentualBr(2.5)).toBe("2,5%");
+    expect(formatarPercentualBr(0)).toBe("0%");
+    expect(formatarPercentualBr(3.456)).toBe("3,46%");
+  });
+
+  it("o texto que a pessoa digita volta igual no rótulo (ex.: 5,5 -> 5,5%)", () => {
+    expect(formatarPercentualBr(lerPercentual("5,5")!)).toBe("5,5%");
+    expect(formatarPercentualBr(lerPercentual("5%")!)).toBe("5%");
   });
 });
 

@@ -1,9 +1,9 @@
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
-import type { RubricaSomada, CcustoResumo } from "../calc/aggregate";
+import { PERCENTUAL_ISS_PADRAO, type RubricaSomada, type CcustoResumo } from "../calc/aggregate";
 import { formatarDataBr } from "../dataBr";
 import { tipoLabel } from "../export/relatorio";
 import { calcularRetencoesSobreCobrado } from "../calc/retencoesCobranca";
-import { calcularCobranca, somarCobranca, type DeducaoColaborador } from "../percentualCobranca";
+import { calcularCobranca, formatarPercentualBr, somarCobranca, type DeducaoColaborador } from "../percentualCobranca";
 
 /** Admissão e rescisão de um colaborador (datas AAAA-MM-DD) pro PDF. */
 export interface VinculoPdf {
@@ -130,17 +130,17 @@ function SummarySection({
   resumo,
   deducoesCobranca,
   baseRetencoesInformada,
-  issInformado,
+  issPercentual,
 }: {
   resumo: CcustoResumo;
   deducoesCobranca: Map<number, DeducaoColaborador>;
   baseRetencoesInformada: number | null;
-  issInformado: number | null;
+  issPercentual: number | null;
 }) {
   const cobranca = somaCobranca(resumo, deducoesCobranca);
   // Com deduções por colaborador as retenções incidem sobre o valor a cobrar, e com base informada à mão sobre ela (não sobre o Total fatura); o líquido sai delas.
-  // Um ISS digitado à mão troca o ISS calculado e entra no total das retenções.
-  const sobre = calcularRetencoesSobreCobrado(resumo, deducoesCobranca, baseRetencoesInformada, issInformado);
+  // Um percentual de ISS digitado à mão troca os 2% padrão e o ISS resultante entra no total das retenções.
+  const sobre = calcularRetencoesSobreCobrado(resumo, deducoesCobranca, baseRetencoesInformada, issPercentual);
   const ret = sobre?.retencoes ?? resumo.retencoes;
   return (
     <View>
@@ -212,7 +212,10 @@ function SummarySection({
             <Text style={styles.summaryValue}>{fmt(ret.pis)}</Text>
           </View>
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>{sobre?.issInformado ? "Retenção ISS (informado)" : "Retenção ISS (2%)"}</Text>
+            <Text style={styles.summaryLabel}>
+              Retenção ISS ({formatarPercentualBr(sobre?.issPercentual ?? PERCENTUAL_ISS_PADRAO)}
+              {sobre?.issInformado ? ", informado" : ""})
+            </Text>
             <Text style={styles.summaryValue}>{fmt(ret.iss)}</Text>
           </View>
           <View style={styles.summaryRow}>
@@ -439,7 +442,7 @@ export function FaturamentoPdf({
   deducoesCobranca = new Map<number, DeducaoColaborador>(),
   colaboradorLabel = null,
   baseRetencoesInformada = null,
-  issInformado = null,
+  issPercentual = null,
   vinculoPorMatricula = new Map<number, VinculoPdf>(),
 }: {
   resumo: CcustoResumo;
@@ -453,8 +456,8 @@ export function FaturamentoPdf({
   colaboradorLabel?: string | null;
   /** Base das retenções (R$) digitada à mão no card do centro de custo — null = a calculada (valor a cobrar ou Total fatura). */
   baseRetencoesInformada?: number | null;
-  /** ISS (R$) digitado à mão no card do centro de custo — null = o ISS calculado. Substitui o calculado e entra no total das retenções e no líquido. */
-  issInformado?: number | null;
+  /** Percentual do ISS (em %) digitado à mão no card do centro de custo — null = o padrão (2%). Entra no total das retenções e no líquido. */
+  issPercentual?: number | null;
   /** Admissão e rescisão de cada colaborador (planilha mensal Empregados em Excel) — colunas da tabela e, no PDF individual, o cabeçalho. */
   vinculoPorMatricula?: Map<number, VinculoPdf>;
 }) {
@@ -490,7 +493,7 @@ export function FaturamentoPdf({
           </View>
         </View>
 
-        <SummarySection resumo={resumo} deducoesCobranca={deducoesCobranca} baseRetencoesInformada={baseRetencoesInformada} issInformado={issInformado} />
+        <SummarySection resumo={resumo} deducoesCobranca={deducoesCobranca} baseRetencoesInformada={baseRetencoesInformada} issPercentual={issPercentual} />
 
         <RubricasSection resumo={resumo} />
         <DescontosSection resumo={resumo} />
