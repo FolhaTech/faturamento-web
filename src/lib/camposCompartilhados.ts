@@ -3,10 +3,10 @@
  * - percentual: % a deduzir da Nota Fiscal de cada colaborador (chave = matrícula);
  * - adiantamento: adiantamento em R$ de cada colaborador (chave = matrícula);
  * - base: base das retenções em R$ de cada centro de custo (chave = código do centro de custo);
- * - inss: valor do INSS em R$ de cada centro de custo, digitado no lugar do calculado (chave = código do centro de custo).
+ * - iss: valor do ISS em R$ de cada centro de custo, digitado no lugar do calculado (chave = código do centro de custo).
  * Cada valor é o texto como foi digitado ("20,5", "1.500,00"); quem usa converte (lerPercentual, lerValorReais).
  */
-export const CAMPOS = ["percentual", "adiantamento", "base", "inss"] as const;
+export const CAMPOS = ["percentual", "adiantamento", "base", "iss"] as const;
 export type Campo = (typeof CAMPOS)[number];
 
 export type Valores = Record<string, string>;
@@ -17,7 +17,7 @@ export function ehCampo(valor: unknown): valor is Campo {
 }
 
 export function camposVazios(): CamposCompartilhados {
-  return { percentual: {}, adiantamento: {}, base: {}, inss: {} };
+  return { percentual: {}, adiantamento: {}, base: {}, iss: {} };
 }
 
 /**

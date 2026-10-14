@@ -76,8 +76,8 @@ export interface EntradaRelatorio {
   colaboradorLabel: string | null;
   /** Base das retenções (R$) digitada à mão no card do centro de custo — null/ausente = a base calculada (valor a cobrar ou Total fatura). */
   baseRetencoesInformada?: number | null;
-  /** INSS (R$) digitado à mão no card do centro de custo — null/ausente = o INSS calculado. Substitui o calculado e entra no total das retenções e no líquido. */
-  inssInformado?: number | null;
+  /** ISS (R$) digitado à mão no card do centro de custo — null/ausente = o ISS calculado. Substitui o calculado e entra no total das retenções e no líquido. */
+  issInformado?: number | null;
   geradoEm?: Date;
 }
 
@@ -256,8 +256,8 @@ export function montarRelatorio(entrada: EntradaRelatorio): RelatorioDados {
   const { resumo, regimeLabel, ccPorMatricula, deducoes, vinculoPorMatricula, colaboradorLabel } = entrada;
   // Com deduções por colaborador (percentual e/ou adiantamento) os tributos incidem sobre o valor a cobrar, e com uma base
   // informada à mão (campo do card) incidem sobre ela — nos dois casos, não sobre o Total fatura inteiro.
-  // Um INSS digitado à mão troca o INSS calculado e entra no total das retenções (e no líquido).
-  const sobre = calcularRetencoesSobreCobrado(resumo, deducoes, entrada.baseRetencoesInformada ?? null, entrada.inssInformado ?? null);
+  // Um ISS digitado à mão troca o ISS calculado e entra no total das retenções (e no líquido).
+  const sobre = calcularRetencoesSobreCobrado(resumo, deducoes, entrada.baseRetencoesInformada ?? null, entrada.issInformado ?? null);
   const temDeducao = resumo.colaboradores.some((c) => deducoes.has(c.matricula));
   const cobranca = temDeducao ? sobre : null;
 
@@ -285,10 +285,9 @@ export function montarRelatorio(entrada: EntradaRelatorio): RelatorioDados {
     { rotulo: "Retenção CSLL (1%)", valor: r.csll },
     { rotulo: "Retenção COFINS (3%)", valor: r.cofins },
     { rotulo: "Retenção PIS (0,65%)", valor: r.pis },
-    { rotulo: "Retenção ISS (2%)", valor: r.iss },
-    // INSS digitado: não há base a mostrar — o valor informado é o que entra no total.
-    ...(sobre?.inssInformado ? [] : [{ rotulo: "Base do INSS (base − VT/VR/VA/Bonif.)", valor: sobre ? sobre.baseInss : resumo.baseRetencaoInss }]),
-    { rotulo: sobre?.inssInformado ? "Retenção INSS (informado)" : "Retenção INSS (11%, s/ VT-VR-VA-Bonif.)", valor: r.inss },
+    { rotulo: sobre?.issInformado ? "Retenção ISS (informado)" : "Retenção ISS (2%)", valor: r.iss },
+    { rotulo: "Base do INSS (base − VT/VR/VA/Bonif.)", valor: sobre ? sobre.baseInss : resumo.baseRetencaoInss },
+    { rotulo: "Retenção INSS (11%, s/ VT-VR-VA-Bonif.)", valor: r.inss },
     { rotulo: "Total das retenções", valor: r.total },
     { rotulo: "Valor líquido a receber", valor: sobre ? sobre.valorLiquido : resumo.valorLiquido, destaque: true },
   ];

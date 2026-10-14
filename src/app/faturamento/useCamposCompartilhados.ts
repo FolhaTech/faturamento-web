@@ -20,7 +20,7 @@ const ATRASO_RETENTAR_MS = 5000;
 const INTERVALO_ATUALIZAR_MS = 20000;
 
 /** Nome do item de localStorage de antes de os valores serem compartilhados (um por competência e campo) — ver recuperarValoresAntigos. */
-const CHAVE_ANTIGA: Record<Campo, string | null> = { percentual: "percentuais-cobranca", adiantamento: "adiantamentos", base: "bases-retencoes", inss: null /* já nasceu compartilhado */ };
+const CHAVE_ANTIGA: Record<Campo, string | null> = { percentual: "percentuais-cobranca", adiantamento: "adiantamentos", base: "bases-retencoes", iss: null /* já nasceu compartilhado */ };
 
 export type EstadoSalvamento = "ok" | "salvando" | "erro";
 

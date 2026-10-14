@@ -113,12 +113,12 @@ export function FaturamentoViewer({
   const setBaseRetencoes = (ccustoCodigoChave: string, novo: string) => compartilhados.alterar("base", ccustoCodigoChave, novo);
   const baseInformadaTexto = resumo ? (basesTexto[resumo.ccustoCodigo] ?? "") : "";
   const baseInformada = adiantamentoAtivo(baseInformadaTexto);
-  // INSS (R$) digitado à mão, por centro de custo (chave = código do centro de custo): substitui o INSS calculado e entra no total das
-  // retenções e no valor líquido. Diferente da base, 0 vale (INSS zerado); só vazio/inválido volta ao calculado.
-  const inssTexto = compartilhados.valores.inss;
-  const setInssInformado = (ccustoCodigoChave: string, novo: string) => compartilhados.alterar("inss", ccustoCodigoChave, novo);
-  const inssInformadoTexto = resumo ? (inssTexto[resumo.ccustoCodigo] ?? "") : "";
-  const inssInformado = lerValorReais(inssInformadoTexto);
+  // ISS (R$) digitado à mão, por centro de custo (chave = código do centro de custo): substitui o ISS calculado e entra no total das
+  // retenções e no valor líquido. Diferente da base, 0 vale (ISS zerado); só vazio/inválido volta ao calculado.
+  const issTexto = compartilhados.valores.iss;
+  const setIssInformado = (ccustoCodigoChave: string, novo: string) => compartilhados.alterar("iss", ccustoCodigoChave, novo);
+  const issInformadoTexto = resumo ? (issTexto[resumo.ccustoCodigo] ?? "") : "";
+  const issInformado = lerValorReais(issInformadoTexto);
   const percentuaisDoCcusto = useMemo(() => {
     const doCcusto = new Set((resumo?.colaboradores ?? []).map((c) => c.matricula));
     const mapa = new Map<number, number>();
@@ -176,7 +176,7 @@ export function FaturamentoViewer({
       filtrosQuery ? `&${filtrosQuery}` : ""
     }&formato=${formato}${deducoesDoCcusto.size > 0 ? `&${paramsDeducoes()}` : ""}${
       baseInformada !== null ? `&baseRetencoes=${encodeURIComponent(String(baseInformada))}` : ""
-    }${inssInformado !== null ? `&inss=${encodeURIComponent(String(inssInformado))}` : ""}`;
+    }${issInformado !== null ? `&iss=${encodeURIComponent(String(issInformado))}` : ""}`;
   }
   const encargosPorCodigo = useMemo(() => new Map(encargos.map((e) => [e.codigo, e])), [encargos]);
   const ccPorMatricula = useMemo(() => new Map(colaboradoresCc.map((c) => [c.matricula, c.cc])), [colaboradoresCc]);
@@ -312,9 +312,9 @@ export function FaturamentoViewer({
             baseInformada={baseInformada}
             baseInformadaTexto={baseInformadaTexto}
             onBaseInformadaChange={(novo) => setBaseRetencoes(resumo.ccustoCodigo, novo)}
-            inssInformado={inssInformado}
-            inssInformadoTexto={inssInformadoTexto}
-            onInssInformadoChange={(novo) => setInssInformado(resumo.ccustoCodigo, novo)}
+            issInformado={issInformado}
+            issInformadoTexto={issInformadoTexto}
+            onIssInformadoChange={(novo) => setIssInformado(resumo.ccustoCodigo, novo)}
           />
           <TomadorCentroCusto
             ccustoNome={resumo.ccustoNome}
@@ -379,9 +379,9 @@ function TotalsCard({
   baseInformada,
   baseInformadaTexto,
   onBaseInformadaChange,
-  inssInformado,
-  inssInformadoTexto,
-  onInssInformadoChange,
+  issInformado,
+  issInformadoTexto,
+  onIssInformadoChange,
 }: {
   resumo: CcustoResumo;
   regimeLabel: string | null;
@@ -395,17 +395,17 @@ function TotalsCard({
   baseInformada: number | null;
   baseInformadaTexto: string;
   onBaseInformadaChange: (novo: string) => void;
-  /** INSS (R$) digitado à mão neste centro de custo (0 vale) — null = usa o calculado. Entra no total das retenções e no valor líquido. */
-  inssInformado: number | null;
-  inssInformadoTexto: string;
-  onInssInformadoChange: (novo: string) => void;
+  /** ISS (R$) digitado à mão neste centro de custo (0 vale) — null = usa o calculado. Entra no total das retenções e no valor líquido. */
+  issInformado: number | null;
+  issInformadoTexto: string;
+  onIssInformadoChange: (novo: string) => void;
 }) {
   // Com deduções por colaborador (percentual + adiantamento), os tributos incidem sobre o VALOR A COBRAR — o que de fato
   // será faturado — e não sobre o Total fatura inteiro; com uma base informada à mão, incidem sobre ela. O líquido é
-  // essa base menos as retenções. Um INSS informado à mão troca o INSS calculado nesse total.
-  const sobre = calcularRetencoesSobreCobrado(resumo, deducoes, baseInformada, inssInformado);
-  // INSS que o sistema calcularia (sem o digitado) — mostrado como referência ao lado do campo.
-  const inssCalculado = (inssInformado === null ? sobre : calcularRetencoesSobreCobrado(resumo, deducoes, baseInformada))?.retencoes.inss ?? resumo.retencoes.inss;
+  // essa base menos as retenções. Um ISS informado à mão troca o ISS calculado nesse total.
+  const sobre = calcularRetencoesSobreCobrado(resumo, deducoes, baseInformada, issInformado);
+  // ISS que o sistema calcularia (sem o digitado) — mostrado como referência ao lado do campo.
+  const issCalculado = (issInformado === null ? sobre : calcularRetencoesSobreCobrado(resumo, deducoes, baseInformada))?.retencoes.iss ?? resumo.retencoes.iss;
   const rows: [string, number, boolean?][] = [
     ["Total de despesas", resumo.totalDespesas],
     ["Taxa administrativa", resumo.taxaAdministrativa],
@@ -424,8 +424,8 @@ function TotalsCard({
             sobre.baseInformada ? "Base das retenções (informada)" : deducoes.size > 0 ? "Base das retenções (= valor a cobrar)" : "Base das retenções (= Total fatura)",
             sobre.baseRetencoes,
           ],
-          ...(sobre.inssInformado ? [] : ([["Base do INSS (base − VT/VR/VA/Bonif.)", sobre.baseInss]] as [string, number, boolean?][])),
-          ...(sobre.inssInformado ? ([["INSS (informado, já somado nas retenções)", -sobre.retencoes.inss]] as [string, number, boolean?][]) : []),
+          ["Base do INSS (base − VT/VR/VA/Bonif.)", sobre.baseInss],
+          ...(sobre.issInformado ? ([["ISS (informado, já somado nas retenções)", -sobre.retencoes.iss]] as [string, number, boolean?][]) : []),
           [
             sobre.baseInformada ? "Retenções na fonte (sobre a base informada)" : deducoes.size > 0 ? "Retenções na fonte (sobre o valor a cobrar)" : "Retenções na fonte",
             -sobre.retencoes.total,
@@ -470,10 +470,10 @@ function TotalsCard({
         texto={baseInformadaTexto}
         invalido={baseInformadaTexto.trim() !== "" && baseInformada === null}
         onChange={onBaseInformadaChange}
-        inssTexto={inssInformadoTexto}
-        inssInvalido={inssInformadoTexto.trim() !== "" && inssInformado === null}
-        inssCalculado={inssCalculado}
-        onInssChange={onInssInformadoChange}
+        issTexto={issInformadoTexto}
+        issInvalido={issInformadoTexto.trim() !== "" && issInformado === null}
+        issCalculado={issCalculado}
+        onIssChange={onIssInformadoChange}
       />
       <CobrancaResumo resumo={resumo} deducoes={deducoes} onLimpar={onLimparDeducoes} />
       {complementar != null && (
@@ -1001,27 +1001,27 @@ function AdiantamentoInput({ texto, invalido, aviso, onChange }: { texto: string
  * Valores digitados à mão para este centro de custo, gravados no banco e iguais pra todos os usuários:
  * - Base das retenções (R$): IRRF, CSLL, COFINS, PIS, ISS e INSS passam a ser calculados sobre ela (e o "Valor líquido a receber"
  *   sai dela). Vazio = a base calculada (valor a cobrar, ou o Total fatura quando não há deduções).
- * - INSS (R$): troca o INSS calculado; o valor digitado entra no total das retenções e, por isso, no valor líquido a receber.
- *   Vazio = o INSS calculado (que aparece ao lado como referência); 0 zera o INSS.
+ * - ISS (R$): troca o ISS calculado (2% da base); o valor digitado entra no total das retenções e, por isso, no valor líquido a receber.
+ *   Vazio = o ISS calculado (que aparece ao lado como referência); 0 zera o ISS.
  * Na tela e nos PDF/Word/Excel.
  */
 function BaseRetencoesInput({
   texto,
   invalido,
   onChange,
-  inssTexto,
-  inssInvalido,
-  inssCalculado,
-  onInssChange,
+  issTexto,
+  issInvalido,
+  issCalculado,
+  onIssChange,
 }: {
   texto: string;
   invalido: boolean;
   onChange: (novo: string) => void;
-  inssTexto: string;
-  inssInvalido: boolean;
-  /** INSS que o sistema calcularia sem o valor digitado — só referência. */
-  inssCalculado: number;
-  onInssChange: (novo: string) => void;
+  issTexto: string;
+  issInvalido: boolean;
+  /** ISS que o sistema calcularia sem o valor digitado — só referência. */
+  issCalculado: number;
+  onIssChange: (novo: string) => void;
 }) {
   return (
     <div className="mt-3 flex flex-col gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2">
@@ -1046,21 +1046,21 @@ function BaseRetencoesInput({
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-xs font-medium text-neutral-600">
-          INSS (R$)
+          ISS (R$)
           <span className="flex items-center gap-1">
             <span className="text-neutral-500">R$</span>
             <input
-              value={inssTexto}
-              onChange={(e) => onInssChange(e.target.value)}
+              value={issTexto}
+              onChange={(e) => onIssChange(e.target.value)}
               inputMode="decimal"
-              placeholder={fmtNumero(inssCalculado)}
-              aria-label="INSS em reais"
-              className={`w-32 rounded-md border px-2 py-1 text-right text-sm font-normal text-neutral-900 ${inssInvalido ? "border-red-400 bg-red-50" : "border-neutral-300 bg-white"}`}
+              placeholder={fmtNumero(issCalculado)}
+              aria-label="ISS em reais"
+              className={`w-32 rounded-md border px-2 py-1 text-right text-sm font-normal text-neutral-900 ${issInvalido ? "border-red-400 bg-red-50" : "border-neutral-300 bg-white"}`}
             />
           </span>
         </label>
         <span className="text-xs text-neutral-500">
-          Opcional. O valor digitado substitui o INSS calculado ({fmt(inssCalculado)}) e é somado nas retenções e no valor líquido a receber; vazio usa o calculado.
+          Opcional. O valor digitado substitui o ISS calculado ({fmt(issCalculado)}) e é somado nas retenções e no valor líquido a receber; vazio usa o calculado.
         </span>
       </div>
     </div>

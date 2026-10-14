@@ -83,7 +83,7 @@ describe("faturasSalvas repo — timeline de fotos congeladas do faturamento, po
   });
 
   it("guarda no banco, junto com a versão, o % a deduzir / adiantamento / base das retenções do momento de salvar", async () => {
-    const campos = { percentual: { "1": "20,5" }, adiantamento: { "1": "1.500,00" }, base: { "10": "9.274,42" }, inss: { "10": "7.234,83" } };
+    const campos = { percentual: { "1": "20,5" }, adiantamento: { "1": "1.500,00" }, base: { "10": "9.274,42" }, iss: { "10": "1.821,73" } };
     const salva = await salvarFatura("01/2026", ALICE, [linha()], [], [], campos);
     expect(salva.campos).toEqual(campos);
 
@@ -98,7 +98,7 @@ describe("faturasSalvas repo — timeline de fotos congeladas do faturamento, po
   });
 
   it("adotar a versão de outra pessoa leva os valores guardados junto; a original continua intacta", async () => {
-    const campos = { percentual: { "1": "30" }, adiantamento: {}, base: {}, inss: {} };
+    const campos = { percentual: { "1": "30" }, adiantamento: {}, base: {}, iss: {} };
     const doBob = await salvarFatura("01/2026", BOB, [linha()], [], [], campos);
 
     const adotada = await adotarFaturaSalva("01/2026", doBob.id, ALICE);

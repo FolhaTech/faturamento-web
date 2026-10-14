@@ -130,17 +130,17 @@ function SummarySection({
   resumo,
   deducoesCobranca,
   baseRetencoesInformada,
-  inssInformado,
+  issInformado,
 }: {
   resumo: CcustoResumo;
   deducoesCobranca: Map<number, DeducaoColaborador>;
   baseRetencoesInformada: number | null;
-  inssInformado: number | null;
+  issInformado: number | null;
 }) {
   const cobranca = somaCobranca(resumo, deducoesCobranca);
   // Com deduções por colaborador as retenções incidem sobre o valor a cobrar, e com base informada à mão sobre ela (não sobre o Total fatura); o líquido sai delas.
-  // Um INSS digitado à mão troca o INSS calculado e entra no total das retenções.
-  const sobre = calcularRetencoesSobreCobrado(resumo, deducoesCobranca, baseRetencoesInformada, inssInformado);
+  // Um ISS digitado à mão troca o ISS calculado e entra no total das retenções.
+  const sobre = calcularRetencoesSobreCobrado(resumo, deducoesCobranca, baseRetencoesInformada, issInformado);
   const ret = sobre?.retencoes ?? resumo.retencoes;
   return (
     <View>
@@ -212,17 +212,15 @@ function SummarySection({
             <Text style={styles.summaryValue}>{fmt(ret.pis)}</Text>
           </View>
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Retenção ISS (2%)</Text>
+            <Text style={styles.summaryLabel}>{sobre?.issInformado ? "Retenção ISS (informado)" : "Retenção ISS (2%)"}</Text>
             <Text style={styles.summaryValue}>{fmt(ret.iss)}</Text>
           </View>
-          {!sobre?.inssInformado && (
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Base do INSS (base − VT/VR/VA/Bonif.)</Text>
-              <Text style={styles.summaryValue}>{fmt(sobre ? sobre.baseInss : resumo.baseRetencaoInss)}</Text>
-            </View>
-          )}
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>{sobre?.inssInformado ? "Retenção INSS (informado)" : "Retenção INSS (11%, s/ VT-VR-VA-Bonif.)"}</Text>
+            <Text style={styles.summaryLabel}>Base do INSS (base − VT/VR/VA/Bonif.)</Text>
+            <Text style={styles.summaryValue}>{fmt(sobre ? sobre.baseInss : resumo.baseRetencaoInss)}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Retenção INSS (11%, s/ VT-VR-VA-Bonif.)</Text>
             <Text style={styles.summaryValue}>{fmt(ret.inss)}</Text>
           </View>
           <View style={styles.summaryRow}>
@@ -441,7 +439,7 @@ export function FaturamentoPdf({
   deducoesCobranca = new Map<number, DeducaoColaborador>(),
   colaboradorLabel = null,
   baseRetencoesInformada = null,
-  inssInformado = null,
+  issInformado = null,
   vinculoPorMatricula = new Map<number, VinculoPdf>(),
 }: {
   resumo: CcustoResumo;
@@ -455,8 +453,8 @@ export function FaturamentoPdf({
   colaboradorLabel?: string | null;
   /** Base das retenções (R$) digitada à mão no card do centro de custo — null = a calculada (valor a cobrar ou Total fatura). */
   baseRetencoesInformada?: number | null;
-  /** INSS (R$) digitado à mão no card do centro de custo — null = o INSS calculado. Substitui o calculado e entra no total das retenções e no líquido. */
-  inssInformado?: number | null;
+  /** ISS (R$) digitado à mão no card do centro de custo — null = o ISS calculado. Substitui o calculado e entra no total das retenções e no líquido. */
+  issInformado?: number | null;
   /** Admissão e rescisão de cada colaborador (planilha mensal Empregados em Excel) — colunas da tabela e, no PDF individual, o cabeçalho. */
   vinculoPorMatricula?: Map<number, VinculoPdf>;
 }) {
@@ -492,7 +490,7 @@ export function FaturamentoPdf({
           </View>
         </View>
 
-        <SummarySection resumo={resumo} deducoesCobranca={deducoesCobranca} baseRetencoesInformada={baseRetencoesInformada} inssInformado={inssInformado} />
+        <SummarySection resumo={resumo} deducoesCobranca={deducoesCobranca} baseRetencoesInformada={baseRetencoesInformada} issInformado={issInformado} />
 
         <RubricasSection resumo={resumo} />
         <DescontosSection resumo={resumo} />

@@ -97,63 +97,66 @@ describe("calcularRetencoesSobreCobrado", () => {
     expect(r.retencoes.inss).toBeCloseTo(resumo.retencoes.inss, 6);
   });
 
-  describe("INSS digitado à mão", () => {
-    it("substitui o INSS calculado e o valor digitado entra na soma das retenções e no valor líquido", () => {
+  describe("ISS digitado à mão", () => {
+    it("substitui o ISS calculado (2% da base) e o valor digitado entra na soma das retenções e no valor líquido", () => {
       const resumo = resumoChama(dois());
       const deducoes = new Map([[1, { percentual: 50, adiantamento: 0 }]]);
       const calculado = calcularRetencoesSobreCobrado(resumo, deducoes)!;
-      const informado = calcularRetencoesSobreCobrado(resumo, deducoes, null, 1000)!;
+      const informado = calcularRetencoesSobreCobrado(resumo, deducoes, null, 100)!;
 
-      expect(calculado.inssInformado).toBe(false);
-      expect(informado.inssInformado).toBe(true);
-      expect(informado.retencoes.inss).toBe(1000);
-      // As demais retenções não mudam; o total troca só o INSS.
+      expect(calculado.issInformado).toBe(false);
+      expect(informado.issInformado).toBe(true);
+      expect(calculado.retencoes.iss).toBeCloseTo(calculado.baseRetencoes * 0.02, 6);
+      expect(informado.retencoes.iss).toBe(100);
+      // As demais retenções (inclusive o INSS) não mudam; o total troca só o ISS.
       expect(informado.retencoes.irrf).toBeCloseTo(calculado.retencoes.irrf, 9);
-      expect(informado.retencoes.iss).toBeCloseTo(calculado.retencoes.iss, 9);
-      expect(informado.retencoes.total).toBeCloseTo(calculado.retencoes.total - calculado.retencoes.inss + 1000, 9);
-      const outras = informado.retencoes.irrf + informado.retencoes.csll + informado.retencoes.cofins + informado.retencoes.pis + informado.retencoes.iss;
-      expect(informado.retencoes.total).toBeCloseTo(outras + 1000, 9);
-      // O líquido sai da base menos as retenções COM o INSS digitado.
+      expect(informado.retencoes.inss).toBeCloseTo(calculado.retencoes.inss, 9);
+      expect(informado.baseInss).toBe(calculado.baseInss);
+      expect(informado.retencoes.total).toBeCloseTo(calculado.retencoes.total - calculado.retencoes.iss + 100, 9);
+      const outras = informado.retencoes.irrf + informado.retencoes.csll + informado.retencoes.cofins + informado.retencoes.pis + informado.retencoes.inss;
+      expect(informado.retencoes.total).toBeCloseTo(outras + 100, 9);
+      // O líquido sai da base menos as retenções COM o ISS digitado.
       expect(informado.valorLiquido).toBe(Math.round((informado.baseRetencoes - informado.retencoes.total) * 100) / 100);
       expect(informado.valorLiquido).not.toBe(calculado.valorLiquido);
     });
 
-    it("INSS maior que o calculado reduz o líquido; menor aumenta", () => {
+    it("ISS maior que o calculado reduz o líquido; menor aumenta", () => {
       const resumo = resumoChama(dois());
       const deducoes = new Map([[1, { percentual: 50, adiantamento: 0 }]]);
       const calculado = calcularRetencoesSobreCobrado(resumo, deducoes)!;
-      const maior = calcularRetencoesSobreCobrado(resumo, deducoes, null, calculado.retencoes.inss + 100)!;
-      const menor = calcularRetencoesSobreCobrado(resumo, deducoes, null, calculado.retencoes.inss - 100)!;
+      const maior = calcularRetencoesSobreCobrado(resumo, deducoes, null, calculado.retencoes.iss + 100)!;
+      const menor = calcularRetencoesSobreCobrado(resumo, deducoes, null, calculado.retencoes.iss - 100)!;
       expect(maior.valorLiquido).toBeCloseTo(calculado.valorLiquido - 100, 1);
       expect(menor.valorLiquido).toBeCloseTo(calculado.valorLiquido + 100, 1);
     });
 
     it("vale sozinho (sem dedução nem base informada): as outras retenções continuam sobre o Total fatura", () => {
       const resumo = resumoChama(dois());
-      const r = calcularRetencoesSobreCobrado(resumo, new Map(), null, 1000)!;
+      const r = calcularRetencoesSobreCobrado(resumo, new Map(), null, 300)!;
       expect(r).not.toBeNull();
       expect(r.baseRetencoes).toBe(resumo.totalFatura);
       expect(r.retencoes.irrf).toBeCloseTo(resumo.retencoes.irrf, 9);
-      expect(r.retencoes.inss).toBe(1000);
-      expect(r.retencoes.total).toBeCloseTo(resumo.retencoes.total - resumo.retencoes.inss + 1000, 9);
+      expect(r.retencoes.inss).toBeCloseTo(resumo.retencoes.inss, 9);
+      expect(r.retencoes.iss).toBe(300);
+      expect(r.retencoes.total).toBeCloseTo(resumo.retencoes.total - resumo.retencoes.iss + 300, 9);
       expect(r.valorLiquido).toBeCloseTo(resumo.totalFatura - r.retencoes.total, 2);
     });
 
-    it("0 é um valor válido (INSS zerado); sem valor informado volta ao calculado", () => {
+    it("0 é um valor válido (ISS zerado); sem valor informado volta ao calculado", () => {
       const resumo = resumoChama(dois());
       const zerado = calcularRetencoesSobreCobrado(resumo, new Map(), null, 0)!;
-      expect(zerado.inssInformado).toBe(true);
-      expect(zerado.retencoes.inss).toBe(0);
-      expect(zerado.retencoes.total).toBeCloseTo(resumo.retencoes.total - resumo.retencoes.inss, 9);
+      expect(zerado.issInformado).toBe(true);
+      expect(zerado.retencoes.iss).toBe(0);
+      expect(zerado.retencoes.total).toBeCloseTo(resumo.retencoes.total - resumo.retencoes.iss, 9);
       expect(calcularRetencoesSobreCobrado(resumo, new Map(), null, null)).toBeNull();
     });
 
-    it("junto com a base informada à mão: a base muda os outros tributos e o INSS digitado entra no total", () => {
+    it("junto com a base informada à mão: a base muda os outros tributos e o ISS digitado entra no total", () => {
       const resumo = resumoChama(dois());
-      const r = calcularRetencoesSobreCobrado(resumo, new Map(), 9274.42, 700)!;
+      const r = calcularRetencoesSobreCobrado(resumo, new Map(), 9274.42, 150)!;
       expect(r.baseRetencoes).toBe(9274.42);
       expect(r.retencoes.irrf).toBeCloseTo(92.7442, 6);
-      expect(r.retencoes.inss).toBe(700);
+      expect(r.retencoes.iss).toBe(150);
       expect(r.valorLiquido).toBeCloseTo(9274.42 - r.retencoes.total, 2);
     });
   });
