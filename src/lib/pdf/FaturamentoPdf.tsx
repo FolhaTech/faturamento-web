@@ -211,6 +211,10 @@ function SummarySection({
             <Text style={styles.summaryValue}>{fmt(ret.iss)}</Text>
           </View>
           <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Base do INSS (base − VT/VR/VA/Bonif.)</Text>
+            <Text style={styles.summaryValue}>{fmt(sobre ? sobre.baseInss : resumo.baseRetencaoInss)}</Text>
+          </View>
+          <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Retenção INSS (11%, s/ VT-VR-VA-Bonif.)</Text>
             <Text style={styles.summaryValue}>{fmt(ret.inss)}</Text>
           </View>

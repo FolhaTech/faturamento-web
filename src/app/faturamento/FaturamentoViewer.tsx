@@ -398,6 +398,7 @@ function TotalsCard({
               ] as [string, number, boolean?][])
             : []),
           [sobre.baseInformada ? "Base das retenções (informada)" : "Base das retenções (= valor a cobrar)", sobre.baseRetencoes],
+          ["Base do INSS (base − VT/VR/VA/Bonif.)", sobre.baseInss],
           [sobre.baseInformada ? "Retenções na fonte (sobre a base informada)" : "Retenções na fonte (sobre o valor a cobrar)", -sobre.retencoes.total],
           ["Valor líquido a receber", sobre.valorLiquido, true],
         ] as [string, number, boolean?][])

@@ -76,16 +76,33 @@ describe("calcularRetencoesSobreCobrado", () => {
     expect(r.baseRetencoes).toBe(10110);
     expect(r.retencoes.irrf).toBeCloseTo(101.1, 6); // 1% de 10.110, não de 18.381,82
     expect(r.retencoes.irrf).toBeLessThan(resumo.retencoes.irrf);
-    expect(r.valorLiquido).toBeCloseTo(10110 - r.retencoes.total, 2);
+    expect(r.valorLiquido).toBe(Math.round((10110 - r.retencoes.total) * 100) / 100); // em centavos
     expect(r.valorLiquido).toBeGreaterThan(resumo.valorLiquido - 8271.82); // antes: líquido do total menos o deduzido
   });
 
-  it("a base do INSS segue a mesma proporção, sem os benefícios (VR) do colaborador", () => {
+  it("o INSS incide sobre o valor a cobrar menos VT/VR/VA/Bonificação (a mesma regra do Total fatura)", () => {
     const resumo = resumoChama(dois());
     const r = calcularRetencoesSobreCobrado(resumo, new Map([[1, { percentual: 50, adiantamento: 0 }]]))!;
-    // colab 1: (9190,91 − 460) × 50% = 4365,455 ; colab 2: 9190,91 − 460 = 8730,91 → 13096,365
-    expect(r.baseInss).toBeCloseTo(13096.365, 1); // exibido em centavos; o INSS abaixo usa a base sem arredondar
-    expect(r.retencoes.inss).toBeCloseTo(13096.365 * 0.11, 2); // 11% da base do INSS (a dedução já vem arredondada em centavos)
+    // valor a cobrar = (9.190,91 − 4.595,46) + 9.190,91 = 13.786,36 − 460 de VR de cada colaborador (920) = 12.866,36
+    expect(r.cobrar).toBe(13786.36);
+    expect(r.baseInss).toBeCloseTo(r.baseRetencoes - 920, 2);
+    expect(r.retencoes.inss).toBeCloseTo((r.baseRetencoes - 920) * 0.11, 6);
+  });
+
+  it("sem dedução nenhuma e sem base informada, nada muda: o cálculo de sempre (Total fatura − VT/VR/VA/Bonif.)", () => {
+    const resumo = resumoChama(dois());
+    // baseRetencaoInss do resumo = total − 920 de VR: com a base igual ao Total fatura a regra nova dá o mesmo INSS.
+    const r = calcularRetencoesSobreCobrado(resumo, new Map(), resumo.totalFatura)!;
+    expect(r.baseInss).toBeCloseTo(resumo.baseRetencaoInss, 2);
+    expect(r.retencoes.inss).toBeCloseTo(resumo.retencoes.inss, 6);
+  });
+
+  it("benefícios maiores que a base positiva zeram o INSS (nunca base de INSS negativa)", () => {
+    const resumo = resumoChama(dois()); // 920 de VR
+    const r = calcularRetencoesSobreCobrado(resumo, new Map(), 500)!;
+    expect(r.baseRetencoes).toBe(500);
+    expect(r.baseInss).toBe(0);
+    expect(r.retencoes.inss).toBe(0);
   });
 
   it("base informada à mão (sem nenhuma dedução): os tributos saem dela, e o líquido é ela menos as retenções", () => {
@@ -95,8 +112,9 @@ describe("calcularRetencoesSobreCobrado", () => {
     expect(r.baseRetencoes).toBe(9274.42);
     expect(r.retencoes.irrf).toBeCloseTo(92.7442, 6); // 1% de 9.274,42 (e não de 18.381,82)
     expect(r.retencoes.cofins).toBeCloseTo(278.2326, 6);
-    // INSS: mesma proporção de benefícios (VR) do centro de custo: 17.461,82 de base sobre 18.381,82.
-    expect(r.baseInss).toBeCloseTo(9274.42 * (17461.82 / 18381.82), 1);
+    // INSS: a base informada menos os 920 de VR do centro de custo.
+    expect(r.baseInss).toBeCloseTo(9274.42 - 920, 2);
+    expect(r.retencoes.inss).toBeCloseTo((9274.42 - 920) * 0.11, 6);
     expect(r.valorLiquido).toBeCloseTo(9274.42 - r.retencoes.total, 2);
     expect(r.deduzido).toBe(0);
   });
@@ -128,20 +146,21 @@ describe("calcularRetencoesSobreCobrado", () => {
     expect(r.valorLiquido).toBeCloseTo(r.cobrar - r.retencoes.total, 2);
   });
 
-  it("Fatura − Adiantamento = A cobrar = Base das retenções (91.086,66 − 91.415,82 = −329,16)", () => {
-    // Dois colaboradores: um fica positivo e o outro negativo (adiantamento maior que a própria NF).
-    const resumo = resumoChama([colaborador(1, 50000), colaborador(2, 41086.66)]);
+  it("caso real (CHAMA LOGISTICA): um colaborador negativo abate dos demais — a base é o valor a cobrar (91.086,66), não a soma só dos positivos (91.415,82)", () => {
+    // Colaborador 1: NF 2.819,42 − adiantamento 3.148,58 = −329,16. Colaborador 2 representa os demais: 91.415,82 a cobrar.
+    const resumo = resumoChama([colaborador(1, 2819.42, [beneficio("VALE REFEICAO FORNECIDO*", 301.6)]), colaborador(2, 100000, [beneficio("VALE TRANSPORTE", 25013.9)])]);
     const r = calcularRetencoesSobreCobrado(
       resumo,
       new Map([
-        [1, { percentual: null, adiantamento: 30000 }], // 50.000,00 − 30.000,00 = 20.000,00
-        [2, { percentual: null, adiantamento: 61415.82 }], // 41.086,66 − 61.415,82 = −20.329,16
+        [1, { percentual: null, adiantamento: 3148.58 }],
+        [2, { percentual: null, adiantamento: 8584.18 }], // 100.000,00 − 8.584,18 = 91.415,82
       ]),
     )!;
-    expect(resumo.totalFatura).toBe(91086.66);
-    expect(r.adiantamentos).toBe(91415.82);
-    expect(r.cobrar).toBe(-329.16);
-    expect(r.baseRetencoes).toBe(-329.16);
-    expect(r.retencoes.irrf).toBeCloseTo(-3.2916, 6);
+    expect(r.cobrar).toBe(91086.66); // 91.415,82 + (−329,16)
+    expect(r.baseRetencoes).toBe(91086.66); // antes saía 91.415,82 (o negativo era ignorado na base)
+    expect(r.retencoes.irrf).toBeCloseTo(910.8666, 4);
+    // INSS: 11% de (91.086,66 − 25.315,50 de VT/VR) = 11% de 65.771,16
+    expect(r.baseInss).toBeCloseTo(65771.16, 2);
+    expect(r.retencoes.inss).toBeCloseTo(65771.16 * 0.11, 6);
   });
 });

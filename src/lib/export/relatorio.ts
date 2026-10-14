@@ -281,6 +281,7 @@ export function montarRelatorio(entrada: EntradaRelatorio): RelatorioDados {
     { rotulo: "Retenção COFINS (3%)", valor: r.cofins },
     { rotulo: "Retenção PIS (0,65%)", valor: r.pis },
     { rotulo: "Retenção ISS (2%)", valor: r.iss },
+    { rotulo: "Base do INSS (base − VT/VR/VA/Bonif.)", valor: sobre ? sobre.baseInss : resumo.baseRetencaoInss },
     { rotulo: "Retenção INSS (11%, s/ VT-VR-VA-Bonif.)", valor: r.inss },
     { rotulo: "Valor líquido a receber", valor: sobre ? sobre.valorLiquido : resumo.valorLiquido, destaque: true },
   ];
