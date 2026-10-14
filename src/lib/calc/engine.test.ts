@@ -699,4 +699,36 @@ describe("runEngine — desconto de saldo de férias/1/3 sobrevive a reenvio de 
     const desconto = lines.find((l) => l.evento === "DESCONTO SALDO DE FÉRIAS");
     expect(desconto!.base).toBe(-150);
   });
+
+  it("aviso prévio preenchido desconta a fatura do colaborador, em linha própria, e também sobrevive ao reenvio", async () => {
+    await replaceMovimentosPorCompetencia(movimentosCompetencia);
+
+    const lancou = await lancarDescontoSaldoFerias({ matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" }, "08/2026", 0, 0, 300);
+    expect(lancou).toBe(true);
+    await replaceMovimentosPorCompetencia(movimentosCompetencia);
+
+    const { lines } = await runEngine(movimentosCompetencia);
+    const aviso = lines.find((l) => l.evento === "DESCONTO AVISO PRÉVIO");
+    expect(aviso).toBeDefined();
+    expect(aviso!.codigo).toBe(900003);
+    expect(aviso!.trilha).toBe("encargos");
+    expect(aviso!.base).toBe(-300);
+    expect(aviso!.fatura).toBeCloseTo(-300 * 1.1, 6); // mesma cadeia do desconto de saldo: taxa adm do Tomador e gross-up
+    expect(aviso!.nf).toBeLessThan(0);
+    // Reduz de verdade a NF do colaborador: o total dele fica menor que a linha do salário sozinha.
+    const doColaborador = lines.filter((l) => l.matricula === 90103392);
+    const salario = doColaborador.find((l) => l.evento === "DIAS NORMAIS")!;
+    expect(doColaborador.reduce((s, l) => s + l.nf, 0)).toBeCloseTo(salario.nf + aviso!.nf, 6);
+    expect(salario.nf + aviso!.nf).toBeLessThan(salario.nf);
+    // Não cria desconto de férias nem de 13º.
+    expect(lines.some((l) => l.evento === "DESCONTO SALDO DE FÉRIAS" || l.evento === "DESCONTO SALDO DE 13° SALÁRIO")).toBe(false);
+  });
+
+  it("aviso prévio 0 ou vazio não lança nada", async () => {
+    await replaceMovimentosPorCompetencia(movimentosCompetencia);
+    const lancou = await lancarDescontoSaldoFerias({ matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" }, "08/2026", 0, 0, 0);
+    expect(lancou).toBe(false);
+    const { lines } = await runEngine(movimentosCompetencia);
+    expect(lines.some((l) => l.evento === "DESCONTO AVISO PRÉVIO")).toBe(false);
+  });
 });

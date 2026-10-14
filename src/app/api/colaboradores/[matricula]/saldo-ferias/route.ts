@@ -9,6 +9,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ matr
   const body = await request.json();
   const saldoFerias = Number(body?.saldoFerias);
   const saldoUmTerco = Number(body?.saldoUmTerco);
+  // Aviso prévio a descontar da fatura NESTA competência (campo opcional: vazio/ausente = 0). Não tem saldo pendente: sem competência não dá pra lançar.
+  const avisoPrevio = body?.avisoPrevio == null || body.avisoPrevio === "" ? 0 : Number(body.avisoPrevio);
   // Competência escolhida na tela (ver seletor em page.tsx) — pra qual o valor digitado vai ser
   // lançado. null quando ainda não há nenhuma competência com Movimentos enviados.
   const competencia = typeof body?.competencia === "string" && body.competencia.trim() !== "" ? body.competencia : null;
@@ -16,14 +18,20 @@ export async function PUT(request: Request, { params }: { params: Promise<{ matr
   if (!Number.isFinite(saldoFerias) || !Number.isFinite(saldoUmTerco)) {
     return NextResponse.json({ error: "Saldo inválido." }, { status: 400 });
   }
+  if (!Number.isFinite(avisoPrevio) || avisoPrevio < 0) {
+    return NextResponse.json({ error: "Valor do aviso prévio inválido." }, { status: 400 });
+  }
+  if (avisoPrevio > 0 && competencia === null) {
+    return NextResponse.json({ error: "Escolha uma competência para lançar o aviso prévio." }, { status: 400 });
+  }
 
   const colaboradorAtual = await getColaborador(Number(matricula));
   if (!colaboradorAtual) return NextResponse.json({ error: "Colaborador não encontrado." }, { status: 404 });
 
   try {
-    const podeLancar = competencia !== null && (saldoFerias > 0 || saldoUmTerco > 0);
+    const podeLancar = competencia !== null && (saldoFerias > 0 || saldoUmTerco > 0 || avisoPrevio > 0);
     if (podeLancar) {
-      await lancarDescontoSaldoFerias(colaboradorAtual, competencia, saldoFerias, saldoUmTerco);
+      await lancarDescontoSaldoFerias(colaboradorAtual, competencia, saldoFerias, saldoUmTerco, avisoPrevio);
     }
 
     // Lançou como desconto: o campo zera sozinho. Sem competência escolhida (ou nada a lançar):

@@ -55,11 +55,11 @@ export default async function EditarColaboradorPage({
   const competencias = (await listCompetencias()).filter((c) => c.trim() !== "");
   const meses = agruparPorMes(competencias);
   const competenciaAtual = sp.competencia ?? competencias[0] ?? null;
-  // Desconto de saldo (férias/13° salário) já lançado NESSA competência específica — cada mês
+  // Desconto de saldo (férias/13° salário) e de aviso prévio já lançado NESSA competência específica — cada mês
   // mostra o próprio valor, sem se misturar com os outros (ver descontosSaldo.ts).
   const descontoNaCompetencia = competenciaAtual
     ? await getDescontoSaldoPorMatriculaECompetencia(colaborador.matricula, competenciaAtual)
-    : { ferias: 0, terco: 0 };
+    : { ferias: 0, terco: 0, aviso: 0 };
   // Histórico completo (todos os meses, não só o selecionado) — base pra rescisão.
   const provisoesMensais = await listProvisoesMensaisPorMatricula(colaborador.matricula);
   // Todo desconto de saldo já lançado (qualquer competência) — abate do acumulado da Rescisão,
@@ -88,6 +88,7 @@ export default async function EditarColaboradorPage({
         competenciaAtual={competenciaAtual}
         descontoFeriasNaCompetencia={descontoNaCompetencia.ferias}
         descontoUmTercoNaCompetencia={descontoNaCompetencia.terco}
+        descontoAvisoPrevioNaCompetencia={descontoNaCompetencia.aviso}
       />
       <RescisaoCard matricula={colaborador.matricula} provisoes={provisoesMensais} descontos={descontosSaldoTodos} />
       <ColaboradorForm matricula={colaborador.matricula} initialDados={colaborador.dados} />

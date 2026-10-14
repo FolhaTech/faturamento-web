@@ -6,7 +6,7 @@ import { listInformativas } from "../repo/informativas";
 import { listTomadores } from "../repo/tomadores";
 import { normalizaTexto } from "../text";
 import type { Colaborador, Encargo, GrossUpOperacao, Movimento, TipoEvento, Tomador } from "../types";
-import { CODIGO_DESCONTO_SALDO_FERIAS, CODIGO_DESCONTO_SALDO_UM_TERCO } from "./descontoSaldoFerias";
+import { CODIGO_DESCONTO_SALDO_FERIAS, CODIGO_DESCONTO_SALDO_UM_TERCO, eventoDoDescontoSaldo } from "./descontoSaldoFerias";
 
 /**
  * Percentual de tributação padrão da Nota Fiscal (PIS 1,65% + COFINS 7,6% + ISS 2% + CSLL 1% +
@@ -725,7 +725,7 @@ function generatePlrCharges(movimentos: Movimento[], ctx: EngineContext): Calcul
 
 /**
  * Para cada competência presente em Movimentos, gera a linha de desconto de saldo de férias/1/3
- * lançado manualmente na tela do colaborador (ver descontoSaldoFerias.ts), lendo de
+ * (e de aviso prévio) lançado manualmente na tela do colaborador (ver descontoSaldoFerias.ts), lendo de
  * descontos_saldo em vez de esperar uma linha física em Movimentos — por isso o desconto
  * continua sendo cobrado mesmo depois de reenviar o arquivo daquela competência (que substitui
  * as linhas de Movimentos, mas não mexe em descontos_saldo). Mesma cadeia de cálculo do desconto
@@ -754,8 +754,7 @@ async function generateDescontoSaldoFeriasCharges(movimentos: Movimento[], ctx: 
     if (!tomador || tomador.pendente) continue;
     const ccusto = getCcusto(colaborador);
 
-    const codigo = d.tipo === "ferias" ? CODIGO_DESCONTO_SALDO_FERIAS : CODIGO_DESCONTO_SALDO_UM_TERCO;
-    const evento = d.tipo === "ferias" ? "DESCONTO SALDO DE FÉRIAS" : "DESCONTO SALDO DE 13° SALÁRIO";
+    const { codigo, evento } = eventoDoDescontoSaldo(d.tipo);
 
     const base = d.valor;
     const taxaAdmValor = base * tomador.taxaAdm;

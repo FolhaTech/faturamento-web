@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { lerValorReais } from "@/lib/percentualCobranca";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 function fmt(n: number): string {
@@ -15,6 +16,7 @@ export function SaldoFeriasCard({
   competenciaAtual,
   descontoFeriasNaCompetencia,
   descontoUmTercoNaCompetencia,
+  descontoAvisoPrevioNaCompetencia,
 }: {
   matricula: number;
   saldoFeriasInicial: number;
@@ -24,10 +26,12 @@ export function SaldoFeriasCard({
   /** Quanto já foi lançado como desconto NESSA competência específica (ver descontosSaldo.ts) — cada mês com o próprio valor, sem se misturar com os outros. */
   descontoFeriasNaCompetencia: number;
   descontoUmTercoNaCompetencia: number;
+  descontoAvisoPrevioNaCompetencia: number;
 }) {
   const router = useRouter();
   const [valorFerias, setValorFerias] = useState(String(saldoFeriasInicial));
   const [valorUmTerco, setValorUmTerco] = useState(String(saldoUmTercoInicial));
+  const [valorAviso, setValorAviso] = useState("0");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -38,19 +42,24 @@ export function SaldoFeriasCard({
     const saldoFerias = Number(valorFerias.replace(",", "."));
     const saldoUmTerco = Number(valorUmTerco.replace(",", "."));
     if (!Number.isFinite(saldoFerias) || !Number.isFinite(saldoUmTerco)) return setError("Valor inválido.");
+    // Aviso prévio aceita "1500", "1.500,50" ou "R$ 1.500,50"; vazio = 0.
+    const avisoPrevio = valorAviso.trim() === "" ? 0 : lerValorReais(valorAviso);
+    if (avisoPrevio === null) return setError("Valor do aviso prévio inválido.");
+    if (avisoPrevio > 0 && !competenciaAtual) return setError("Escolha uma competência para lançar o aviso prévio.");
 
     setBusy(true);
     try {
       const res = await fetch(`/api/colaboradores/${matricula}/saldo-ferias`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ saldoFerias, saldoUmTerco, competencia: competenciaAtual }),
+        body: JSON.stringify({ saldoFerias, saldoUmTerco, avisoPrevio, competencia: competenciaAtual }),
       });
       const data = await res.json();
       if (!res.ok) return setError(data.error ?? "Falha ao salvar.");
 
       setValorFerias(String(data.colaborador.saldoFerias));
       setValorUmTerco(String(data.colaborador.saldoUmTerco));
+      setValorAviso("0");
       if (data.competenciaAplicada) {
         setInfo(`Lançado como desconto na fatura da competência ${data.competenciaAplicada}. Os campos voltaram a 0.`);
       } else if (saldoFerias > 0 || saldoUmTerco > 0) {
@@ -70,11 +79,33 @@ export function SaldoFeriasCard({
     }
   }
 
-  const temDescontoNaCompetencia = descontoFeriasNaCompetencia > 0 || descontoUmTercoNaCompetencia > 0;
+  async function removerAviso() {
+    if (!competenciaAtual) return;
+    setError(null);
+    setInfo(null);
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/colaboradores/${matricula}/aviso-previo`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ competencia: competenciaAtual }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return setError(data.error ?? "Falha ao remover.");
+      setInfo(`Aviso prévio removido da fatura da competência ${competenciaAtual}.`);
+      router.refresh();
+    } catch {
+      setError("Falha de rede ao remover.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const temDescontoNaCompetencia = descontoFeriasNaCompetencia > 0 || descontoUmTercoNaCompetencia > 0 || descontoAvisoPrevioNaCompetencia > 0;
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 bg-white p-4">
-      <h2 className="text-sm font-semibold text-neutral-900">Desconto de saldo de férias e de 13° salário</h2>
+      <h2 className="text-sm font-semibold text-neutral-900">Desconto de saldo de férias, de 13° salário e de aviso prévio</h2>
       <p className="text-xs text-neutral-500">
         Preencha um valor e salve para lançá-lo como desconto (crédito) na fatura da competência
         {competenciaAtual ? ` ${competenciaAtual}` : " selecionada acima"} — reduz o total cobrado do tomador
@@ -89,9 +120,15 @@ export function SaldoFeriasCard({
           {[
             descontoFeriasNaCompetencia > 0 ? `férias ${fmt(descontoFeriasNaCompetencia)}` : null,
             descontoUmTercoNaCompetencia > 0 ? `13° salário ${fmt(descontoUmTercoNaCompetencia)}` : null,
+            descontoAvisoPrevioNaCompetencia > 0 ? `aviso prévio ${fmt(descontoAvisoPrevioNaCompetencia)}` : null,
           ]
             .filter(Boolean)
             .join(" · ")}
+          {descontoAvisoPrevioNaCompetencia > 0 && (
+            <button type="button" onClick={removerAviso} disabled={busy} className="ml-2 underline hover:text-emerald-900 disabled:opacity-50">
+              remover aviso prévio
+            </button>
+          )}
         </p>
       )}
       <div className="flex flex-wrap items-end gap-3">
@@ -108,6 +145,14 @@ export function SaldoFeriasCard({
           <input
             value={valorUmTerco}
             onChange={(e) => setValorUmTerco(e.target.value)}
+            className="w-40 rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-mono"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium text-neutral-500">
+          Desconto de aviso prévio
+          <input
+            value={valorAviso}
+            onChange={(e) => setValorAviso(e.target.value)}
             className="w-40 rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-mono"
           />
         </label>

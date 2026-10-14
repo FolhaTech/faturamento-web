@@ -1,12 +1,22 @@
 import { ensureSchema, getDb } from "../db";
 import type { TipoSaldoFerias } from "../types";
 
+/**
+ * O que um desconto lançado na fatura de um colaborador pode ser: saldo de férias, saldo de 13º salário ou aviso prévio. Férias e
+ * 13º têm saldo e provisão próprios (TipoSaldoFerias) e entram na Rescisão; o aviso prévio é só um valor digitado que reduz a fatura
+ * daquela competência — não tem saldo nem provisão, então fica fora da Rescisão e dos acumulados.
+ */
+export type TipoDescontoSaldo = TipoSaldoFerias | "aviso";
+
 export interface DescontoSaldo {
   matricula: number;
   competencia: string;
-  tipo: TipoSaldoFerias;
+  tipo: TipoDescontoSaldo;
   valor: number;
 }
+
+/** Só os descontos de férias e 13º — os que entram na Rescisão (ver listDescontosSaldoPorMatricula). */
+export type DescontoProvisao = DescontoSaldo & { tipo: TipoSaldoFerias };
 
 interface Row {
   matricula: number;
@@ -16,7 +26,7 @@ interface Row {
 }
 
 function toDescontoSaldo(row: Row): DescontoSaldo {
-  return { matricula: row.matricula, competencia: row.competencia, tipo: row.tipo as TipoSaldoFerias, valor: row.valor };
+  return { matricula: row.matricula, competencia: row.competencia, tipo: row.tipo as TipoDescontoSaldo, valor: row.valor };
 }
 
 /**
@@ -24,7 +34,7 @@ function toDescontoSaldo(row: Row): DescontoSaldo {
  * — salvar de novo pra mesma competência acumula em vez de substituir, igual ao comportamento
  * antigo de inserir uma linha avulsa nova a cada "Salvar" (ver descontoSaldoFerias.ts).
  */
-export async function upsertDescontoSaldo(matricula: number, competencia: string, tipo: TipoSaldoFerias, valor: number): Promise<void> {
+export async function upsertDescontoSaldo(matricula: number, competencia: string, tipo: TipoDescontoSaldo, valor: number): Promise<void> {
   await ensureSchema();
   await getDb()`
     INSERT INTO descontos_saldo (matricula, competencia, tipo, valor)
@@ -39,7 +49,7 @@ export async function upsertDescontoSaldo(matricula: number, competencia: string
  * ao contrário de upsertDescontoSaldo (que acumula, pro fluxo normal de "Salvar" em
  * SaldoFeriasCard). `valorAbsoluto` <= 0 apaga a linha em vez de gravar 0.
  */
-export async function setDescontoSaldo(matricula: number, competencia: string, tipo: TipoSaldoFerias, valorAbsoluto: number): Promise<void> {
+export async function setDescontoSaldo(matricula: number, competencia: string, tipo: TipoDescontoSaldo, valorAbsoluto: number): Promise<void> {
   await ensureSchema();
   const sql = getDb();
   if (valorAbsoluto <= 0) {
@@ -53,10 +63,10 @@ export async function setDescontoSaldo(matricula: number, competencia: string, t
   `;
 }
 
-/** Apaga os dois lançamentos (férias e 13º) dessa matrícula+competência — usado pra EXCLUIR uma linha inteira da Rescisão (ver DescontoLancadoTable.tsx). */
+/** Apaga os dois lançamentos (férias e 13º) dessa matrícula+competência — usado pra EXCLUIR uma linha inteira da Rescisão (ver DescontoLancadoTable.tsx). O aviso prévio da mesma competência não é da Rescisão e fica. */
 export async function deleteDescontoSaldoPorCompetencia(matricula: number, competencia: string): Promise<void> {
   await ensureSchema();
-  await getDb()`DELETE FROM descontos_saldo WHERE matricula = ${matricula} AND competencia = ${competencia}`;
+  await getDb()`DELETE FROM descontos_saldo WHERE matricula = ${matricula} AND competencia = ${competencia} AND tipo IN ('ferias', 'terco')`;
 }
 
 /** Descontos lançados para qualquer das competências dadas — usado pelo motor de cálculo (ver generateDescontoSaldoFeriasCharges em engine.ts). */
@@ -79,27 +89,28 @@ export async function listDescontosSaldoPorMatriculas(matriculas: number[]): Pro
 }
 
 /**
- * Todo desconto de saldo já lançado pra essa matrícula, em qualquer competência — usado pra
- * abater da Rescisão (ver RescisaoCard.tsx): esse valor já foi pago/quitado com o colaborador
+ * Todo desconto de saldo de férias e 13º já lançado pra essa matrícula, em qualquer competência — usado
+ * pra abater da Rescisão (ver RescisaoCard.tsx): esse valor já foi pago/quitado com o colaborador
  * (reduziu a fatura do tomador naquele mês), então tem que sair do acumulado de Prov
  * Férias/13º, senão a Rescisão mostraria como "ainda devendo" um valor que já foi pago.
+ * O aviso prévio não entra: não tem provisão pra abater.
  */
-export async function listDescontosSaldoPorMatricula(matricula: number): Promise<DescontoSaldo[]> {
+export async function listDescontosSaldoPorMatricula(matricula: number): Promise<DescontoProvisao[]> {
   await ensureSchema();
-  const rows = await getDb()<Row[]>`SELECT * FROM descontos_saldo WHERE matricula = ${matricula} ORDER BY competencia`;
-  return rows.map(toDescontoSaldo);
+  const rows = await getDb()<Row[]>`SELECT * FROM descontos_saldo WHERE matricula = ${matricula} AND tipo IN ('ferias', 'terco') ORDER BY competencia`;
+  return rows.map((row) => toDescontoSaldo(row) as DescontoProvisao);
 }
 
 /**
- * Quanto já foi lançado como desconto (férias e 13° salário, separados) dessa matrícula NESSA
- * competência específica — cada mês tem seu próprio valor, sem se misturar com outros meses (ver
+ * Quanto já foi lançado como desconto (férias, 13° salário e aviso prévio, separados) dessa matrícula
+ * NESSA competência específica — cada mês tem seu próprio valor, sem se misturar com outros meses (ver
  * tela do colaborador). Valor sempre positivo pra exibição (o que fica gravado em
  * `descontos_saldo` é negativo, um crédito). 0 quando nada foi lançado ainda nesse mês.
  */
-export async function getDescontoSaldoPorMatriculaECompetencia(matricula: number, competencia: string): Promise<{ ferias: number; terco: number }> {
+export async function getDescontoSaldoPorMatriculaECompetencia(matricula: number, competencia: string): Promise<Record<TipoDescontoSaldo, number>> {
   await ensureSchema();
   const rows = await getDb()<Row[]>`SELECT * FROM descontos_saldo WHERE matricula = ${matricula} AND competencia = ${competencia}`;
-  const porTipo = { ferias: 0, terco: 0 };
+  const porTipo: Record<TipoDescontoSaldo, number> = { ferias: 0, terco: 0, aviso: 0 };
   for (const row of rows) {
     const d = toDescontoSaldo(row);
     porTipo[d.tipo] = Math.abs(d.valor);
