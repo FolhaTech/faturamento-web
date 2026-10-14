@@ -14,7 +14,7 @@ import { getColaboradoresPorMatriculas, listValoresDistintosDados } from "@/lib/
 import { CHAVE_PLR_CELETISTA, getConfigNumero } from "@/lib/repo/configuracoes";
 import { listEncargos } from "@/lib/repo/encargos";
 import { listTomadores } from "@/lib/repo/tomadores";
-import { SEM_RESUMO, type ProvisaoColaborador } from "./DescontoProvisaoColaborador";
+import { SEM_AVISO_PREVIO, SEM_RESUMO, type ProvisaoColaborador } from "./DescontoProvisaoColaborador";
 import { FaturaTimeline } from "./FaturaTimeline";
 import { FaturamentoViewer } from "./FaturamentoViewer";
 import type { TomadorOpcao } from "./RegimeColaborador";
@@ -159,11 +159,14 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
       listarAcumuladoLiquido(matriculasNaTela, competenciaAtual),
       listDescontosSaldoPorCompetencias([competenciaAtual]),
     ]);
-    const aplicados = new Set(descontosDaCompetencia.filter((d) => d.valor !== 0).map((d) => `${d.matricula}:${d.tipo}`));
+    // Aviso prévio em "Não" (aplicado = false) continua guardado, mas não conta como lançado na fatura.
+    const aplicados = new Set(descontosDaCompetencia.filter((d) => d.valor !== 0 && d.aplicado).map((d) => `${d.matricula}:${d.tipo}`));
+    const avisoPorMatricula = new Map(descontosDaCompetencia.filter((d) => d.tipo === "aviso" && d.valor !== 0).map((d) => [d.matricula, { valor: Math.abs(d.valor), aplicado: d.aplicado }]));
     colaboradoresProvisao = matriculasNaTela.map((matricula) => ({
       matricula,
       aplicadoFerias: aplicados.has(`${matricula}:ferias`),
       aplicado13: aplicados.has(`${matricula}:terco`),
+      avisoPrevio: avisoPorMatricula.get(matricula) ?? SEM_AVISO_PREVIO,
       ferias: acumulados.get(matricula)?.ferias ?? SEM_RESUMO,
       decimoTerceiro: acumulados.get(matricula)?.terco ?? SEM_RESUMO,
     }));

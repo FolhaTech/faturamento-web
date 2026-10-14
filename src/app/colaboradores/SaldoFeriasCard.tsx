@@ -17,6 +17,7 @@ export function SaldoFeriasCard({
   descontoFeriasNaCompetencia,
   descontoUmTercoNaCompetencia,
   descontoAvisoPrevioNaCompetencia,
+  avisoPrevioAplicado,
 }: {
   matricula: number;
   saldoFeriasInicial: number;
@@ -27,6 +28,8 @@ export function SaldoFeriasCard({
   descontoFeriasNaCompetencia: number;
   descontoUmTercoNaCompetencia: number;
   descontoAvisoPrevioNaCompetencia: number;
+  /** false = o aviso prévio lançado está em "Não" no Faturamento: guardado, mas fora da fatura. */
+  avisoPrevioAplicado: boolean;
 }) {
   const router = useRouter();
   const [valorFerias, setValorFerias] = useState(String(saldoFeriasInicial));
@@ -120,7 +123,9 @@ export function SaldoFeriasCard({
           {[
             descontoFeriasNaCompetencia > 0 ? `férias ${fmt(descontoFeriasNaCompetencia)}` : null,
             descontoUmTercoNaCompetencia > 0 ? `13° salário ${fmt(descontoUmTercoNaCompetencia)}` : null,
-            descontoAvisoPrevioNaCompetencia > 0 ? `aviso prévio ${fmt(descontoAvisoPrevioNaCompetencia)}` : null,
+            descontoAvisoPrevioNaCompetencia > 0
+              ? `aviso prévio ${fmt(descontoAvisoPrevioNaCompetencia)}${avisoPrevioAplicado ? "" : " (fora da fatura: Não no Faturamento)"}`
+              : null,
           ]
             .filter(Boolean)
             .join(" · ")}

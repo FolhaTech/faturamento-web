@@ -741,7 +741,8 @@ async function generateDescontoSaldoFeriasCharges(movimentos: Movimento[], ctx: 
   const competencias = [...new Set(movimentos.map((m) => m.competencia))];
   if (competencias.length === 0) return [];
 
-  const descontos = (await listDescontosSaldoPorCompetencias(competencias)).filter((d) => d.valor !== 0);
+  // Aviso prévio em "Não" no Faturamento (aplicado = false) fica guardado, mas não é cobrado.
+  const descontos = (await listDescontosSaldoPorCompetencias(competencias)).filter((d) => d.valor !== 0 && d.aplicado);
   if (descontos.length === 0) return [];
 
   const colaboradoresPorMatricula = await getColaboradoresPorMatriculas(descontos.map((d) => d.matricula));

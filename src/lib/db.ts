@@ -128,6 +128,9 @@ CREATE TABLE IF NOT EXISTS descontos_saldo (
   valor DOUBLE PRECISION NOT NULL DEFAULT 0,
   PRIMARY KEY (matricula, competencia, tipo)
 );
+-- aplicado = false guarda o valor mas NÃO o cobra na fatura (botão "Não" do aviso prévio no Faturamento): o "Sim" volta a aplicá-lo sem
+-- precisar digitar de novo. Férias e 13º nunca ficam com false (o "Não" deles apaga a linha — o valor é recalculado das provisões).
+ALTER TABLE descontos_saldo ADD COLUMN IF NOT EXISTS aplicado BOOLEAN NOT NULL DEFAULT true;
 
 -- Foto congelada do faturamento de uma competência (ver faturasSalvas.ts) — guarda o resultado
 -- inteiro do motor (CalculatedLine[] + warnings) já com os ajustes manuais em vigor no momento

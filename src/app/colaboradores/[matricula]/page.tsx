@@ -59,7 +59,7 @@ export default async function EditarColaboradorPage({
   // mostra o próprio valor, sem se misturar com os outros (ver descontosSaldo.ts).
   const descontoNaCompetencia = competenciaAtual
     ? await getDescontoSaldoPorMatriculaECompetencia(colaborador.matricula, competenciaAtual)
-    : { ferias: 0, terco: 0, aviso: 0 };
+    : { ferias: 0, terco: 0, aviso: 0, avisoAplicado: true };
   // Histórico completo (todos os meses, não só o selecionado) — base pra rescisão.
   const provisoesMensais = await listProvisoesMensaisPorMatricula(colaborador.matricula);
   // Todo desconto de saldo já lançado (qualquer competência) — abate do acumulado da Rescisão,
@@ -89,6 +89,7 @@ export default async function EditarColaboradorPage({
         descontoFeriasNaCompetencia={descontoNaCompetencia.ferias}
         descontoUmTercoNaCompetencia={descontoNaCompetencia.terco}
         descontoAvisoPrevioNaCompetencia={descontoNaCompetencia.aviso}
+        avisoPrevioAplicado={descontoNaCompetencia.avisoAplicado}
       />
       <RescisaoCard matricula={colaborador.matricula} provisoes={provisoesMensais} descontos={descontosSaldoTodos} />
       <ColaboradorForm matricula={colaborador.matricula} initialDados={colaborador.dados} />

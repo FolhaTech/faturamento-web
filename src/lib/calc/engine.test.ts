@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { resetDbForTests } from "../db";
 import { upsertColaborador } from "../repo/colaboradores";
 import { upsertEncargo } from "../repo/encargos";
+import { definirAvisoPrevioAplicado } from "../repo/descontosSaldo";
 import { createInformativa } from "../repo/informativas";
 import { replaceMovimentosPorCompetencia } from "../repo/movimentos";
 import { upsertTomador, upsertTomadoresPendentes } from "../repo/tomadores";
@@ -722,6 +723,36 @@ describe("runEngine — desconto de saldo de férias/1/3 sobrevive a reenvio de 
     expect(salario.nf + aviso!.nf).toBeLessThan(salario.nf);
     // Não cria desconto de férias nem de 13º.
     expect(lines.some((l) => l.evento === "DESCONTO SALDO DE FÉRIAS" || l.evento === "DESCONTO SALDO DE 13° SALÁRIO")).toBe(false);
+  });
+
+  it("Sim/Não do aviso prévio no Faturamento: Não tira da fatura guardando o valor; Sim volta a cobrar", async () => {
+    await replaceMovimentosPorCompetencia(movimentosCompetencia);
+    const colaborador = { matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" };
+    await lancarDescontoSaldoFerias(colaborador, "08/2026", 0, 0, 300);
+
+    // Não: fora da fatura, mas o valor continua guardado (devolvido ao ligar de novo).
+    expect(await definirAvisoPrevioAplicado(colaborador.matricula, "08/2026", false)).toBe(300);
+    let { lines } = await runEngine(movimentosCompetencia);
+    expect(lines.some((l) => l.evento === "DESCONTO AVISO PRÉVIO")).toBe(false);
+
+    // Sim: volta a descontar o mesmo valor, sem digitar de novo.
+    expect(await definirAvisoPrevioAplicado(colaborador.matricula, "08/2026", true)).toBe(300);
+    ({ lines } = await runEngine(movimentosCompetencia));
+    expect(lines.find((l) => l.evento === "DESCONTO AVISO PRÉVIO")!.base).toBe(-300);
+
+    // Sem aviso prévio lançado na competência não há o que ligar: devolve 0.
+    expect(await definirAvisoPrevioAplicado(colaborador.matricula, "09/2026", true)).toBe(0);
+  });
+
+  it("lançar de novo o aviso prévio (que estava em Não) volta a aplicá-lo e acumula o valor", async () => {
+    await replaceMovimentosPorCompetencia(movimentosCompetencia);
+    const colaborador = { matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" };
+    await lancarDescontoSaldoFerias(colaborador, "08/2026", 0, 0, 100);
+    await definirAvisoPrevioAplicado(colaborador.matricula, "08/2026", false);
+    await lancarDescontoSaldoFerias(colaborador, "08/2026", 0, 0, 50);
+
+    const { lines } = await runEngine(movimentosCompetencia);
+    expect(lines.find((l) => l.evento === "DESCONTO AVISO PRÉVIO")!.base).toBe(-150);
   });
 
   it("aviso prévio 0 ou vazio não lança nada", async () => {
