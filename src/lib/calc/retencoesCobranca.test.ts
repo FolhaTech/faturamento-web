@@ -97,6 +97,67 @@ describe("calcularRetencoesSobreCobrado", () => {
     expect(r.retencoes.inss).toBeCloseTo(resumo.retencoes.inss, 6);
   });
 
+  describe("INSS digitado à mão", () => {
+    it("substitui o INSS calculado e o valor digitado entra na soma das retenções e no valor líquido", () => {
+      const resumo = resumoChama(dois());
+      const deducoes = new Map([[1, { percentual: 50, adiantamento: 0 }]]);
+      const calculado = calcularRetencoesSobreCobrado(resumo, deducoes)!;
+      const informado = calcularRetencoesSobreCobrado(resumo, deducoes, null, 1000)!;
+
+      expect(calculado.inssInformado).toBe(false);
+      expect(informado.inssInformado).toBe(true);
+      expect(informado.retencoes.inss).toBe(1000);
+      // As demais retenções não mudam; o total troca só o INSS.
+      expect(informado.retencoes.irrf).toBeCloseTo(calculado.retencoes.irrf, 9);
+      expect(informado.retencoes.iss).toBeCloseTo(calculado.retencoes.iss, 9);
+      expect(informado.retencoes.total).toBeCloseTo(calculado.retencoes.total - calculado.retencoes.inss + 1000, 9);
+      const outras = informado.retencoes.irrf + informado.retencoes.csll + informado.retencoes.cofins + informado.retencoes.pis + informado.retencoes.iss;
+      expect(informado.retencoes.total).toBeCloseTo(outras + 1000, 9);
+      // O líquido sai da base menos as retenções COM o INSS digitado.
+      expect(informado.valorLiquido).toBe(Math.round((informado.baseRetencoes - informado.retencoes.total) * 100) / 100);
+      expect(informado.valorLiquido).not.toBe(calculado.valorLiquido);
+    });
+
+    it("INSS maior que o calculado reduz o líquido; menor aumenta", () => {
+      const resumo = resumoChama(dois());
+      const deducoes = new Map([[1, { percentual: 50, adiantamento: 0 }]]);
+      const calculado = calcularRetencoesSobreCobrado(resumo, deducoes)!;
+      const maior = calcularRetencoesSobreCobrado(resumo, deducoes, null, calculado.retencoes.inss + 100)!;
+      const menor = calcularRetencoesSobreCobrado(resumo, deducoes, null, calculado.retencoes.inss - 100)!;
+      expect(maior.valorLiquido).toBeCloseTo(calculado.valorLiquido - 100, 1);
+      expect(menor.valorLiquido).toBeCloseTo(calculado.valorLiquido + 100, 1);
+    });
+
+    it("vale sozinho (sem dedução nem base informada): as outras retenções continuam sobre o Total fatura", () => {
+      const resumo = resumoChama(dois());
+      const r = calcularRetencoesSobreCobrado(resumo, new Map(), null, 1000)!;
+      expect(r).not.toBeNull();
+      expect(r.baseRetencoes).toBe(resumo.totalFatura);
+      expect(r.retencoes.irrf).toBeCloseTo(resumo.retencoes.irrf, 9);
+      expect(r.retencoes.inss).toBe(1000);
+      expect(r.retencoes.total).toBeCloseTo(resumo.retencoes.total - resumo.retencoes.inss + 1000, 9);
+      expect(r.valorLiquido).toBeCloseTo(resumo.totalFatura - r.retencoes.total, 2);
+    });
+
+    it("0 é um valor válido (INSS zerado); sem valor informado volta ao calculado", () => {
+      const resumo = resumoChama(dois());
+      const zerado = calcularRetencoesSobreCobrado(resumo, new Map(), null, 0)!;
+      expect(zerado.inssInformado).toBe(true);
+      expect(zerado.retencoes.inss).toBe(0);
+      expect(zerado.retencoes.total).toBeCloseTo(resumo.retencoes.total - resumo.retencoes.inss, 9);
+      expect(calcularRetencoesSobreCobrado(resumo, new Map(), null, null)).toBeNull();
+    });
+
+    it("junto com a base informada à mão: a base muda os outros tributos e o INSS digitado entra no total", () => {
+      const resumo = resumoChama(dois());
+      const r = calcularRetencoesSobreCobrado(resumo, new Map(), 9274.42, 700)!;
+      expect(r.baseRetencoes).toBe(9274.42);
+      expect(r.retencoes.irrf).toBeCloseTo(92.7442, 6);
+      expect(r.retencoes.inss).toBe(700);
+      expect(r.valorLiquido).toBeCloseTo(9274.42 - r.retencoes.total, 2);
+    });
+  });
+
   it("benefícios maiores que a base positiva zeram o INSS (nunca base de INSS negativa)", () => {
     const resumo = resumoChama(dois()); // 920 de VR
     const r = calcularRetencoesSobreCobrado(resumo, new Map(), 500)!;

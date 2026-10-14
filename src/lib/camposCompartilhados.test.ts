@@ -13,17 +13,32 @@ describe("lerCamposSalvos", () => {
   });
 
   it("lê o que foi guardado ao salvar", () => {
-    const guardado = JSON.stringify({ percentual: { "90103375": "20,5" }, adiantamento: { "90103375": "1.500,00" }, base: { "0001": "9.274,42" } });
-    expect(lerCamposSalvos(guardado)).toEqual({ percentual: { "90103375": "20,5" }, adiantamento: { "90103375": "1.500,00" }, base: { "0001": "9.274,42" } });
+    const guardado = JSON.stringify({
+      percentual: { "90103375": "20,5" },
+      adiantamento: { "90103375": "1.500,00" },
+      base: { "0001": "9.274,42" },
+      inss: { "0001": "7.234,83" },
+    });
+    expect(lerCamposSalvos(guardado)).toEqual({
+      percentual: { "90103375": "20,5" },
+      adiantamento: { "90103375": "1.500,00" },
+      base: { "0001": "9.274,42" },
+      inss: { "0001": "7.234,83" },
+    });
+  });
+
+  it("versão salva antes do campo INSS existir (JSON sem a chave inss) volta com o INSS vazio", () => {
+    const antigo = JSON.stringify({ percentual: { "1": "10" }, adiantamento: {}, base: { "0001": "9.274,42" } });
+    expect(lerCamposSalvos(antigo)).toEqual({ percentual: { "1": "10" }, adiantamento: {}, base: { "0001": "9.274,42" }, inss: {} });
   });
 
   it("um JSON vazio é uma foto válida de 'nada digitado' (diferente de não ter foto)", () => {
-    expect(lerCamposSalvos("{}")).toEqual({ percentual: {}, adiantamento: {}, base: {} });
+    expect(lerCamposSalvos("{}")).toEqual({ percentual: {}, adiantamento: {}, base: {}, inss: {} });
   });
 
   it("ignora campos desconhecidos, valores vazios e o que não é texto", () => {
     const guardado = JSON.stringify({ percentual: { "1": "10", "2": "", "3": "  ", "4": 5, "5": null }, adiantamento: "lixo", outro: { "1": "x" } });
-    expect(lerCamposSalvos(guardado)).toEqual({ percentual: { "1": "10" }, adiantamento: {}, base: {} });
+    expect(lerCamposSalvos(guardado)).toEqual({ percentual: { "1": "10" }, adiantamento: {}, base: {}, inss: {} });
   });
 });
 
@@ -32,6 +47,7 @@ describe("ehCampo / camposVazios", () => {
     expect(ehCampo("percentual")).toBe(true);
     expect(ehCampo("adiantamento")).toBe(true);
     expect(ehCampo("base")).toBe(true);
+    expect(ehCampo("inss")).toBe(true);
     expect(ehCampo("outro")).toBe(false);
     expect(ehCampo(undefined)).toBe(false);
     expect(ehCampo(3)).toBe(false);

@@ -20,7 +20,7 @@ const ATRASO_RETENTAR_MS = 5000;
 const INTERVALO_ATUALIZAR_MS = 20000;
 
 /** Nome do item de localStorage de antes de os valores serem compartilhados (um por competência e campo) — ver recuperarValoresAntigos. */
-const CHAVE_ANTIGA: Record<Campo, string> = { percentual: "percentuais-cobranca", adiantamento: "adiantamentos", base: "bases-retencoes" };
+const CHAVE_ANTIGA: Record<Campo, string | null> = { percentual: "percentuais-cobranca", adiantamento: "adiantamentos", base: "bases-retencoes", inss: null /* já nasceu compartilhado */ };
 
 export type EstadoSalvamento = "ok" | "salvando" | "erro";
 
@@ -62,15 +62,19 @@ async function buscar(competencia: string): Promise<CamposCompartilhados | null>
     const res = await fetch(`/api/faturamento/campos?competencia=${encodeURIComponent(competencia)}`, { cache: "no-store" });
     if (!res.ok) return null;
     const dados = (await res.json()) as Partial<CamposCompartilhados>;
-    return { percentual: dados.percentual ?? {}, adiantamento: dados.adiantamento ?? {}, base: dados.base ?? {} };
+    const resultado = camposVazios();
+    for (const campo of CAMPOS) resultado[campo] = dados[campo] ?? {};
+    return resultado;
   } catch {
     return null;
   }
 }
 
 function lerAntigo(competencia: string, campo: Campo): Valores {
+  const chave = CHAVE_ANTIGA[campo];
+  if (chave === null) return {};
   try {
-    const bruto = window.localStorage.getItem(`faturamento:${CHAVE_ANTIGA[campo]}:${competencia}`);
+    const bruto = window.localStorage.getItem(`faturamento:${chave}:${competencia}`);
     const json = bruto ? JSON.parse(bruto) : null;
     return json && typeof json === "object" && !Array.isArray(json) ? (json as Valores) : {};
   } catch {
@@ -79,8 +83,10 @@ function lerAntigo(competencia: string, campo: Campo): Valores {
 }
 
 function removerAntigo(competencia: string, campo: Campo) {
+  const chave = CHAVE_ANTIGA[campo];
+  if (chave === null) return;
   try {
-    window.localStorage.removeItem(`faturamento:${CHAVE_ANTIGA[campo]}:${competencia}`);
+    window.localStorage.removeItem(`faturamento:${chave}:${competencia}`);
   } catch {
     // sem acesso ao armazenamento: nada a limpar
   }
@@ -183,7 +189,7 @@ export function useCamposCompartilhados(competencia: string, iniciais: CamposCom
     if (competencia === "") return;
     const servidor = await buscar(competencia);
     if (!servidor) return;
-    const pendentesPorCampo: Record<Campo, Set<string>> = { percentual: new Set(), adiantamento: new Set(), base: new Set() };
+    const pendentesPorCampo = Object.fromEntries(CAMPOS.map((c) => [c, new Set<string>()])) as Record<Campo, Set<string>>;
     for (const p of pendentes.current.values()) pendentesPorCampo[p.campo].add(p.chave);
     setValores((local) => {
       const novo = camposVazios();

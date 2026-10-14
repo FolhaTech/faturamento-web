@@ -14,6 +14,8 @@ export interface RetencoesSobreCobrado {
   baseInformada: boolean;
   /** Base do INSS: a base das retenções menos VT/VR/VA/Bonificação do centro de custo (a mesma regra do Total fatura). */
   baseInss: number;
+  /** true = o valor do INSS foi digitado pelo usuário (campo "INSS (R$)" do card) e substitui o calculado em `retencoes.inss`. */
+  inssInformado: boolean;
   retencoes: RetencoesFonte;
   /** Valor líquido a receber: a base das retenções (valor a cobrar ou base informada) menos as retenções que incidem sobre ela. */
   valorLiquido: number;
@@ -30,18 +32,22 @@ function centavos(n: number): number {
  *   cada colaborador entra com a parte da Nota Fiscal que sobra depois das deduções dele (quem não tem dedução entra
  *   inteiro; quem passa da própria NF fica negativo e abate dos demais);
  * - com `baseInformada` (digitada à mão no card do centro de custo), incidem sobre esse valor;
- * - o INSS (11%) incide sobre essa base menos VT/VR/VA/Bonificação do centro de custo, como no Total fatura.
+ * - o INSS (11%) incide sobre essa base menos VT/VR/VA/Bonificação do centro de custo, como no Total fatura;
+ * - com `inssInformado` (valor do INSS em R$ digitado à mão no card), esse valor SUBSTITUI o INSS calculado: entra no total das
+ *   retenções e, por isso, no valor líquido a receber. Vale também sozinho (sem dedução nem base informada): as demais retenções
+ *   continuam sobre o Total fatura. 0 é um valor válido (INSS zerado); só null/ausente volta ao calculado.
  *
- * Devolve null quando não há dedução nem base informada: aí valem as retenções de sempre, sobre o Total fatura
+ * Devolve null quando não há dedução, base informada nem INSS informado: aí valem as retenções de sempre, sobre o Total fatura
  * (resumo.retencoes / resumo.valorLiquido).
  */
 export function calcularRetencoesSobreCobrado(
   resumo: CcustoResumo,
   deducoes: Map<number, DeducaoColaborador>,
   baseInformada: number | null = null,
+  inssInformado: number | null = null,
 ): RetencoesSobreCobrado | null {
   const temDeducao = resumo.colaboradores.some((c) => deducoes.has(c.matricula));
-  if (!temDeducao && baseInformada === null) return null;
+  if (!temDeducao && baseInformada === null && inssInformado === null) return null;
 
   let cobrar = 0;
   let deduzido = 0;
@@ -62,7 +68,10 @@ export function calcularRetencoesSobreCobrado(
   const baseRetencoes = baseInformada ?? cobrar;
   const baseInss = baseDoInss(baseRetencoes, beneficiosExcluidos);
 
-  const retencoes = calcularRetencoes(baseRetencoes, baseInss);
+  const calculadas = calcularRetencoes(baseRetencoes, baseInss);
+  // INSS digitado: troca o calculado e o total das retenções (e o líquido a receber) passa a contar com ele.
+  const retencoes: RetencoesFonte =
+    inssInformado === null ? calculadas : { ...calculadas, inss: inssInformado, total: calculadas.total - calculadas.inss + inssInformado };
   return {
     cobrar: centavos(cobrar),
     deduzido: centavos(deduzido),
@@ -70,6 +79,7 @@ export function calcularRetencoesSobreCobrado(
     baseRetencoes: centavos(baseRetencoes),
     baseInformada: baseInformada !== null,
     baseInss: centavos(baseInss),
+    inssInformado: inssInformado !== null,
     retencoes,
     valorLiquido: centavos(baseRetencoes - retencoes.total),
   };

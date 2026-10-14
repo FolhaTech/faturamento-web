@@ -8,7 +8,7 @@ import { filtrarLinesPorColaborador } from "@/lib/calc/filtroColaboradores";
 import { gerarExcel } from "@/lib/export/excel";
 import { montarRelatorio } from "@/lib/export/relatorio";
 import { gerarWord } from "@/lib/export/word";
-import { adiantamentoAtivo, juntarDeducoes, lerAdiantamentosSerializados, lerPercentuaisSerializados } from "@/lib/percentualCobranca";
+import { adiantamentoAtivo, juntarDeducoes, lerAdiantamentosSerializados, lerPercentuaisSerializados, lerValorReais } from "@/lib/percentualCobranca";
 import { FaturamentoPdf } from "@/lib/pdf/FaturamentoPdf";
 import { getColaboradoresPorMatriculas } from "@/lib/repo/colaboradores";
 
@@ -36,6 +36,9 @@ export async function GET(request: Request) {
   // Base das retenções (R$) digitada à mão no card do centro de custo (?baseRetencoes=9274.42): os tributos saem dela em vez do
   // valor calculado. Ausente, vazia ou inválida = base calculada.
   const baseRetencoesInformada = adiantamentoAtivo(url.searchParams.get("baseRetencoes") ?? "");
+  // INSS (R$) digitado à mão no card (?inss=7234.83): troca o INSS calculado e entra no total das retenções e no líquido. Vazio ou
+  // inválido = INSS calculado; 0 vale (INSS zerado).
+  const inssInformado = lerValorReais(url.searchParams.get("inss") ?? "");
 
   if (!competencia) {
     return NextResponse.json({ error: "Informe a competência (?competencia=MM/AAAA)." }, { status: 400 });
@@ -94,10 +97,11 @@ export async function GET(request: Request) {
       colaboradorLabel,
       vinculoPorMatricula,
       baseRetencoesInformada,
+      inssInformado,
     }) as Parameters<typeof renderToBuffer>[0];
     buffer = await renderToBuffer(pdfElement);
   } else {
-    const dados = montarRelatorio({ resumo, regimeLabel, ccPorMatricula, deducoes: deducoesCobranca, vinculoPorMatricula, colaboradorLabel, baseRetencoesInformada });
+    const dados = montarRelatorio({ resumo, regimeLabel, ccPorMatricula, deducoes: deducoesCobranca, vinculoPorMatricula, colaboradorLabel, baseRetencoesInformada, inssInformado });
     buffer = formato.extensao === "docx" ? await gerarWord(dados) : await gerarExcel(dados);
   }
 

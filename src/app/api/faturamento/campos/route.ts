@@ -22,7 +22,7 @@ export async function PUT(request: Request) {
   const campo = body?.campo;
   const alteracoes = body?.alteracoes;
   if (competencia === "" || competencia.length > LIMITES.competencia || !ehCampo(campo) || !alteracoes || typeof alteracoes !== "object" || Array.isArray(alteracoes)) {
-    return NextResponse.json({ error: "Informe competencia, campo (percentual|adiantamento|base) e alteracoes." }, { status: 400 });
+    return NextResponse.json({ error: "Informe competencia, campo (percentual|adiantamento|base|inss) e alteracoes." }, { status: 400 });
   }
 
   const limpas: Record<string, string | null> = {};

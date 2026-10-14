@@ -130,14 +130,17 @@ function SummarySection({
   resumo,
   deducoesCobranca,
   baseRetencoesInformada,
+  inssInformado,
 }: {
   resumo: CcustoResumo;
   deducoesCobranca: Map<number, DeducaoColaborador>;
   baseRetencoesInformada: number | null;
+  inssInformado: number | null;
 }) {
   const cobranca = somaCobranca(resumo, deducoesCobranca);
   // Com deduções por colaborador as retenções incidem sobre o valor a cobrar, e com base informada à mão sobre ela (não sobre o Total fatura); o líquido sai delas.
-  const sobre = calcularRetencoesSobreCobrado(resumo, deducoesCobranca, baseRetencoesInformada);
+  // Um INSS digitado à mão troca o INSS calculado e entra no total das retenções.
+  const sobre = calcularRetencoesSobreCobrado(resumo, deducoesCobranca, baseRetencoesInformada, inssInformado);
   const ret = sobre?.retencoes ?? resumo.retencoes;
   return (
     <View>
@@ -186,7 +189,9 @@ function SummarySection({
         <View style={styles.summaryCol}>
           {sobre && (
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>{sobre.baseInformada ? "Base das retenções (informada)" : "Base das retenções (valor a cobrar)"}</Text>
+              <Text style={styles.summaryLabel}>
+                {sobre.baseInformada ? "Base das retenções (informada)" : cobranca ? "Base das retenções (valor a cobrar)" : "Base das retenções (Total fatura)"}
+              </Text>
               <Text style={styles.summaryValue}>{fmt(sobre.baseRetencoes)}</Text>
             </View>
           )}
@@ -210,13 +215,19 @@ function SummarySection({
             <Text style={styles.summaryLabel}>Retenção ISS (2%)</Text>
             <Text style={styles.summaryValue}>{fmt(ret.iss)}</Text>
           </View>
+          {!sobre?.inssInformado && (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Base do INSS (base − VT/VR/VA/Bonif.)</Text>
+              <Text style={styles.summaryValue}>{fmt(sobre ? sobre.baseInss : resumo.baseRetencaoInss)}</Text>
+            </View>
+          )}
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Base do INSS (base − VT/VR/VA/Bonif.)</Text>
-            <Text style={styles.summaryValue}>{fmt(sobre ? sobre.baseInss : resumo.baseRetencaoInss)}</Text>
+            <Text style={styles.summaryLabel}>{sobre?.inssInformado ? "Retenção INSS (informado)" : "Retenção INSS (11%, s/ VT-VR-VA-Bonif.)"}</Text>
+            <Text style={styles.summaryValue}>{fmt(ret.inss)}</Text>
           </View>
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Retenção INSS (11%, s/ VT-VR-VA-Bonif.)</Text>
-            <Text style={styles.summaryValue}>{fmt(ret.inss)}</Text>
+            <Text style={styles.summaryLabel}>Total das retenções</Text>
+            <Text style={styles.summaryValue}>{fmt(ret.total)}</Text>
           </View>
           <View style={styles.summaryRowStrong}>
             <Text style={styles.summaryLabelStrong}>Valor líquido a receber</Text>
@@ -430,6 +441,7 @@ export function FaturamentoPdf({
   deducoesCobranca = new Map<number, DeducaoColaborador>(),
   colaboradorLabel = null,
   baseRetencoesInformada = null,
+  inssInformado = null,
   vinculoPorMatricula = new Map<number, VinculoPdf>(),
 }: {
   resumo: CcustoResumo;
@@ -443,6 +455,8 @@ export function FaturamentoPdf({
   colaboradorLabel?: string | null;
   /** Base das retenções (R$) digitada à mão no card do centro de custo — null = a calculada (valor a cobrar ou Total fatura). */
   baseRetencoesInformada?: number | null;
+  /** INSS (R$) digitado à mão no card do centro de custo — null = o INSS calculado. Substitui o calculado e entra no total das retenções e no líquido. */
+  inssInformado?: number | null;
   /** Admissão e rescisão de cada colaborador (planilha mensal Empregados em Excel) — colunas da tabela e, no PDF individual, o cabeçalho. */
   vinculoPorMatricula?: Map<number, VinculoPdf>;
 }) {
@@ -478,7 +492,7 @@ export function FaturamentoPdf({
           </View>
         </View>
 
-        <SummarySection resumo={resumo} deducoesCobranca={deducoesCobranca} baseRetencoesInformada={baseRetencoesInformada} />
+        <SummarySection resumo={resumo} deducoesCobranca={deducoesCobranca} baseRetencoesInformada={baseRetencoesInformada} inssInformado={inssInformado} />
 
         <RubricasSection resumo={resumo} />
         <DescontosSection resumo={resumo} />
