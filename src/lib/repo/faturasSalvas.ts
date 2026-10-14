@@ -133,6 +133,33 @@ export async function descartarFaturaSalva(competencia: string, usuarioEmail: st
   `;
 }
 
+/**
+ * Remove um evento específico de uma matrícula da foto congelada ativa do usuário — usado quando
+ * o usuário exclui um evento da fatura depois de já ter salvo. Sempre remove TODAS as linhas
+ * CalculatedLine que combinem (matricula, evento). Retorna true se a fatura salva existia e foi
+ * alterada; false quando não há fatura ativa ou o evento não estava presente.
+ */
+export async function removerEventoDaFaturaSalva(
+  competencia: string,
+  usuarioEmail: string,
+  matricula: number,
+  evento: string,
+): Promise<boolean> {
+  await ensureSchema();
+  const salva = await getFaturaSalvaDoUsuario(competencia, usuarioEmail);
+  if (!salva) return false;
+
+  const novasLines = salva.lines.filter((l) => !(l.matricula === matricula && l.evento === evento));
+  if (novasLines.length === salva.lines.length) return false;
+
+  await getDb()`
+    UPDATE faturas_salvas
+    SET lines = ${JSON.stringify(novasLines)}
+    WHERE id = ${salva.id}
+  `;
+  return true;
+}
+
 /** Toda a timeline de faturas salvas dessa competência — de todos os usuários, mais recente primeiro, inclusive as já descartadas (pra manter o histórico visível de quem salvou o quê). */
 export async function listTimelineFaturas(competencia: string): Promise<FaturaSalva[]> {
   await ensureSchema();

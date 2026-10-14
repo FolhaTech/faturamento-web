@@ -90,6 +90,7 @@ export function FaturamentoViewer({
   const router = useRouter();
   const [ccustoCodigo, setCcustoCodigo] = useState<string | null>(resumos[0]?.ccustoCodigo ?? null);
   const [busyExclusao, setBusyExclusao] = useState(false);
+  const [erroExclusao, setErroExclusao] = useState<string | null>(null);
   const resumo = useMemo(() => resumos.find((r) => r.ccustoCodigo === ccustoCodigo) ?? resumos[0] ?? null, [resumos, ccustoCodigo]);
   // Deduções digitadas por colaborador (campos na tabela de colaboradores): % a deduzir da Nota Fiscal e
   // adiantamento em reais — os dois saem do total dele. O card de totais soma e os links de PDF levam só
@@ -196,6 +197,7 @@ export function FaturamentoViewer({
     if (!window.confirm(`Excluir "${evento}" da fatura de ${nomeColaborador}?\n\nNão afeta os demais colaboradores — dá pra restaurar depois.`)) {
       return;
     }
+    setErroExclusao(null);
     setBusyExclusao(true);
     try {
       const res = await fetch("/api/faturamento/eventos-excluidos", {
@@ -203,7 +205,14 @@ export function FaturamentoViewer({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ matricula, competencia: resumo.competencia, evento }),
       });
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        router.refresh();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setErroExclusao(data.error ?? "Falha ao excluir o evento.");
+      }
+    } catch {
+      setErroExclusao("Falha de rede ao excluir o evento.");
     } finally {
       setBusyExclusao(false);
     }
@@ -211,11 +220,19 @@ export function FaturamentoViewer({
 
   async function restaurarEvento(matricula: number, evento: string) {
     if (!resumo) return;
+    setErroExclusao(null);
     setBusyExclusao(true);
     try {
       const params = new URLSearchParams({ matricula: String(matricula), competencia: resumo.competencia, evento });
       const res = await fetch(`/api/faturamento/eventos-excluidos?${params.toString()}`, { method: "DELETE" });
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        router.refresh();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setErroExclusao(data.error ?? "Falha ao restaurar o evento.");
+      }
+    } catch {
+      setErroExclusao("Falha de rede ao restaurar o evento.");
     } finally {
       setBusyExclusao(false);
     }
@@ -321,6 +338,9 @@ export function FaturamentoViewer({
           />
           <RubricasTable rubricas={resumo.rubricas} encargosPorCodigo={encargosPorCodigo} />
           <DescontosTable rubricas={resumo.rubricas} />
+          {erroExclusao && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-800">{erroExclusao}</div>
+          )}
           <ColaboradoresTable
             colaboradores={resumo.colaboradores}
             encargosPorCodigo={encargosPorCodigo}

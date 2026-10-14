@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
+import { getUsuarioAtual } from "@/lib/auth/sessao";
+import { removerEventoDaFaturaSalva } from "@/lib/repo/faturasSalvas";
 import { excluirEvento, restaurarEvento } from "@/lib/repo/eventosExcluidos";
 
 export const runtime = "nodejs";
 
-/** Exclui um evento da fatura de UM colaborador numa competência — ver eventosExcluidos.ts. A confirmação ("tem certeza?") é feita na tela antes de chamar aqui. */
+/** Exclui um evento da fatura de UM colaborador numa competência — ver eventosExcluidos.ts. A confirmação ("tem certeza?") é feita na tela antes de chamar aqui. Se o usuário tiver uma fatura salva ativa, o evento também é removido da foto congelada, pra exclusão refletir na tela imediatamente. */
 export async function POST(request: Request) {
+  const usuario = await getUsuarioAtual();
   const body = await request.json().catch(() => null);
   const matricula = typeof body?.matricula === "number" ? body.matricula : null;
   const competencia = typeof body?.competencia === "string" ? body.competencia : null;
@@ -14,6 +17,9 @@ export async function POST(request: Request) {
   }
 
   await excluirEvento(matricula, competencia, evento);
+  if (usuario) {
+    await removerEventoDaFaturaSalva(competencia, usuario.email, matricula, evento);
+  }
   return NextResponse.json({ ok: true });
 }
 
