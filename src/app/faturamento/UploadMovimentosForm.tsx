@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import { ccustoDoNomeDoArquivo, nomeBaseDoArquivo } from "@/lib/xlsx/ccustoDoNomeArquivo";
+import { sugestaoDeCcusto } from "@/lib/xlsx/ccustoDoNomeArquivo";
 
 interface CompetenciaComDados {
   competencia: string;
@@ -35,10 +35,8 @@ export function UploadMovimentosForm({ ccustosCadastrados }: { ccustosCadastrado
   // Centro de custo de TODOS os colaboradores do arquivo (opcional) — vale mais que o do cadastro; ver /api/movimentos.
   const [ccusto, setCcusto] = useState("");
   // Sugestão: o centro de custo cadastrado que o nome do arquivo indica (ex.: "Movimentos cc1130.xls" -> "XP 1130"); sem casar com
-  // nenhum, o próprio nome do arquivo sem a competência (ex.: "CARBRINK 092026.xlsx" -> "CARBRINK").
-  const sugestaoCcusto = fileName
-    ? (ccustoDoNomeDoArquivo(fileName, ccustosCadastrados.map((nome) => ({ codigo: nome, nome })))?.nome ?? nomeBaseDoArquivo(fileName))
-    : "";
+  // nenhum, o nome do arquivo sem a competência (ex.: "Movimentos xp 1140.xls.xlsx" -> "XP 1140", que passa a existir ao enviar).
+  const sugestaoCcusto = fileName ? sugestaoDeCcusto(fileName, ccustosCadastrados.map((nome) => ({ codigo: nome, nome }))) : "";
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
 
   /** Retorna true quando o arquivo foi de fato importado (para o chamador decidir se limpa o form). */

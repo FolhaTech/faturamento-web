@@ -5,6 +5,9 @@ export interface CcustoCadastrado {
   nome: string;
 }
 
+/** Extensão de planilha que sobra depois de tirar a última (arquivo salvo como "nome.xls.xlsx"). */
+const EXTENSAO_PLANILHA_SOBRANDO = /\.(XLSX?|XLSM)$/;
+
 /**
  * Nome do arquivo sem extensão, competência e numeração de cópia — ex.: "CARBRINK 092026 (1).xlsx"
  * vira "CARBRINK". Palavras de tipo (Folha/Prévia) também saem, pra "IPEC FOLHA 092026.xlsx" cair em "IPEC".
@@ -12,6 +15,7 @@ export interface CcustoCadastrado {
 export function nomeBaseDoArquivo(nomeArquivo: string): string {
   return normalizaTexto(nomeArquivo)
     .replace(/\.[A-Z0-9]+$/, "")
+    .replace(EXTENSAO_PLANILHA_SOBRANDO, "") // "Movimentos xp 1140.xls.xlsx": a extensão dupla deixava ".XLS" no nome
     .replace(/\(\d+\)/g, " ")
     .replace(/[\d_]+/g, " ")
     .replace(/\b(FOLHA|PREVIA)\b/g, " ")
@@ -32,6 +36,31 @@ export function resolverCcustoInformado(texto: string, ccustos: CcustoCadastrado
   if (casam.length > 0) return casam[0];
   const novo = nome.toUpperCase();
   return { codigo: novo, nome: novo };
+}
+
+/**
+ * Texto que a tela de upload SUGERE (a pessoa confirma com um clique) para o campo "Centro de custo deste arquivo": o centro de
+ * custo cadastrado que o nome do arquivo indica ("Movimentos cc1130.xls" -> "XP 1130") ou, sem casar com nenhum, o nome do arquivo
+ * sem extensão, competência, cópia e as palavras Folha/Prévia/Movimentos — mantendo os números do nome ("Movimentos xp 1140.xls.xlsx"
+ * -> "XP 1140", um centro de custo que ainda não existe). Só serve de sugestão: nada é gravado até a pessoa enviar o arquivo.
+ * Vazio quando não sobra um nome com letras.
+ */
+export function sugestaoDeCcusto(nomeArquivo: string, ccustos: CcustoCadastrado[]): string {
+  const cadastrado = ccustoDoNomeDoArquivo(nomeArquivo, ccustos);
+  if (cadastrado) return cadastrado.nome;
+  const texto = normalizaTexto(nomeArquivo)
+    .replace(/\.[A-Z0-9]+$/, "")
+    .replace(EXTENSAO_PLANILHA_SOBRANDO, "")
+    .replace(/_/g, " ")
+    .replace(/\(\d+\)/g, " ")
+    .replace(/\b(0[1-9]|1[0-2])[ ._-]?20\d{2}\b/g, " ")
+    .replace(/\b(FOLHA|PREVIA|MOVIMENTOS?)\b/g, " ")
+    .replace(/\bCC[\s-]*(?=\d)/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/(?:^|\s)\d{1,2}$/, "") // numeração de cópia solta no fim ("... 1")
+    .replace(/[\s-]+$/, "")
+    .trim();
+  return /[A-Z]/.test(texto) ? texto : "";
 }
 
 /** Sem zeros à esquerda, pra "01130" e "1130" serem o mesmo número. */

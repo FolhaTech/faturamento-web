@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ccustoDoNomeDoArquivo, nomeBaseDoArquivo, numeroDoCcustoNoNome, resolverCcustoInformado } from "./ccustoDoNomeArquivo";
+import { ccustoDoNomeDoArquivo, nomeBaseDoArquivo, numeroDoCcustoNoNome, resolverCcustoInformado, sugestaoDeCcusto } from "./ccustoDoNomeArquivo";
 
 const ccustos = [
   { codigo: "21", nome: "CARBRINK" },
@@ -38,6 +38,31 @@ describe("nomeBaseDoArquivo", () => {
     expect(nomeBaseDoArquivo("CARBRINK 092026.xlsx")).toBe("CARBRINK");
     expect(nomeBaseDoArquivo("CARBRINK 092026 (1).xlsx")).toBe("CARBRINK");
     expect(nomeBaseDoArquivo("ipec_folha_092026.xls")).toBe("IPEC");
+  });
+
+  it("tira também a extensão dupla (arquivo salvo como nome.xls.xlsx)", () => {
+    expect(nomeBaseDoArquivo("Movimentos xp 1140.xls.xlsx")).toBe("MOVIMENTOS XP");
+    expect(nomeBaseDoArquivo("CARBRINK 092026.xls.xlsx")).toBe("CARBRINK");
+  });
+});
+
+describe("sugestaoDeCcusto", () => {
+  it("sugere o centro de custo cadastrado que o nome do arquivo indica", () => {
+    expect(sugestaoDeCcusto("Movimentos cc1130.xls", ccustosXp)).toBe("XP 1130");
+    expect(sugestaoDeCcusto("CARBRINK 092026.xlsx", ccustos)).toBe("CARBRINK");
+  });
+
+  it("sem cadastrado, sugere o nome do arquivo mantendo os números que não são a competência", () => {
+    expect(sugestaoDeCcusto("Movimentos xp 1140.xls.xlsx", ccustosXp)).toBe("XP 1140");
+    expect(sugestaoDeCcusto("Movimentos XP 1140 092026 (1).xlsx", ccustosXp)).toBe("XP 1140");
+    expect(sugestaoDeCcusto("movimentos_folha_chama_perecivel_092026.xlsx", ccustos)).toBe("CHAMA PERECIVEL");
+    expect(sugestaoDeCcusto("ITAU RH1050 FABI - FOLHA 092026 1.xlsx", ccustos)).toBe("ITAU RH1050 FABI");
+  });
+
+  it("não sugere quando só sobram números ou nada", () => {
+    expect(sugestaoDeCcusto("Movimentos cc9999.xlsx", ccustosXp)).toBe("");
+    expect(sugestaoDeCcusto("Movimentos 092026.xlsx", ccustosXp)).toBe("");
+    expect(sugestaoDeCcusto("Folha.xlsx", ccustosXp)).toBe("");
   });
 });
 
