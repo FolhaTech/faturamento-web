@@ -179,8 +179,8 @@ export function UploadMovimentosForm({ ccustosCadastrados }: { ccustosCadastrado
         </label>
         <p className="mb-2 text-xs text-neutral-500">
           Use quando a planilha não diz o centro de custo. Todos os colaboradores do arquivo passam a ficar nele — escolha um já existente ou digite um
-          novo (ex.: CHAMA PERECIVEL). Em branco, vale o centro de custo que o nome do arquivo indica (ex.: &quot;Movimentos cc1130&quot; -&gt; XP 1130) ou, sem isso, o do
-          cadastro de cada colaborador.
+          novo (ex.: CHAMA PERECIVEL). Em branco, vale o centro de custo que o nome do arquivo indica (ex.: &quot;Movimentos cc1130&quot; -&gt; XP 1130,
+          &quot;Movimentos xp 1140&quot; -&gt; XP 1140) ou, sem isso, o do cadastro de cada colaborador.
         </p>
         <input
           id="ccusto"

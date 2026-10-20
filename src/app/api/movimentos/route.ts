@@ -141,8 +141,8 @@ export async function POST(request: Request) {
   // cadastro já preenchido (ver 2ª passada).
   //
   // Sem "Local de trabalho" no arquivo, o NOME do arquivo pode dizer o cliente (ex.: "CARBRINK
-  // 092026.xlsx" -> Ccusto "CARBRINK"; "Movimentos cc1130.xls" -> Ccusto "XP 1130", ver ccustoDoNomeArquivo.ts) — também conta
-  // como explícito.
+  // 092026.xlsx" -> Ccusto "CARBRINK"; "Movimentos cc1130.xls" -> "XP 1130"; "Movimentos xp 1140.xls.xlsx" -> "XP 1140", que ainda
+  // não existe mas é da mesma família de XP 1120/XP 1130 e passa a existir, ver ccustoDoNomeArquivo.ts) — também conta como explícito.
   // O centro de custo digitado no upload ("Centro de custo deste arquivo") vale mais que o inferido pelo nome do arquivo.
   const ccustosCadastrados = await listCcustosCadastrados();
   const ccustoInformado = resolverCcustoInformado(String(formData.get("ccusto") ?? ""), ccustosCadastrados);

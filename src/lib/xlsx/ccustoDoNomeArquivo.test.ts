@@ -95,6 +95,26 @@ describe("ccustoDoNomeDoArquivo", () => {
     expect(ccustoDoNomeDoArquivo("Movimentos cc1130.xls", [...ccustosXp, { codigo: "15", nome: "XP 1130 (SP)" }])).toEqual({ codigo: "15", nome: "XP 1130" });
   });
 
+  it('"Movimentos xp 1140.xls.xlsx" vira o centro de custo novo XP 1140, da mesma família de XP 1120 e XP 1130', () => {
+    expect(ccustoDoNomeDoArquivo("Movimentos xp 1140.xls.xlsx", ccustosXp)).toEqual({ codigo: "XP 1140", nome: "XP 1140" });
+    expect(ccustoDoNomeDoArquivo("Movimentos XP 1140 092026 (1).xlsx", ccustosXp)).toEqual({ codigo: "XP 1140", nome: "XP 1140" });
+    expect(ccustoDoNomeDoArquivo("ITAU R&S 1060.xlsx", ccustos)).toEqual({ codigo: "ITAU R&S 1060", nome: "ITAU R&S 1060" });
+  });
+
+  it("nome igual a um centro de custo já cadastrado usa o cadastrado (nunca duplica com outro código)", () => {
+    expect(ccustoDoNomeDoArquivo("Movimentos xp 1120.xlsx", ccustosXp)).toEqual({ codigo: "16", nome: "XP 1120" });
+    expect(ccustoDoNomeDoArquivo("Movimentos xp 1140.xlsx", [...ccustosXp, { codigo: "17", nome: "XP 1140" }])).toEqual({ codigo: "17", nome: "XP 1140" });
+    expect(ccustoDoNomeDoArquivo("ITAU R&S 1050.xlsx", ccustos)).toEqual({ codigo: "10", nome: "ITAU R&S 1050" });
+  });
+
+  it("não cria centro de custo novo sem uma família cadastrada, nem com código que parece ano ou nome sem código", () => {
+    expect(ccustoDoNomeDoArquivo("Movimentos zz 1140.xlsx", ccustosXp)).toBeNull();
+    expect(ccustoDoNomeDoArquivo("Movimentos xp 2026.xlsx", ccustosXp)).toBeNull();
+    expect(ccustoDoNomeDoArquivo("Movimentos xp 11.xlsx", ccustosXp)).toBeNull();
+    expect(ccustoDoNomeDoArquivo("Movimentos xp.xlsx", ccustosXp)).toBeNull();
+    expect(ccustoDoNomeDoArquivo("Movimentos xp 1140.xlsx", [])).toBeNull();
+  });
+
   it("sem o marcador CC o número solto continua não valendo (ITAU RH1050 não vira ITAU R&S 1050)", () => {
     expect(ccustoDoNomeDoArquivo("ITAU RH1050 FABI - FOLHA 092026 1.xlsx", ccustos)).toBeNull();
     expect(ccustoDoNomeDoArquivo("Movimentos 1130.xlsx", ccustosXp)).toBeNull();

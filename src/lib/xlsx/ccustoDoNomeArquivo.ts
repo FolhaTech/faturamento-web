@@ -38,16 +38,17 @@ export function resolverCcustoInformado(texto: string, ccustos: CcustoCadastrado
   return { codigo: novo, nome: novo };
 }
 
+/** Sem zeros à esquerda, pra "01130" e "1130" serem o mesmo número. */
+function semZerosAEsquerda(numero: string): string {
+  return numero.replace(/^0+(?=\d)/, "");
+}
+
 /**
- * Texto que a tela de upload SUGERE (a pessoa confirma com um clique) para o campo "Centro de custo deste arquivo": o centro de
- * custo cadastrado que o nome do arquivo indica ("Movimentos cc1130.xls" -> "XP 1130") ou, sem casar com nenhum, o nome do arquivo
- * sem extensão, competência, cópia e as palavras Folha/Prévia/Movimentos — mantendo os números do nome ("Movimentos xp 1140.xls.xlsx"
- * -> "XP 1140", um centro de custo que ainda não existe). Só serve de sugestão: nada é gravado até a pessoa enviar o arquivo.
- * Vazio quando não sobra um nome com letras.
+ * Nome do arquivo reduzido ao que identifica o centro de custo: sem extensão (inclusive a dupla), competência, cópia, marcador
+ * "CC" e as palavras Folha/Prévia/Movimentos — mantendo os números do nome. "Movimentos xp 1140.xls.xlsx" -> "XP 1140";
+ * "CARBRINK 092026 (1).xlsx" -> "CARBRINK". Vazio quando não sobra um nome com letras.
  */
-export function sugestaoDeCcusto(nomeArquivo: string, ccustos: CcustoCadastrado[]): string {
-  const cadastrado = ccustoDoNomeDoArquivo(nomeArquivo, ccustos);
-  if (cadastrado) return cadastrado.nome;
+function nomeLimpoDoArquivo(nomeArquivo: string): string {
   const texto = normalizaTexto(nomeArquivo)
     .replace(/\.[A-Z0-9]+$/, "")
     .replace(EXTENSAO_PLANILHA_SOBRANDO, "")
@@ -63,32 +64,33 @@ export function sugestaoDeCcusto(nomeArquivo: string, ccustos: CcustoCadastrado[
   return /[A-Z]/.test(texto) ? texto : "";
 }
 
-/** Sem zeros à esquerda, pra "01130" e "1130" serem o mesmo número. */
-function semZerosAEsquerda(numero: string): string {
-  return numero.replace(/^0+(?=\d)/, "");
-}
+/** "XP 1140" -> prefixo "XP" e código "1140": nome de centro de custo no padrão "<CLIENTE> <código de 3 a 5 dígitos>". */
+const NOME_COM_CODIGO_NO_FIM = /^(.*[A-Z].*?)\s+(\d{3,5})$/;
 
 /**
  * Número que o nome do arquivo marca como centro de custo com "CC" colado ou separado dele — "Movimentos cc1130.xls",
- * "Movimentos CC 1130 (1).xlsx", "movimentos_cc_1130.xlsx" -> "1130". null quando não há "CC" + número (o número solto, como
- * a competência "092026" ou o "1050" de "ITAU RH1050", nunca vale: só o marcador explícito "CC" deixa claro que é o centro de custo).
+ * "Movimentos CC 1130 (1).xlsx", "movimentos_cc_1130.xlsx" -> "1130". null quando não há "CC" + número.
  */
 export function numeroDoCcustoNoNome(nomeArquivo: string): string | null {
   const texto = normalizaTexto(nomeArquivo)
     .replace(/\.[A-Z0-9]+$/, "")
+    .replace(EXTENSAO_PLANILHA_SOBRANDO, "")
     .replace(/_/g, " ");
   const achado = texto.match(/(?:^|[^A-Z0-9])CC[\s-]*(\d+)(?![A-Z0-9])/);
   return achado ? semZerosAEsquerda(achado[1]) : null;
 }
 
 /**
- * Centro de custo indicado pelo NOME do arquivo — usado só quando a planilha não traz o Local de
- * trabalho (ver parseMovimentos.ts) pra dizer o cliente. Vale em dois casos:
- * - o nome base do arquivo é IGUAL a um centro de custo já cadastrado (ex.: "CARBRINK 092026.xlsx" -> "CARBRINK");
- * - o nome traz "CC" + número (ex.: "Movimentos cc1130.xls") e UM só centro de custo cadastrado tem esse número no nome
- *   (ex.: "XP 1130") — vários arquivos "Movimentos ccNNNN" de clientes diferentes viram o nome base igual ("MOVIMENTOS CC"),
- *   então o número é o que os distingue.
- * Nome que apenas parece com algum (ex.: "ITAU RH1050 FABI - FOLHA ...", sem "CC") não casa, pra nunca chutar.
+ * Centro de custo indicado pelo NOME do arquivo — usado quando a planilha não traz o Local de trabalho (ver parseMovimentos.ts)
+ * pra dizer o cliente e a pessoa não digitou um no upload. Vale em três casos, nesta ordem:
+ * 1. o nome base do arquivo é IGUAL a um centro de custo já cadastrado (ex.: "CARBRINK 092026.xlsx" -> "CARBRINK");
+ * 2. o nome traz "CC" + número (ex.: "Movimentos cc1130.xls") e UM só centro de custo cadastrado tem esse número no nome
+ *    (ex.: "XP 1130"); número que nenhum ou mais de um tem não chuta;
+ * 3. o nome, limpo (ex.: "Movimentos xp 1140.xls.xlsx" -> "XP 1140"), tem o padrão "<CLIENTE> <código>" e já existe um centro de custo
+ *    do mesmo cliente nesse padrão (XP 1120, XP 1130): ele é igual a um cadastrado (usa o cadastrado) ou um centro de custo
+ *    novo da mesma família, que passa a existir com o código igual ao nome (como "CHAMA LOGISTICA"). Código que parece ano
+ *    (2026) não vale.
+ * Nome que apenas parece com algum (ex.: "ITAU RH1050 FABI - FOLHA ...", sem código no fim) não casa, pra nunca chutar.
  */
 export function ccustoDoNomeDoArquivo(nomeArquivo: string, ccustos: CcustoCadastrado[]): CcustoCadastrado | null {
   const base = nomeBaseDoArquivo(nomeArquivo);
@@ -100,8 +102,26 @@ export function ccustoDoNomeDoArquivo(nomeArquivo: string, ccustos: CcustoCadast
   }
 
   const numero = numeroDoCcustoNoNome(nomeArquivo);
-  if (numero === null) return null;
-  const casam = ccustos.filter((c) => (normalizaTexto(c.nome).match(/\d+/g) ?? []).some((n) => semZerosAEsquerda(n) === numero));
-  const codigos = new Set(casam.map((c) => c.codigo));
-  return codigos.size === 1 ? casam[0] : null;
+  if (numero !== null) {
+    const casam = ccustos.filter((c) => (normalizaTexto(c.nome).match(/\d+/g) ?? []).some((n) => semZerosAEsquerda(n) === numero));
+    const codigos = new Set(casam.map((c) => c.codigo));
+    if (codigos.size === 1) return casam[0];
+    if (codigos.size > 1) return null;
+  }
+
+  const nome = nomeLimpoDoArquivo(nomeArquivo);
+  const padrao = nome.match(NOME_COM_CODIGO_NO_FIM);
+  if (!padrao || /^20\d{2}$/.test(padrao[2])) return null;
+  const jaExiste = ccustos.some((c) => normalizaTexto(c.nome) === nome);
+  const mesmaFamilia = ccustos.some((c) => normalizaTexto(c.nome).match(NOME_COM_CODIGO_NO_FIM)?.[1] === padrao[1]);
+  return jaExiste || mesmaFamilia ? resolverCcustoInformado(nome, ccustos) : null;
+}
+
+/**
+ * Texto que a tela de upload mostra como sugestão do campo "Centro de custo deste arquivo": o centro de custo que o nome do
+ * arquivo indica (ver ccustoDoNomeDoArquivo) ou, sem indicar nenhum, o nome limpo do arquivo ("ITAU RH1050 FABI") — esse último
+ * só como atalho de um clique, nunca aplicado sozinho. Vazio quando não sobra um nome com letras.
+ */
+export function sugestaoDeCcusto(nomeArquivo: string, ccustos: CcustoCadastrado[]): string {
+  return ccustoDoNomeDoArquivo(nomeArquivo, ccustos)?.nome ?? nomeLimpoDoArquivo(nomeArquivo);
 }
