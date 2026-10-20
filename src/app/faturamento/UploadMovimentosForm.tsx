@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import { nomeBaseDoArquivo } from "@/lib/xlsx/ccustoDoNomeArquivo";
+import { ccustoDoNomeDoArquivo, nomeBaseDoArquivo } from "@/lib/xlsx/ccustoDoNomeArquivo";
 
 interface CompetenciaComDados {
   competencia: string;
@@ -34,7 +34,11 @@ export function UploadMovimentosForm({ ccustosCadastrados }: { ccustosCadastrado
   const [fileName, setFileName] = useState<string | null>(null);
   // Centro de custo de TODOS os colaboradores do arquivo (opcional) — vale mais que o do cadastro; ver /api/movimentos.
   const [ccusto, setCcusto] = useState("");
-  const sugestaoCcusto = fileName ? nomeBaseDoArquivo(fileName) : "";
+  // Sugestão: o centro de custo cadastrado que o nome do arquivo indica (ex.: "Movimentos cc1130.xls" -> "XP 1130"); sem casar com
+  // nenhum, o próprio nome do arquivo sem a competência (ex.: "CARBRINK 092026.xlsx" -> "CARBRINK").
+  const sugestaoCcusto = fileName
+    ? (ccustoDoNomeDoArquivo(fileName, ccustosCadastrados.map((nome) => ({ codigo: nome, nome })))?.nome ?? nomeBaseDoArquivo(fileName))
+    : "";
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
 
   /** Retorna true quando o arquivo foi de fato importado (para o chamador decidir se limpa o form). */
@@ -177,7 +181,8 @@ export function UploadMovimentosForm({ ccustosCadastrados }: { ccustosCadastrado
         </label>
         <p className="mb-2 text-xs text-neutral-500">
           Use quando a planilha não diz o centro de custo. Todos os colaboradores do arquivo passam a ficar nele — escolha um já existente ou digite um
-          novo (ex.: CHAMA PERECIVEL). Em branco, vale o centro de custo do cadastro de cada colaborador.
+          novo (ex.: CHAMA PERECIVEL). Em branco, vale o centro de custo que o nome do arquivo indica (ex.: &quot;Movimentos cc1130&quot; -&gt; XP 1130) ou, sem isso, o do
+          cadastro de cada colaborador.
         </p>
         <input
           id="ccusto"

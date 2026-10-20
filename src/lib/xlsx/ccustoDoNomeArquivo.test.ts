@@ -1,11 +1,37 @@
 import { describe, expect, it } from "vitest";
-import { ccustoDoNomeDoArquivo, nomeBaseDoArquivo, resolverCcustoInformado } from "./ccustoDoNomeArquivo";
+import { ccustoDoNomeDoArquivo, nomeBaseDoArquivo, numeroDoCcustoNoNome, resolverCcustoInformado } from "./ccustoDoNomeArquivo";
 
 const ccustos = [
   { codigo: "21", nome: "CARBRINK" },
   { codigo: "19", nome: "IPEC" },
   { codigo: "10", nome: "ITAU R&S 1050" },
 ];
+
+// Centros de custo reais da XP: o nome do arquivo ("Movimentos cc1120.xlsx", "Movimentos cc1130.xls") só se distingue pelo número.
+const ccustosXp = [
+  { codigo: "16", nome: "XP 1120" },
+  { codigo: "15", nome: "XP 1130" },
+];
+
+describe("numeroDoCcustoNoNome", () => {
+  it("lê o número depois de CC, colado ou separado", () => {
+    expect(numeroDoCcustoNoNome("Movimentos cc1120.xlsx")).toBe("1120");
+    expect(numeroDoCcustoNoNome("Movimentos cc1130.xls")).toBe("1130");
+    expect(numeroDoCcustoNoNome("Movimentos CC 1130 (1).xlsx")).toBe("1130");
+    expect(numeroDoCcustoNoNome("movimentos_cc_1130.xlsx")).toBe("1130");
+    expect(numeroDoCcustoNoNome("Movimentos cc-1130.xlsx")).toBe("1130");
+    expect(numeroDoCcustoNoNome("cc01130 folha.xlsx")).toBe("1130");
+  });
+
+  it("sem o marcador CC não há número de centro de custo (competência e códigos soltos não valem)", () => {
+    expect(numeroDoCcustoNoNome("CARBRINK 092026.xlsx")).toBeNull();
+    expect(numeroDoCcustoNoNome("ITAU RH1050 FABI - FOLHA 092026 1.xlsx")).toBeNull();
+    expect(numeroDoCcustoNoNome("Movimentos hospitau 1.xlsx")).toBeNull();
+    expect(numeroDoCcustoNoNome("Movimentos acc1130.xlsx")).toBeNull(); // "acc" não é "cc"
+    expect(numeroDoCcustoNoNome("Movimentos cc.xlsx")).toBeNull();
+    expect(numeroDoCcustoNoNome("Movimentos cc1130x.xlsx")).toBeNull();
+  });
+});
 
 describe("nomeBaseDoArquivo", () => {
   it("tira extensão, competência e numeração de cópia", () => {
@@ -28,6 +54,25 @@ describe("ccustoDoNomeDoArquivo", () => {
 
   it("ignora quando o mesmo nome aponta pra códigos diferentes (ambíguo)", () => {
     expect(ccustoDoNomeDoArquivo("ORIZON 092026.xlsx", [{ codigo: "18", nome: "ORIZON" }, { codigo: "ORIZON", nome: "ORIZON" }])).toBeNull();
+  });
+
+  it('"Movimentos cc1120" e "Movimentos cc1130" vão cada um pro seu centro de custo (antes caíam no mesmo, pelo cadastro do colaborador)', () => {
+    expect(ccustoDoNomeDoArquivo("Movimentos cc1120.xlsx", ccustosXp)).toEqual({ codigo: "16", nome: "XP 1120" });
+    expect(ccustoDoNomeDoArquivo("Movimentos cc1130.xls", ccustosXp)).toEqual({ codigo: "15", nome: "XP 1130" });
+    expect(ccustoDoNomeDoArquivo("Movimentos CC 1130 (1).xlsx", ccustosXp)).toEqual({ codigo: "15", nome: "XP 1130" });
+  });
+
+  it("número que nenhum centro de custo tem no nome, ou que mais de um tem, não chuta", () => {
+    expect(ccustoDoNomeDoArquivo("Movimentos cc9999.xlsx", ccustosXp)).toBeNull();
+    const repetido = [...ccustosXp, { codigo: "30", nome: "ITAU 1130" }];
+    expect(ccustoDoNomeDoArquivo("Movimentos cc1130.xls", repetido)).toBeNull();
+    // o mesmo centro de custo cadastrado com o mesmo código não é ambíguo
+    expect(ccustoDoNomeDoArquivo("Movimentos cc1130.xls", [...ccustosXp, { codigo: "15", nome: "XP 1130 (SP)" }])).toEqual({ codigo: "15", nome: "XP 1130" });
+  });
+
+  it("sem o marcador CC o número solto continua não valendo (ITAU RH1050 não vira ITAU R&S 1050)", () => {
+    expect(ccustoDoNomeDoArquivo("ITAU RH1050 FABI - FOLHA 092026 1.xlsx", ccustos)).toBeNull();
+    expect(ccustoDoNomeDoArquivo("Movimentos 1130.xlsx", ccustosXp)).toBeNull();
   });
 });
 
