@@ -118,6 +118,17 @@ export function ccustoDoNomeDoArquivo(nomeArquivo: string, ccustos: CcustoCadast
 }
 
 /**
+ * O centro de custo que TODOS os colaboradores do arquivo que têm um centro de custo compartilham — usado pra completar quem ficou
+ * sem nenhum (cadastro vazio, planilha e nome do arquivo sem indicação, e nenhum colaborador ANTES dele no arquivo com centro de
+ * custo pra herdar: o primeiro da lista nunca recebia). null quando ninguém tem centro de custo ou há mais de um (arquivo misturado:
+ * aí não dá pra saber de qual é quem ficou de fora, não chuta).
+ */
+export function ccustoUnicoDoArquivo(ccustosDoArquivo: CcustoCadastrado[]): CcustoCadastrado | null {
+  const codigos = new Set(ccustosDoArquivo.map((c) => c.codigo));
+  return codigos.size === 1 ? { codigo: ccustosDoArquivo[0].codigo, nome: ccustosDoArquivo[0].nome } : null;
+}
+
+/**
  * Texto que a tela de upload mostra como sugestão do campo "Centro de custo deste arquivo": o centro de custo que o nome do
  * arquivo indica (ver ccustoDoNomeDoArquivo) ou, sem indicar nenhum, o nome limpo do arquivo ("ITAU RH1050 FABI") — esse último
  * só como atalho de um clique, nunca aplicado sozinho. Vazio quando não sobra um nome com letras.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ccustoDoNomeDoArquivo, nomeBaseDoArquivo, numeroDoCcustoNoNome, resolverCcustoInformado, sugestaoDeCcusto } from "./ccustoDoNomeArquivo";
+import { ccustoDoNomeDoArquivo, ccustoUnicoDoArquivo, nomeBaseDoArquivo, numeroDoCcustoNoNome, resolverCcustoInformado, sugestaoDeCcusto } from "./ccustoDoNomeArquivo";
 
 const ccustos = [
   { codigo: "21", nome: "CARBRINK" },
@@ -118,6 +118,20 @@ describe("ccustoDoNomeDoArquivo", () => {
   it("sem o marcador CC o número solto continua não valendo (ITAU RH1050 não vira ITAU R&S 1050)", () => {
     expect(ccustoDoNomeDoArquivo("ITAU RH1050 FABI - FOLHA 092026 1.xlsx", ccustos)).toBeNull();
     expect(ccustoDoNomeDoArquivo("Movimentos 1130.xlsx", ccustosXp)).toBeNull();
+  });
+});
+
+describe("ccustoUnicoDoArquivo", () => {
+  const perecivel = { codigo: "CHAMA PERECIVEL", nome: "CHAMA PERECIVEL" };
+
+  it("devolve o centro de custo que todos os colaboradores do arquivo com centro de custo compartilham (13 em CHAMA PERECIVEL)", () => {
+    expect(ccustoUnicoDoArquivo(Array.from({ length: 13 }, () => perecivel))).toEqual(perecivel);
+    expect(ccustoUnicoDoArquivo([perecivel])).toEqual(perecivel);
+  });
+
+  it("arquivo misturado (mais de um centro de custo) ou sem nenhum não define: não chuta", () => {
+    expect(ccustoUnicoDoArquivo([perecivel, { codigo: "25", nome: "SUPERMERCADO CHAMA" }])).toBeNull();
+    expect(ccustoUnicoDoArquivo([])).toBeNull();
   });
 });
 

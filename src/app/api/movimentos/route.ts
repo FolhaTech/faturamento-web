@@ -20,7 +20,7 @@ import {
 } from "@/lib/repo/movimentos";
 import { salvarProvisoesMensais } from "@/lib/repo/provisoesMensais";
 import { getTomadorPorNome, listTomadores, upsertTomadoresPendentes } from "@/lib/repo/tomadores";
-import { ccustoDoNomeDoArquivo, resolverCcustoInformado } from "@/lib/xlsx/ccustoDoNomeArquivo";
+import { ccustoDoNomeDoArquivo, ccustoUnicoDoArquivo, resolverCcustoInformado } from "@/lib/xlsx/ccustoDoNomeArquivo";
 import { parseMovimentosFile } from "@/lib/xlsx/parseMovimentos";
 
 export const runtime = "nodejs";
@@ -171,6 +171,17 @@ export async function POST(request: Request) {
     if (ccusto) {
       ccustoPorMatricula.set(matricula, ccusto);
       ultimoCcusto = ccusto;
+    }
+  }
+  // Quem continua sem centro de custo (o primeiro do arquivo não tem "colaborador anterior" pra herdar) fica no centro de custo
+  // dos demais, quando todos os outros do arquivo estão no mesmo. Só um palpite (não explícito): preenche cadastro vazio, nunca
+  // sobrescreve um centro de custo já cadastrado.
+  const ccustoDoGrupo = ccustoUnicoDoArquivo([...ccustoPorMatricula.values()]);
+  if (ccustoDoGrupo) {
+    for (const matricula of matriculasEmOrdem) {
+      if (colaboradoresDoArquivo.has(matricula) && !ccustoPorMatricula.has(matricula)) {
+        ccustoPorMatricula.set(matricula, { codigo: ccustoDoGrupo.codigo, nome: ccustoDoGrupo.nome, explicito: false });
+      }
     }
   }
 
