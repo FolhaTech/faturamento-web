@@ -452,6 +452,7 @@ function TotalsCard({
           ["Valor líquido a receber", sobre.valorLiquido, true],
         ] as [string, number, boolean?][])
       : ([
+          ["Base do INSS (base − VT/VR/VA/Bonif.)", resumo.baseRetencaoInss],
           ["Retenções na fonte", -resumo.retencoes.total],
           ["Valor líquido a receber", resumo.valorLiquido, true],
         ] as [string, number, boolean?][])),
