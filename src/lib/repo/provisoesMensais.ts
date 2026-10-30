@@ -62,3 +62,18 @@ export async function listProvisoesMensaisPorMatricula(matricula: number): Promi
   const rows = await getDb()<Row[]>`SELECT * FROM provisoes_mensais WHERE matricula = ${matricula} ORDER BY competencia DESC`;
   return rows.map(toProvisaoMensal);
 }
+
+/** Cada mês com provisão gravada vale 2,5 dias de férias (30 dias / 12 meses). */
+export const DIAS_FERIAS_POR_MES = 2.5;
+
+/** Dias de férias acumulados (meses com provisão gravada × 2,5) por matrícula — usado na listagem de Colaboradores. Quem não tem nenhuma provisão gravada fica fora do mapa (0 dias). */
+export async function diasFeriasPorMatriculas(matriculas: number[]): Promise<Map<number, number>> {
+  const unicos = [...new Set(matriculas)];
+  if (unicos.length === 0) return new Map();
+  await ensureSchema();
+  const sql = getDb();
+  const rows = await sql<{ matricula: number; meses: number }[]>`
+    SELECT matricula, COUNT(*)::int AS meses FROM provisoes_mensais WHERE matricula = ANY(${unicos}) GROUP BY matricula
+  `;
+  return new Map(rows.map((r) => [r.matricula, r.meses * DIAS_FERIAS_POR_MES]));
+}
