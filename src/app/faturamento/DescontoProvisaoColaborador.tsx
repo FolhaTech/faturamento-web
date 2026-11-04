@@ -14,17 +14,17 @@ const campo = "min-h-11 rounded-md border border-neutral-300 px-2 text-sm";
 const botao = "min-h-11 rounded-md border border-neutral-400 px-3 text-sm font-medium hover:bg-neutral-100 disabled:opacity-50";
 const exibirMes = (m: number) => String(m % 12 + 1).padStart(2, "0") + "/" + Math.floor(m / 12);
 
-export function DescontoProvisaoColaborador({ matricula, competencia, dataDemissao }: { matricula: number; competencia: string; dataDemissao?: string | null }) {
+export function DescontoProvisaoColaborador({ matricula, competencia, dataDemissao, consultarSemFolha = false }: { matricula: number; competencia: string | null; dataDemissao?: string | null; consultarSemFolha?: boolean }) {
   const router = useRouter();
   const [dados, setDados] = useState<Historico | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
   const [periodo, setPeriodo] = useState("");
   const [dias, setDias] = useState("");
-  const mes = mesReserva(competencia);
-  if (mes === null || competencia.endsWith(" (Prévia)")) return null;
+  const mes = competencia && !competencia.endsWith(" (Prévia)") ? mesReserva(competencia) : null;
+  if (mes === null && !consultarSemFolha) return null;
   const mesDemissao = dataDemissao?.includes("-") ? dataDemissao.slice(5, 7) + "/" + dataDemissao.slice(0, 4) : dataDemissao?.slice(3);
-  const rescisao = mesDemissao === exibirMes(mes);
+  const rescisao = mes !== null && mesDemissao === exibirMes(mes);
   const endpoint = "/api/faturamento/desconto-provisao";
 
   async function atualizar(body?: Record<string, unknown>) {
@@ -57,55 +57,57 @@ export function DescontoProvisaoColaborador({ matricula, competencia, dataDemiss
       <h4 className="font-semibold">Reservas cobradas e abatimentos</h4>
       {!dados && <button type="button" className={botao} disabled={ocupado} onClick={() => atualizar()}>Consultar reservas</button>}
       {dados && <>
-        <p className="text-neutral-600">Confira os valores com a fatura emitida. O crédito aplicado entra no cálculo ao vivo; versões salvas precisam ser atualizadas.</p>
-        {!dados.cobrancas.some((c) => c.mes === mes) && (
-          <form onSubmit={confirmar} className="space-y-3 border-b border-neutral-200 pb-4">
-            <h5 className="font-medium">Registrar cobrança de {exibirMes(mes)}</h5>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {tipos.map((tipo) => <label key={tipo} className="flex flex-col gap-1">{rotulos[tipo]} (R$)<input name={tipo} className={campo} type="number" min="0" step="0.01" placeholder="0,00" /></label>)}
-              <label className="flex flex-col gap-1">Início do período de férias (MM/AAAA)<input name="periodo" className={campo} pattern="(0[1-9]|1[0-2])/[0-9]{4}" placeholder="MM/AAAA" /></label>
-              <label className="flex flex-col gap-1">Referência da fatura emitida<input name="referencia" required maxLength={160} className={campo} /></label>
-            </div>
-            <button className={botao} disabled={ocupado}>Confirmar valores cobrados</button>
-          </form>
-        )}
-        <div className="grid gap-3 lg:grid-cols-3">
-          {tipos.map((tipo) => {
-            const atual = dados.usos.find((u) => u.tipo === tipo && u.mes === mes && !u.retirado);
-            const periodoAplicado = tipo === "ferias" && rescisao ? "*" : periodo;
-            const saldo = saldoReserva(dados.cobrancas, [...dados.usos.filter((u) => !u.retirado), ...dados.manuais], mes, tipo, periodoAplicado);
-            const manual = dados.manuais.some((u) => u.tipo === tipo && u.mes === mes);
-            const quitar = tipo !== "ferias" || rescisao;
-            const sugestao = creditoReserva(saldo, Number(dias), quitar);
-            const elegivel = tipo === "ferias" || rescisao || (tipo === "terco" && mes % 12 === 11);
-            return <div className="space-y-2 rounded border border-neutral-200 p-3" key={tipo}>
-              <h5 className="font-medium">{rotulos[tipo]}</h5>
-              {tipo === "ferias" && rescisao && <p>Quitação dos períodos de férias deste vínculo.</p>}
-              {tipo === "ferias" && !rescisao && <>
-                <label className="flex flex-col gap-1">Período de férias
-                  <select className={campo} value={periodo} onChange={(e) => setPeriodo(e.target.value)}>
-                    <option value="">Selecione o início</option>
-                    {[...new Set(dados.cobrancas.filter((c) => c.mes <= mes && c.ferias > 0).map((c) => c.periodo))].map((p) => <option key={p}>{p}</option>)}
-                  </select>
-                </label>
-                {!quitar && <label className="flex flex-col gap-1">Dias utilizados<input className={campo} type="number" min="0.5" max={saldo.dias} step="0.5" value={dias} onChange={(e) => setDias(e.target.value)} /></label>}
-              </>}
-              {tipo === "aviso" && <p>De {exibirMes(mes - 12)} a {exibirMes(mes - 1)}.</p>}
-              {tipo === "terco" && <p>Exercício de {Math.floor(mes / 12)}.</p>}
-              <p>Cobrado: {valor(saldo.cobrado)} · Usado: {valor(saldo.usado)}</p>
-              <p>Saldo: <strong>{valor(saldo.saldo)}</strong>{tipo === "ferias" && " · " + saldo.dias + " dias"}</p>
-              {atual ? <>
-                <p>Crédito em {atual.competencia}: <strong>{valor(atual.valor)}</strong></p>
-                {atual.competencia === competencia && <button type="button" className={botao} disabled={ocupado} onClick={() => atualizar({ tipo: "retirar", reserva: tipo })}>Retirar crédito</button>}
-              </> : <>
-                {manual && <p>Já há um abatimento neste mês.</p>}
-                {!elegivel && <p>{tipo === "aviso" ? "Disponível no mês do desligamento." : "Disponível em dezembro ou na rescisão."}</p>}
-                <button type="button" className={botao} disabled={ocupado || manual || !elegivel || sugestao <= 0} onClick={() => atualizar({ tipo: "aplicar", reserva: tipo, periodo: periodoAplicado, dias: Number(dias), esperado: sugestao })}>Aplicar {valor(sugestao)}</button>
-              </>}
-            </div>;
-          })}
-        </div>
-        <details>
+        {mes === null ? <p className="text-neutral-600">Selecione uma competência de Folha para lançar cobranças e créditos.</p> : <>
+          <p className="text-neutral-600">Confira os valores com a fatura emitida. O crédito aplicado entra no cálculo ao vivo; versões salvas precisam ser atualizadas.</p>
+          {!dados.cobrancas.some((c) => c.mes === mes) && (
+            <form onSubmit={confirmar} className="space-y-3 border-b border-neutral-200 pb-4">
+              <h5 className="font-medium">Registrar cobrança de {exibirMes(mes)}</h5>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {tipos.map((tipo) => <label key={tipo} className="flex flex-col gap-1">{rotulos[tipo]} (R$)<input name={tipo} className={campo} type="number" min="0" step="0.01" placeholder="0,00" /></label>)}
+                <label className="flex flex-col gap-1">Início do período de férias (MM/AAAA)<input name="periodo" className={campo} pattern="(0[1-9]|1[0-2])/[0-9]{4}" placeholder="MM/AAAA" /></label>
+                <label className="flex flex-col gap-1">Referência da fatura emitida<input name="referencia" required maxLength={160} className={campo} /></label>
+              </div>
+              <button className={botao} disabled={ocupado}>Confirmar valores cobrados</button>
+            </form>
+          )}
+          <div className="grid gap-3 lg:grid-cols-3">
+            {tipos.map((tipo) => {
+              const atual = dados.usos.find((u) => u.tipo === tipo && u.mes === mes && !u.retirado);
+              const periodoAplicado = tipo === "ferias" && rescisao ? "*" : periodo;
+              const saldo = saldoReserva(dados.cobrancas, [...dados.usos.filter((u) => !u.retirado), ...dados.manuais], mes, tipo, periodoAplicado);
+              const manual = dados.manuais.some((u) => u.tipo === tipo && u.mes === mes);
+              const quitar = tipo !== "ferias" || rescisao;
+              const sugestao = creditoReserva(saldo, Number(dias), quitar);
+              const elegivel = tipo === "ferias" || rescisao || (tipo === "terco" && mes % 12 === 11);
+              return <div className="space-y-2 rounded border border-neutral-200 p-3" key={tipo}>
+                <h5 className="font-medium">{rotulos[tipo]}</h5>
+                {tipo === "ferias" && rescisao && <p>Quitação dos períodos de férias deste vínculo.</p>}
+                {tipo === "ferias" && !rescisao && <>
+                  <label className="flex flex-col gap-1">Período de férias
+                    <select className={campo} value={periodo} onChange={(e) => setPeriodo(e.target.value)}>
+                      <option value="">Selecione o início</option>
+                      {[...new Set(dados.cobrancas.filter((c) => c.mes <= mes && c.ferias > 0).map((c) => c.periodo))].map((p) => <option key={p}>{p}</option>)}
+                    </select>
+                  </label>
+                  {!quitar && <label className="flex flex-col gap-1">Dias utilizados<input className={campo} type="number" min="0.5" max={saldo.dias} step="0.5" value={dias} onChange={(e) => setDias(e.target.value)} /></label>}
+                </>}
+                {tipo === "aviso" && <p>De {exibirMes(mes - 12)} a {exibirMes(mes - 1)}.</p>}
+                {tipo === "terco" && <p>Exercício de {Math.floor(mes / 12)}.</p>}
+                <p>Cobrado: {valor(saldo.cobrado)} · Usado: {valor(saldo.usado)}</p>
+                <p>Saldo: <strong>{valor(saldo.saldo)}</strong>{tipo === "ferias" && " · " + saldo.dias + " dias"}</p>
+                {atual ? <>
+                  <p>Crédito em {atual.competencia}: <strong>{valor(atual.valor)}</strong></p>
+                  {atual.competencia === competencia && <button type="button" className={botao} disabled={ocupado} onClick={() => atualizar({ tipo: "retirar", reserva: tipo })}>Retirar crédito</button>}
+                </> : <>
+                  {manual && <p>Já há um abatimento neste mês.</p>}
+                  {!elegivel && <p>{tipo === "aviso" ? "Disponível no mês do desligamento." : "Disponível em dezembro ou na rescisão."}</p>}
+                  <button type="button" className={botao} disabled={ocupado || manual || !elegivel || sugestao <= 0} onClick={() => atualizar({ tipo: "aplicar", reserva: tipo, periodo: periodoAplicado, dias: Number(dias), esperado: sugestao })}>Aplicar {valor(sugestao)}</button>
+                </>}
+              </div>;
+            })}
+          </div>
+        </>}
+        <details open={mes === null ? true : undefined}>
           <summary className="cursor-pointer py-2 font-medium">Histórico de cobranças e créditos</summary>
           <ul className="space-y-1">
             {dados.cobrancas.map((c) => <li key={c.mes}>{exibirMes(c.mes)} · {c.referencia} · Férias {valor(c.ferias)}{c.periodo && " (" + c.periodo + ")"} · 13º {valor(c.terco)} · Aviso {valor(c.aviso)}</li>)}

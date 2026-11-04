@@ -1,3 +1,4 @@
+import { DescontoProvisaoColaborador } from "@/app/faturamento/DescontoProvisaoColaborador";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getColaborador } from "@/lib/repo/colaboradores";
@@ -80,6 +81,14 @@ export default async function EditarColaboradorPage({
       {meses.length > 0 && (
         <CompetenciaCalendario meses={meses} competenciaAtual={competenciaAtual} basePath={`/colaboradores/${matricula}`} />
       )}
+
+      <DescontoProvisaoColaborador
+        key={competenciaAtual}
+        matricula={colaborador.matricula}
+        competencia={competenciaAtual}
+        dataDemissao={colaborador.dataDemissao}
+        consultarSemFolha
+      />
 
       <SaldoFeriasCard
         matricula={colaborador.matricula}
