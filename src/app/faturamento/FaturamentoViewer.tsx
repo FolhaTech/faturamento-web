@@ -946,7 +946,7 @@ function ColaboradoresTable({
                       <td colSpan={15} className="bg-neutral-50 p-3">
                         <div className="flex flex-col gap-3">
                           <RegimeColaborador matricula={c.matricula} codServicoAtual={codServicoPorMatricula.get(c.matricula) ?? null} tomadores={tomadoresOpcoes} />
-                          <DescontoProvisaoColaborador key={competencia} matricula={c.matricula} competencia={competencia} dataDemissao={vinculoPorMatricula.get(c.matricula)?.dataDemissao} />
+                          <DescontoProvisaoColaborador key={competencia} matricula={c.matricula} competencia={competencia} admissao={vinculoPorMatricula.get(c.matricula)?.admissao} dataDemissao={vinculoPorMatricula.get(c.matricula)?.dataDemissao} />
                           <RubricasTable
                             rubricas={c.rubricas}
                             encargosPorCodigo={encargosPorCodigo}

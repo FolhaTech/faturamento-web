@@ -34,9 +34,7 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
   const rescisao = mes !== null && mesDemissao === exibirMes(mes);
   const periodos = [...new Set(dados?.cobrancas.filter((c) => mes !== null && c.mes <= mes && c.ferias > 0).map((c) => c.periodo))];
   const periodo = periodoEscolhido || (periodos.includes(PERIODO_FOLHA) ? PERIODO_FOLHA : periodos[0] ?? "");
-  const saldoDias = consultarSemFolha
-    ? saldoDiasFerias(admissao, dataDemissao ?? null, dados?.diasGozados ?? diasGozadosIniciais ?? [], hoje)
-    : null;
+  const saldoDias = saldoDiasFerias(admissao, dataDemissao ?? null, dados?.diasGozados ?? diasGozadosIniciais ?? [], hoje);
   const endpoint = "/api/faturamento/desconto-provisao";
 
   async function atualizar(body?: Record<string, unknown>) {
@@ -61,7 +59,7 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
     <div className="space-y-3 rounded-lg border border-neutral-200 bg-white p-4 text-sm text-neutral-900">
       <h4 className="font-semibold">Reservas cobradas e abatimentos</h4>
       {!dados && <button type="button" className={botao} disabled={ocupado} onClick={() => atualizar()}>Consultar reservas</button>}
-      {saldoDias && <div className="space-y-2 rounded border border-neutral-200 p-3">
+      {consultarSemFolha && <div className="space-y-2 rounded border border-neutral-200 p-3">
         <h5 className="font-medium">Dias de férias até {hoje.split("-").reverse().join("/")}</h5>
         <dl className="grid gap-2 sm:grid-cols-3">
           <div><dt>Acumulados</dt><dd className="font-semibold">{saldoDias.acumulados?.toLocaleString("pt-BR") ?? "Admissão não informada"}</dd></div>
@@ -86,7 +84,7 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
               const saldo = saldoReserva(dados.cobrancas, usos, mes, tipo, periodoAplicado);
               const manual = dados.manuais.some((u) => u.tipo === tipo && u.mes === mes);
               const quitar = tipo !== "ferias" || rescisao;
-              const base = quitar ? saldo : baseFeriasGozadas(dados.cobrancas, usos, mes, periodoAplicado);
+              const base = quitar ? saldo : baseFeriasGozadas(dados.cobrancas, usos, mes, periodoAplicado, saldoDias.acumulados ?? 0);
               const sugestao = creditoReserva(base, diasDaFolha, quitar);
               const elegivel = tipo === "ferias" || rescisao || (tipo === "terco" && mes % 12 === 11);
               return <div className="space-y-2 rounded border border-neutral-200 p-3" key={tipo}>
@@ -101,8 +99,8 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
                   </label>
                   <p>Dias gozados na Folha de {exibirMes(mes)}: <strong>{diasDaFolha.toLocaleString("pt-BR")}</strong></p>
                   {diasDaFolha > 0 && (sugestao > 0 ? (
-                    <p>Valor proporcional pela reserva anterior ao mês: <strong>{valor(base.saldo)} ÷ {base.dias.toLocaleString("pt-BR")} dias × {diasDaFolha.toLocaleString("pt-BR")} dias = {valor(sugestao)}</strong></p>
-                  ) : <p>Saldo anterior insuficiente para calcular o crédito desses dias.</p>)}
+                    <p>Reserva anterior ao mês ÷ dias acumulados até hoje × dias gozados: <strong>{valor(base.saldo)} ÷ {base.dias.toLocaleString("pt-BR")} dias × {diasDaFolha.toLocaleString("pt-BR")} dias = {valor(sugestao)}</strong></p>
+                  ) : <p>Confira a data de admissão, o saldo anterior e os dias acumulados para calcular o crédito.</p>)}
                 </>}
                 {tipo === "aviso" && <p>De {exibirMes(mes - 12)} a {exibirMes(mes - 1)}.</p>}
                 {tipo === "terco" && <p>Exercício de {Math.floor(mes / 12)}.</p>}

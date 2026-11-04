@@ -58,7 +58,8 @@ it("calcula férias gozadas com a reserva anterior, mesmo com abatimento lançad
     [{ mes, tipo: "ferias", periodo, valor: 316008, dias: 14 }],
     mes,
     periodo,
+    37.5,
   );
-  expect(base).toMatchObject({ saldo: 301318, dias: 32.5 });
-  expect(creditoReserva(base, 14, false)).toBe(129799);
+  expect(base).toMatchObject({ saldo: 301318, dias: 37.5 });
+  expect(creditoReserva(base, 14, false)).toBe(112492);
 });

@@ -1,3 +1,4 @@
+import { hojeSaoPaulo, saldoDiasFerias } from "../calc/diasFerias";
 import type { Sql, TransactionSql } from "postgres";
 import { CODIGO_AVISO_PREVIO } from "../calc/engine";
 import { listarDiasGozados } from "./diasFerias";
@@ -28,8 +29,8 @@ export async function alterarReserva(matricula: number, competencia: string, aca
   if (mes === null || competencia.endsWith(" (Prévia)")) throw new ErroReserva("Competência inválida.");
   await ensureSchema();
   return getDb().begin(async (sql) => {
-    const [colaborador] = await sql<{ data_demissao: string | null; cod_servico: number | null }[]>`
-      SELECT data_demissao, cod_servico FROM colaboradores WHERE matricula = ${matricula} FOR UPDATE
+    const [colaborador] = await sql<{ admissao: string | null; data_demissao: string | null; cod_servico: number | null }[]>`
+      SELECT admissao, data_demissao, cod_servico FROM colaboradores WHERE matricula = ${matricula} FOR UPDATE
     `;
     if (!colaborador) throw new ErroReserva("Colaborador não encontrado.");
     const tomador = colaborador.cod_servico;
@@ -72,7 +73,7 @@ export async function alterarReserva(matricula: number, competencia: string, aca
     const usos = [...existentes, ...usosManuais(legados)];
     const saldo = quitar
       ? saldoReserva(cobrancas, usos, mes, tipo, periodo)
-      : baseFeriasGozadas(cobrancas, usos, mes, periodo);
+      : baseFeriasGozadas(cobrancas, usos, mes, periodo, saldoDiasFerias(colaborador.admissao, colaborador.data_demissao, [], hojeSaoPaulo()).acumulados ?? 0);
     const diasDaFolha = tipo === "ferias" && !quitar
       ? (await listarDiasGozados([matricula], sql)).get(matricula)?.find((d) => d.mes === mes)?.dias ?? 0
       : 0;
