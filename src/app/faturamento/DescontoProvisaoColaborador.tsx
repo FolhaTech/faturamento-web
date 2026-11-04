@@ -86,6 +86,11 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
               const quitar = tipo !== "ferias" || rescisao;
               const base = quitar ? saldo : baseFeriasGozadas(dados.cobrancas, usos, mes, periodoAplicado, saldoDias.acumulados ?? 0);
               const sugestao = creditoReserva(base, diasDaFolha, quitar);
+              const mostrarSaldoAposFerias = tipo === "ferias" && !rescisao && diasDaFolha > 0;
+              const abatidoNoMes = mostrarSaldoAposFerias
+                ? usos.filter((u) => u.tipo === "ferias" && u.mes === mes && (!u.periodo || u.periodo === periodoAplicado))
+                    .reduce((total, u) => total + u.valor, 0)
+                : 0;
               const elegivel = tipo === "ferias" || rescisao || (tipo === "terco" && mes % 12 === 11);
               return <div className="space-y-2 rounded border border-neutral-200 p-3" key={tipo}>
                 <h5 className="font-medium">{rotulos[tipo]}</h5>
@@ -104,8 +109,12 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
                 </>}
                 {tipo === "aviso" && <p>De {exibirMes(mes - 12)} a {exibirMes(mes - 1)}.</p>}
                 {tipo === "terco" && <p>Exercício de {Math.floor(mes / 12)}.</p>}
-                <p>Cobrado: {valor(saldo.cobrado)} · Usado: {valor(saldo.usado)}</p>
-                <p>Saldo: <strong>{valor(saldo.saldo)}</strong></p>
+                {mostrarSaldoAposFerias ? (
+                  <p>Saldo: <strong>{valor(base.saldo)} − {valor(abatidoNoMes)} = {valor(base.saldo - abatidoNoMes)}</strong></p>
+                ) : <>
+                  <p>Cobrado: {valor(saldo.cobrado)} · Usado: {valor(saldo.usado)}</p>
+                  <p>Saldo: <strong>{valor(saldo.saldo)}</strong></p>
+                </>}
                 {atual ? <>
                   <p>{atual.automatico ? "Crédito automático" : "Crédito"} em {atual.competencia}: <strong>{valor(atual.valor)}</strong></p>
                   {podeLancar && !atual.automatico && atual.competencia === competencia && <button type="button" className={botao} disabled={ocupado} onClick={() => atualizar({ tipo: "retirar", reserva: tipo })}>Retirar crédito</button>}
