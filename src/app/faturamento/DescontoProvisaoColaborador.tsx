@@ -67,7 +67,7 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
             <div><dt>Gozados na Folha</dt><dd className="font-semibold">{saldoDias.utilizados.toLocaleString("pt-BR")}</dd></div>
             <div><dt>Saldo em dias</dt><dd className="font-semibold">{saldoDias.saldo?.toLocaleString("pt-BR") ?? "—"}</dd></div>
           </dl>
-          <p className="text-neutral-600">2,5 dias por mês completo desde a admissão, até o desligamento quando houver.</p>
+          <p className="text-neutral-600">2,5 dias no mês da admissão e a cada mês completo de vínculo, até o desligamento.</p>
           {saldoDias.historico.length > 0 && <details>
             <summary className="cursor-pointer py-2">Dias gozados por competência</summary>
             <ul>{saldoDias.historico.map((d) => <li key={d.mes}>{exibirMes(d.mes)} · {d.dias.toLocaleString("pt-BR")} dias</li>)}</ul>

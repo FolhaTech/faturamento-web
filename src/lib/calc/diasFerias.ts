@@ -24,7 +24,7 @@ export function saldoDiasFerias(admissao: string | null, desligamento: string | 
   const primeiroMes = inicio ? mesReserva(inicio.slice(5, 7) + "/" + inicio.slice(0, 4))! : null;
   const ultimoDiaMes = new Date(Date.UTC(Number(fim.slice(0, 4)), Number(fim.slice(5, 7)), 0)).getUTCDate();
   const aniversario = inicio ? Math.min(Number(inicio.slice(8, 10)), ultimoDiaMes) : 0;
-  const acumulados = primeiroMes === null ? null : Math.max(0, mes - primeiroMes - Number(Number(fim.slice(8, 10)) < aniversario)) * 2.5;
+  const acumulados = inicio === null || primeiroMes === null ? null : fim < inicio ? 0 : (1 + mes - primeiroMes - Number(Number(fim.slice(8, 10)) < aniversario)) * 2.5;
   const historico = movimentos.filter((m) => m.mes <= mes && (primeiroMes === null || m.mes >= primeiroMes));
   const utilizados = historico.reduce((total, m) => total + m.dias, 0);
   return { acumulados, utilizados, saldo: acumulados === null ? null : acumulados - utilizados, historico };

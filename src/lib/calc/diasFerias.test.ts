@@ -3,10 +3,13 @@ import { diasGozadosPorMes, hojeSaoPaulo, saldoDiasFerias } from "./diasFerias";
 import { mesReserva } from "./reservasFaturadas";
 
 describe("dias de férias", () => {
-  it("acrescenta 2,5 no aniversário mensal e limita o cálculo ao desligamento", () => {
-    expect(saldoDiasFerias("31/01/2026", null, [], "2026-02-27").acumulados).toBe(0);
-    expect(saldoDiasFerias("31/01/2026", null, [], "2026-02-28").acumulados).toBe(2.5);
-    expect(saldoDiasFerias("31/01/2026", "2026-02-28", [], "2026-04-30").acumulados).toBe(2.5);
+  it("conta a admissão e acrescenta 2,5 no aniversário mensal e limita o cálculo ao desligamento", () => {
+    expect(saldoDiasFerias("31/01/2026", null, [], "2026-01-30").acumulados).toBe(0);
+    expect(saldoDiasFerias("31/01/2026", null, [], "2026-01-31").acumulados).toBe(2.5);
+    expect(saldoDiasFerias("31/01/2026", null, [], "2026-02-27").acumulados).toBe(2.5);
+    expect(saldoDiasFerias("31/01/2026", null, [], "2026-02-28").acumulados).toBe(5);
+    expect(saldoDiasFerias("31/01/2026", "2026-02-28", [], "2026-04-30").acumulados).toBe(5);
+    expect(saldoDiasFerias("2025-08-07", null, [], "2026-11-04").acumulados).toBe(37.5);
     expect(hojeSaoPaulo(new Date("2026-11-05T01:00:00Z"))).toBe("2026-11-04");
   });
 
@@ -21,7 +24,7 @@ describe("dias de férias", () => {
     ]);
     expect(movimentos).toEqual([{ mes: mesReserva("08/2026"), dias: 10 }]);
     expect(saldoDiasFerias("2026-01-01", null, movimentos, "2026-08-01")).toMatchObject({
-      acumulados: 17.5, utilizados: 10, saldo: 7.5,
+      acumulados: 20, utilizados: 10, saldo: 10,
     });
   });
 });
