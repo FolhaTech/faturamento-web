@@ -143,12 +143,18 @@ function HistoricoReservas({ dados }: { dados: Historico }) {
     .sort((a, b) => b - a);
   if (!meses.length) return <p>Nenhum registro confirmado.</p>;
 
+  const abatimentosAtivos = [...dados.usos.filter((credito) => !credito.retirado), ...dados.manuais];
+
   return (
     <ul className="divide-y divide-neutral-200">
       {meses.map((mes) => {
         const cobranca = dados.cobrancas.find((item) => item.mes === mes);
         const creditos = dados.usos.filter((item) => item.mes === mes);
         const abatimentos = dados.manuais.filter((item) => item.mes === mes);
+        const abertura = saldoReserva(dados.cobrancas, abatimentosAtivos, mes - 1, "ferias", "*");
+        const fechamento = saldoReserva(dados.cobrancas, abatimentosAtivos, mes, "ferias", "*");
+        const provisionado = fechamento.cobrado - abertura.cobrado;
+        const abatido = fechamento.usado - abertura.usado;
         return (
           <li key={mes} className="space-y-1 py-2">
             <p className="font-semibold">{exibirMes(mes)}</p>
@@ -157,6 +163,14 @@ function HistoricoReservas({ dados }: { dados: Historico }) {
                 {cobranca.periodo && cobranca.periodo !== PERIODO_FOLHA && " (" + cobranca.periodo + ")"}
                 {" · 13º " + valor(cobranca.terco) + " · Aviso " + valor(cobranca.aviso)}
               </p>
+            )}
+            {(provisionado !== 0 || abatido !== 0) && (
+              <dl aria-label="Movimentação da reserva de férias" className="grid grid-cols-2 gap-2 rounded bg-neutral-50 p-2 sm:grid-cols-4">
+                <div><dt>Saldo anterior</dt><dd>{valor(abertura.saldo)}</dd></div>
+                <div><dt>Férias provisionadas no mês</dt><dd>{valor(provisionado)}</dd></div>
+                <div><dt>Férias abatidas no mês</dt><dd>{valor(abatido)}</dd></div>
+                <div><dt>Saldo para o próximo mês</dt><dd className="font-semibold">{valor(fechamento.saldo)}</dd></div>
+              </dl>
             )}
             {creditos.map((credito, indice) => (
               <p key={indice}>

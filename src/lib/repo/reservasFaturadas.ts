@@ -210,7 +210,7 @@ async function listarBaseReservas(sql: Sql | TransactionSql, matricula: number) 
     porMes.set(mes, {
       mes,
       periodo: confirmada?.periodo || PERIODO_FOLHA,
-      ferias: p.prov_ferias * 100,
+      ferias: Math.round(p.prov_ferias * 100),
       terco: p.prov_13 * 100,
       aviso: confirmada?.aviso ?? 0,
       referencia: confirmada?.aviso ? "Folha · aviso: " + confirmada.referencia : "Provisões da Folha",
