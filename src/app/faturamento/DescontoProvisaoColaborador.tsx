@@ -115,16 +115,47 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
         </>}
         <details open={mes === null ? true : undefined}>
           <summary className="cursor-pointer py-2 font-medium">Histórico de cobranças e créditos</summary>
-          <ul className="space-y-1">
-            {dados.cobrancas.map((c) => <li key={c.mes}>{exibirMes(c.mes)} · {c.referencia} · Férias {valor(c.ferias)}{c.periodo && c.periodo !== PERIODO_FOLHA && " (" + c.periodo + ")"} · 13º {valor(c.terco)} · Aviso {valor(c.aviso)}</li>)}
-            {dados.usos.map((u, i) => <li key={i}>{u.competencia} · {u.retirado ? "Crédito retirado" : "Crédito"} de {rotulos[u.tipo]}: {valor(u.valor)}{u.periodo && " · " + (u.periodo === "*" ? "Rescisão" : u.periodo === PERIODO_FOLHA ? "Histórico da Folha" : u.periodo) + " · " + u.dias + " dias"}</li>)}
-            {dados.manuais.map((u) => <li key={u.mes + ":" + u.tipo}>{exibirMes(u.mes)} · Abatimento anterior de {rotulos[u.tipo]}: {valor(u.valor)}</li>)}
-            {!dados.cobrancas.length && !dados.usos.length && !dados.manuais.length && <li>Nenhum registro confirmado.</li>}
-          </ul>
+          <HistoricoReservas dados={dados} />
         </details>
       </>}
       {ocupado && <p role="status">Atualizando reservas…</p>}
       {erro && <p role="alert" className="text-red-700">{erro}</p>}
     </div>
+  );
+}
+
+function HistoricoReservas({ dados }: { dados: Historico }) {
+  const meses = [...new Set([...dados.cobrancas, ...dados.usos, ...dados.manuais].map((item) => item.mes))]
+    .sort((a, b) => b - a);
+  if (!meses.length) return <p>Nenhum registro confirmado.</p>;
+
+  return (
+    <ul className="divide-y divide-neutral-200">
+      {meses.map((mes) => {
+        const cobranca = dados.cobrancas.find((item) => item.mes === mes);
+        const creditos = dados.usos.filter((item) => item.mes === mes);
+        const abatimentos = dados.manuais.filter((item) => item.mes === mes);
+        return (
+          <li key={mes} className="space-y-1 py-2">
+            <p className="font-semibold">{exibirMes(mes)}</p>
+            {cobranca && (
+              <p>{cobranca.referencia} · Férias {valor(cobranca.ferias)}
+                {cobranca.periodo && cobranca.periodo !== PERIODO_FOLHA && " (" + cobranca.periodo + ")"}
+                {" · 13º " + valor(cobranca.terco) + " · Aviso " + valor(cobranca.aviso)}
+              </p>
+            )}
+            {creditos.map((credito, indice) => (
+              <p key={indice}>
+                {credito.retirado ? "Crédito retirado" : "Crédito"} de {rotulos[credito.tipo]}: {valor(credito.valor)}
+                {credito.periodo && " · " + (credito.periodo === "*" ? "Rescisão" : credito.periodo === PERIODO_FOLHA ? "Histórico da Folha" : credito.periodo) + " · " + credito.dias + " dias"}
+              </p>
+            ))}
+            {abatimentos.map((abatimento) => (
+              <p key={abatimento.tipo}>Abatimento anterior de {rotulos[abatimento.tipo]}: {valor(abatimento.valor)}</p>
+            ))}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
