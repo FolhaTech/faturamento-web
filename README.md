@@ -46,7 +46,7 @@ Next.js (App Router) + TypeScript + Tailwind CSS · SQLite (`node:sqlite`) · Sh
 
 ### Reservas cobradas no faturamento
 
-No detalhamento do colaborador em **Faturamento → Folha**, abra **Consultar reservas**. Registre, por competência, somente os valores efetivamente cobrados de férias + 1/3, 13º e aviso prévio, com a referência da fatura emitida. Para férias, informe o mês inicial do período aquisitivo. As provisões estimadas do upload não são importadas como cobranças; registre o histórico conferido antes de lançar um crédito.
+Na ficha do colaborador, abra **Consultar reservas**. Férias + 1/3 e 13º vêm do histórico mensal de provisões da Folha, descontando os abatimentos já lançados. O aviso prévio usa as faturas de fechamento salvas, preservando cobranças de aviso confirmadas anteriormente. O histórico da Folha sem período aquisitivo cadastrado aparece agrupado como **Histórico da Folha**.
 
 O painel mostra o saldo e exige que o operador aplique o crédito. Férias são proporcionais aos dias usados (2,5 dias por mês com cobrança no período). O 13º é encerrado em dezembro ou no desligamento, dentro do mesmo exercício. Na rescisão, as férias são quitadas pelo saldo dos períodos do vínculo e o aviso considera os 12 meses fechados anteriores ao mês de desligamento. Confira essa janela e os valores com a fatura e as condições do tomador.
 

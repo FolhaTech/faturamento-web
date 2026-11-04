@@ -526,7 +526,7 @@ async function generateComplementaryCharges(movimentos: Movimento[], ctx: Engine
 }
 
 /** Códigos reservados (fora da faixa da folha real) pras 5 linhas de provisão de rescisão. */
-const CODIGO_AVISO_PREVIO = 900010;
+export const CODIGO_AVISO_PREVIO = 900010;
 const CODIGO_13_SOBRE_AVISO_PREVIO = 900011;
 const CODIGO_FERIAS_SOBRE_AVISO_PREVIO = 900012;
 const CODIGO_FGTS_SOBRE_13_E_FERIAS_AVISO_PREVIO = 900013;

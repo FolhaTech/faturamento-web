@@ -1,3 +1,5 @@
+export const PERIODO_FOLHA = "folha";
+
 export type ReservaTipo = "ferias" | "terco" | "aviso";
 export type CobrancaReserva = { mes: number; periodo: string; ferias: number; terco: number; aviso: number };
 export type UsoReserva = { mes: number; tipo: ReservaTipo; periodo: string; valor: number; dias: number };
@@ -14,7 +16,7 @@ export function saldoReserva(cobrancas: CobrancaReserva[], usos: UsoReserva[], m
   const base = cobrancas.filter((c) => c.mes >= inicio && c.mes <= fim && (tipo !== "ferias" || (periodo === "*" || c.periodo === periodo)));
   const consumos = usos.filter((u) => u.tipo === tipo && u.mes >= inicio && u.mes <= mes && (tipo !== "ferias" || periodo === "*" || !u.periodo || u.periodo === periodo)
     && (tipo !== "terco" || Math.floor(u.mes / 12) === Math.floor(mes / 12)));
-  const cobrado = base.reduce((s, c) => s + c[tipo], 0);
+  const cobrado = Math.round(base.reduce((s, c) => s + c[tipo], 0));
   const usado = consumos.reduce((s, u) => s + u.valor, 0);
   const dias = tipo === "ferias" ? Math.max(0, base.filter((c) => c.ferias > 0).length * 2.5 - consumos.reduce((s, u) => s + u.dias, 0)) : 0;
   return { cobrado, usado, saldo: Math.max(0, cobrado - usado), dias };
