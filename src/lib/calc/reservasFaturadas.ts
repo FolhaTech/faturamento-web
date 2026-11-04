@@ -1,3 +1,4 @@
+export const ORIGEM_FERIAS_AUTOMATICAS = "sistema:ferias-folha";
 export const PERIODO_FOLHA = "folha";
 
 export type ReservaTipo = "ferias" | "terco" | "aviso";

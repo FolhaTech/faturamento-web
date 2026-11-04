@@ -1,11 +1,12 @@
 import { hojeSaoPaulo, saldoDiasFerias } from "../calc/diasFerias";
 import type { Sql, TransactionSql } from "postgres";
 import { CODIGO_AVISO_PREVIO } from "../calc/engine";
+import { getColaboradoresPorMatriculas } from "./colaboradores";
 import { listarDiasGozados } from "./diasFerias";
 import { ensureSchema, getDb } from "../db";
-import { baseFeriasGozadas, creditoReserva, mesReserva, saldoReserva, usosManuais, PERIODO_FOLHA, type CobrancaReserva, type ReservaTipo, type UsoReserva } from "../calc/reservasFaturadas";
+import { baseFeriasGozadas, creditoReserva, mesReserva, saldoReserva, usosManuais, PERIODO_FOLHA, ORIGEM_FERIAS_AUTOMATICAS, type CobrancaReserva, type ReservaTipo, type UsoReserva } from "../calc/reservasFaturadas";
 
-type Uso = UsoReserva & { competencia: string; retirado: boolean };
+type Uso = UsoReserva & { competencia: string; retirado: boolean; automatico: boolean };
 type Acao = { tipo: "cobranca"; cobranca: Omit<CobrancaReserva, "mes">; referencia: string }
   | { tipo: "aplicar"; reserva: ReservaTipo; periodo: string; esperado: number }
   | { tipo: "retirar"; reserva: ReservaTipo };
@@ -17,7 +18,7 @@ export async function consultarReservas(matricula: number) {
   const sql = getDb();
   const [cobrancas, usos, manuais, diasGozados] = await Promise.all([
     listarBaseReservas(sql, matricula),
-    sql<Uso[]>`SELECT mes, competencia, tipo, periodo, valor, dias, retirado_em IS NOT NULL AS retirado FROM reservas_creditos WHERE matricula = ${matricula} AND tomador = (SELECT cod_servico FROM colaboradores WHERE matricula = ${matricula}) ORDER BY mes DESC, id DESC`,
+    sql<Uso[]>`SELECT mes, competencia, tipo, periodo, valor, dias, retirado_em IS NOT NULL AS retirado, usuario = ${ORIGEM_FERIAS_AUTOMATICAS} AS automatico FROM reservas_creditos WHERE matricula = ${matricula} AND tomador = (SELECT cod_servico FROM colaboradores WHERE matricula = ${matricula}) ORDER BY mes DESC, id DESC`,
     listarAbatimentosAnteriores(sql, matricula),
     listarDiasGozados([matricula], sql),
   ]);
@@ -52,11 +53,12 @@ export async function alterarReserva(matricula: number, competencia: string, aca
       return;
     }
     const tipo = acao.reserva;
-    const existentes = await sql<Uso[]>`SELECT mes, competencia, tipo, periodo, valor, dias, retirado_em IS NOT NULL AS retirado FROM reservas_creditos WHERE matricula = ${matricula} AND tipo = ${tipo} AND tomador = ${tomador} AND retirado_em IS NULL`;
+    const existentes = await sql<Uso[]>`SELECT mes, competencia, tipo, periodo, valor, dias, retirado_em IS NOT NULL AS retirado, usuario = ${ORIGEM_FERIAS_AUTOMATICAS} AS automatico FROM reservas_creditos WHERE matricula = ${matricula} AND tipo = ${tipo} AND tomador = ${tomador} AND retirado_em IS NULL`;
     const atual = existentes.find((u) => u.mes === mes);
     if (atual && atual.competencia !== competencia) throw new ErroReserva("Já existe crédito para este mês na outra competência.");
     if (existentes.some((u) => u.mes > mes)) throw new ErroReserva("Existe crédito posterior desta reserva. Revise-o primeiro.");
     if (acao.tipo === "retirar") {
+      if (atual?.automatico) throw new ErroReserva("O crédito automático segue os dias de férias da Folha.");
       await sql`UPDATE reservas_creditos SET retirado_em = now(), retirado_por = ${usuario} WHERE matricula = ${matricula} AND mes = ${mes} AND tipo = ${tipo} AND tomador = ${tomador} AND retirado_em IS NULL`;
       return;
     }
@@ -88,13 +90,83 @@ export async function alterarReserva(matricula: number, competencia: string, aca
   });
 }
 
+export async function sincronizarCreditosFeriasDaFolha(competencia: string, matriculas: number[]) {
+  const mes = mesReserva(competencia);
+  if (mes === null || !competencia.endsWith(" (Folha)")) return;
+  await ensureSchema();
+  const sql = getDb();
+  const [diasPorMatricula, ativos] = await Promise.all([
+    listarDiasGozados(matriculas, sql),
+    sql<{ matricula: number }[]>`
+      SELECT matricula FROM reservas_creditos
+      WHERE competencia = ${competencia} AND tipo = 'ferias' AND usuario = ${ORIGEM_FERIAS_AUTOMATICAS} AND retirado_em IS NULL
+    `,
+  ]);
+  const diasDoMes = new Map([...diasPorMatricula].map(([matricula, dias]) => [matricula, dias.find((d) => d.mes === mes)?.dias ?? 0]));
+  const candidatas = [...new Set([...ativos.map((a) => a.matricula), ...matriculas.filter((m) => diasDoMes.get(m))])];
+  if (!candidatas.length) return;
+  const colaboradores = await getColaboradoresPorMatriculas(candidatas);
+
+  for (const matricula of candidatas) {
+    const colaborador = colaboradores.get(matricula);
+    const tomador = colaborador?.codServico;
+    if (!colaborador || tomador == null) continue;
+    await sql.begin(async (tx) => {
+      await tx`SELECT 1 FROM colaboradores WHERE matricula = ${matricula} FOR UPDATE`;
+      const [atual] = await tx<{ id: string; usuario: string; dias: number }[]>`
+        SELECT id, usuario, dias FROM reservas_creditos
+        WHERE matricula = ${matricula} AND mes = ${mes} AND tipo = 'ferias' AND retirado_em IS NULL
+      `;
+      if (atual && atual.usuario !== ORIGEM_FERIAS_AUTOMATICAS) return;
+      const dias = (await listarDiasGozados([matricula], tx)).get(matricula)?.find((d) => d.mes === mes)?.dias ?? 0;
+      // O abatimento aplicado dentro do próprio evento da Folha já reduz a fatura.
+      const [abatimentoNaLinha] = await tx`
+        SELECT 1 FROM movimentos
+        WHERE matricula = ${matricula} AND competencia = ${competencia} AND abatimento_ferias > 0
+        LIMIT 1
+      `;
+      if (atual && dias === atual.dias && !abatimentoNaLinha) return;
+      if (atual) {
+        await tx`UPDATE reservas_creditos SET retirado_em = now(), retirado_por = ${ORIGEM_FERIAS_AUTOMATICAS} WHERE id = ${atual.id}`;
+      }
+      if (!dias || abatimentoNaLinha) return;
+
+      const [cobrancas, anteriores, legados] = await Promise.all([
+        listarBaseReservas(tx, matricula),
+        tx<UsoReserva[]>`
+          SELECT mes, tipo, periodo, valor, dias FROM reservas_creditos
+          WHERE matricula = ${matricula} AND tomador = ${tomador} AND tipo = 'ferias' AND mes < ${mes} AND retirado_em IS NULL
+        `,
+        listarAbatimentosAnteriores(tx, matricula),
+      ]);
+      if (anteriores.some((u) => u.periodo === "*")) return;
+      const periodos = cobrancas.filter((c) => c.mes < mes && c.ferias > 0).map((c) => c.periodo);
+      const periodo = periodos.includes(PERIODO_FOLHA) ? PERIODO_FOLHA : periodos[0];
+      if (!periodo) return;
+      const acumulados = saldoDiasFerias(colaborador.admissao, colaborador.dataDemissao, [], hojeSaoPaulo()).acumulados ?? 0;
+      const base = baseFeriasGozadas(cobrancas, [...anteriores, ...usosManuais(legados)], mes, periodo, acumulados);
+      const valor = creditoReserva(base, dias, false);
+      if (valor <= 0) return;
+      await tx`
+        INSERT INTO reservas_creditos (matricula, tomador, mes, competencia, tipo, periodo, valor, dias, usuario)
+        VALUES (${matricula}, ${tomador}, ${mes}, ${competencia}, 'ferias', ${periodo}, ${valor}, ${dias}, ${ORIGEM_FERIAS_AUTOMATICAS})
+      `;
+    });
+  }
+}
+
 // O fluxo anterior também pode reduzir férias diretamente nas linhas importadas.
 // Soma os dois caminhos por competência antes de deduplicar Prévia e Folha.
 function listarAbatimentosAnteriores(sql: Sql | TransactionSql, matricula: number) {
   return sql<{ competencia: string; valor: number; tipo: ReservaTipo }[]>`
     SELECT competencia, tipo, SUM(valor)::double precision AS valor FROM (
-      SELECT competencia, tipo, ABS(valor) AS valor FROM descontos_saldo
-      WHERE matricula = ${matricula} AND aplicado AND valor <> 0
+      SELECT d.competencia, d.tipo, ABS(d.valor) AS valor FROM descontos_saldo d
+      WHERE d.matricula = ${matricula} AND d.aplicado AND d.valor <> 0
+        AND NOT EXISTS (
+          SELECT 1 FROM reservas_creditos r JOIN colaboradores c ON c.matricula = r.matricula AND c.cod_servico = r.tomador
+          WHERE r.matricula = d.matricula AND r.tipo = d.tipo AND r.retirado_em IS NULL
+            AND left(r.competencia, 7) = left(d.competencia, 7)
+        )
       UNION ALL
       SELECT competencia, 'ferias', ABS(abatimento_ferias) FROM movimentos
       WHERE matricula = ${matricula} AND abatimento_ferias <> 0 AND abatimento_saldo_tipo IN ('ferias', 'terco')

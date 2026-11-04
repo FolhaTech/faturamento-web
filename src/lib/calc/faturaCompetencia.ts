@@ -1,3 +1,4 @@
+import { sincronizarCreditosFeriasDaFolha } from "../repo/reservasFaturadas";
 import type { CamposCompartilhados } from "../camposCompartilhados";
 import { getFaturaSalvaDoUsuario, getFaturaSalvaPorId } from "../repo/faturasSalvas";
 import { listEventosExcluidosKeys } from "../repo/eventosExcluidos";
@@ -39,6 +40,7 @@ export interface EngineLinesCarregadas {
  */
 export async function calcularLinesAoVivo(competencia: string): Promise<{ lines: CalculatedLine[]; warnings: string[] }> {
   const movimentos = await listMovimentosByCompetencia(competencia);
+  await sincronizarCreditosFeriasDaFolha(competencia, [...new Set(movimentos.map((m) => m.matricula))]);
   const { lines, warnings } = await runEngine(movimentos);
   const excluidos = await listEventosExcluidosKeys(competencia);
   return { lines: filtrarEventosExcluidos(lines, excluidos), warnings };

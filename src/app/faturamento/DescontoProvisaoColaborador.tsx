@@ -107,8 +107,8 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
                 <p>Cobrado: {valor(saldo.cobrado)} · Usado: {valor(saldo.usado)}</p>
                 <p>Saldo: <strong>{valor(saldo.saldo)}</strong></p>
                 {atual ? <>
-                  <p>Crédito em {atual.competencia}: <strong>{valor(atual.valor)}</strong></p>
-                  {podeLancar && atual.competencia === competencia && <button type="button" className={botao} disabled={ocupado} onClick={() => atualizar({ tipo: "retirar", reserva: tipo })}>Retirar crédito</button>}
+                  <p>{atual.automatico ? "Crédito automático" : "Crédito"} em {atual.competencia}: <strong>{valor(atual.valor)}</strong></p>
+                  {podeLancar && !atual.automatico && atual.competencia === competencia && <button type="button" className={botao} disabled={ocupado} onClick={() => atualizar({ tipo: "retirar", reserva: tipo })}>Retirar crédito</button>}
                 </> : <>
                   {manual && <p>Já há um abatimento neste mês.</p>}
                   {!elegivel && <p>{tipo === "aviso" ? "Disponível no mês do desligamento." : "Disponível em dezembro ou na rescisão."}</p>}
@@ -151,7 +151,7 @@ function HistoricoReservas({ dados }: { dados: Historico }) {
             )}
             {creditos.map((credito, indice) => (
               <p key={indice}>
-                {credito.retirado ? "Crédito retirado" : "Crédito"} de {rotulos[credito.tipo]}: {valor(credito.valor)}
+                {credito.retirado ? "Crédito retirado" : credito.automatico ? "Crédito automático" : "Crédito"} de {rotulos[credito.tipo]}: {valor(credito.valor)}
                 {credito.periodo && " · " + (credito.periodo === "*" ? "Rescisão" : credito.periodo === PERIODO_FOLHA ? "Histórico da Folha" : credito.periodo) + " · " + credito.dias + " dias"}
               </p>
             ))}

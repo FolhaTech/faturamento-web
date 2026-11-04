@@ -758,9 +758,9 @@ async function generateDescontoSaldoFeriasCharges(movimentos: Movimento[], ctx: 
     const { codigo, evento } = eventoDoDescontoSaldo(d.tipo);
 
     const base = d.valor;
-    const taxaAdmValor = base * tomador.taxaAdm;
+    const taxaAdmValor = d.automatico ? 0 : base * tomador.taxaAdm;
     const fatura = base + taxaAdmValor;
-    const nf = calcularNf(fatura, tomador.grossUp, tomador.grossUpOperacao);
+    const nf = d.automatico ? fatura : calcularNf(fatura, tomador.grossUp, tomador.grossUpOperacao);
     out.push({
       matricula: colaborador.matricula,
       nome: colaborador.nome,
