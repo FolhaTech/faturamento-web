@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { listColaboradores, listSituacoes, listValoresDistintosDados } from "@/lib/repo/colaboradores";
-import { diasFeriasPorMatriculas } from "@/lib/repo/provisoesMensais";
+import { listarDiasGozados } from "@/lib/repo/diasFerias";
+import { hojeSaoPaulo, saldoDiasFerias } from "@/lib/calc/diasFerias";
 import { listTomadores } from "@/lib/repo/tomadores";
 
 export const dynamic = "force-dynamic";
@@ -40,7 +41,8 @@ export default async function ColaboradoresPage({ searchParams }: { searchParams
     listValoresDistintosDados("descricao_dpto"),
     listValoresDistintosDados("descricao_ccusto"),
   ]);
-  const diasFerias = await diasFeriasPorMatriculas(items.map((c) => c.matricula));
+  const diasGozados = await listarDiasGozados(items.map((c) => c.matricula));
+  const hoje = hojeSaoPaulo();
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const filtrosAtivos = busca || situacao || codEmp || descricaoCargo || codServicoStr || descricaoDpto || descricaoCcusto;
@@ -188,7 +190,7 @@ export default async function ColaboradoresPage({ searchParams }: { searchParams
               <th className="px-3 py-2 text-left font-medium">Situação</th>
               <th className="px-3 py-2 text-left font-medium">Tomador</th>
               <th className="px-3 py-2 text-right font-medium">Salário</th>
-              <th className="px-3 py-2 text-right font-medium">Férias (dias)</th>
+              <th className="px-3 py-2 text-right font-medium">Saldo de férias (dias)</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100">
@@ -217,7 +219,7 @@ export default async function ColaboradoresPage({ searchParams }: { searchParams
                   {c.descricaoServico ? labelTomador({ codigo: c.codServico ?? 0, nome: c.descricaoServico }) : "—"}
                 </td>
                 <td className="px-3 py-2 text-right font-mono tabular-nums">{currency.format(c.salario)}</td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums">{(diasFerias.get(c.matricula) ?? 0).toLocaleString("pt-BR")}</td>
+                <td className="px-3 py-2 text-right font-mono tabular-nums">{saldoDiasFerias(c.admissao, c.dataDemissao, diasGozados.get(c.matricula) ?? [], hoje).saldo?.toLocaleString("pt-BR") ?? "—"}</td>
               </tr>
             ))}
             {items.length === 0 && (

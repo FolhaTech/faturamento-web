@@ -1,11 +1,12 @@
 import type { Sql, TransactionSql } from "postgres";
 import { CODIGO_AVISO_PREVIO } from "../calc/engine";
+import { listarDiasGozados } from "./diasFerias";
 import { ensureSchema, getDb } from "../db";
 import { creditoReserva, mesReserva, saldoReserva, usosManuais, PERIODO_FOLHA, type CobrancaReserva, type ReservaTipo, type UsoReserva } from "../calc/reservasFaturadas";
 
 type Uso = UsoReserva & { competencia: string; retirado: boolean };
 type Acao = { tipo: "cobranca"; cobranca: Omit<CobrancaReserva, "mes">; referencia: string }
-  | { tipo: "aplicar"; reserva: ReservaTipo; periodo: string; dias: number; esperado: number }
+  | { tipo: "aplicar"; reserva: ReservaTipo; periodo: string; esperado: number }
   | { tipo: "retirar"; reserva: ReservaTipo };
 
 export class ErroReserva extends Error {}
@@ -13,12 +14,13 @@ export class ErroReserva extends Error {}
 export async function consultarReservas(matricula: number) {
   await ensureSchema();
   const sql = getDb();
-  const [cobrancas, usos, manuais] = await Promise.all([
+  const [cobrancas, usos, manuais, diasGozados] = await Promise.all([
     listarBaseReservas(sql, matricula),
     sql<Uso[]>`SELECT mes, competencia, tipo, periodo, valor, dias, retirado_em IS NOT NULL AS retirado FROM reservas_creditos WHERE matricula = ${matricula} AND tomador = (SELECT cod_servico FROM colaboradores WHERE matricula = ${matricula}) ORDER BY mes DESC, id DESC`,
     listarAbatimentosAnteriores(sql, matricula),
+    listarDiasGozados([matricula], sql),
   ]);
-  return { cobrancas, usos, manuais: usosManuais(manuais) };
+  return { cobrancas, usos, manuais: usosManuais(manuais), diasGozados: diasGozados.get(matricula) ?? [] };
 }
 
 export async function alterarReserva(matricula: number, competencia: string, acao: Acao, usuario: string) {
@@ -68,10 +70,13 @@ export async function alterarReserva(matricula: number, competencia: string, aca
     if (tipo === "ferias" && existentes.some((u) => u.periodo === "*")) throw new ErroReserva("As férias deste vínculo já foram encerradas em uma rescisão.");
     const saldo = saldoReserva(cobrancas, [...existentes, ...usosManuais(legados)], mes, tipo, periodo);
     const quitar = tipo !== "ferias" || rescisao;
-    const valor = creditoReserva(saldo, acao.dias, quitar);
+    const diasDaFolha = tipo === "ferias" && !quitar
+      ? (await listarDiasGozados([matricula], sql)).get(matricula)?.find((d) => d.mes === mes)?.dias ?? 0
+      : 0;
+    const valor = creditoReserva(saldo, diasDaFolha, quitar);
     if (valor !== acao.esperado) throw new ErroReserva("O saldo mudou ou há descontos manuais anteriores. Revise os valores antes de aplicar.");
     if (!valor) throw new ErroReserva("Sem saldo disponível ou dias solicitados acima do saldo do período.");
-    const dias = tipo === "ferias" ? (quitar ? saldo.dias : acao.dias) : 0;
+    const dias = tipo === "ferias" ? (quitar ? saldo.dias : diasDaFolha) : 0;
     await sql`
       INSERT INTO reservas_creditos (matricula, tomador, mes, competencia, tipo, periodo, valor, dias, usuario)
       VALUES (${matricula}, ${tomador}, ${mes}, ${competencia}, ${tipo}, ${periodo}, ${valor}, ${dias}, ${usuario})

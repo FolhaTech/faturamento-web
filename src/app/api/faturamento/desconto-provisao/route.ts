@@ -33,9 +33,9 @@ export async function PUT(request: Request) {
       const reserva = b.reserva as ReservaTipo;
       if (b.tipo === "retirar") {
         await alterarReserva(b.matricula, b.competencia, { tipo: "retirar", reserva }, usuario.email);
-      } else if (b.tipo === "aplicar" && Number.isSafeInteger(b.esperado) && b.esperado > 0 && (reserva !== "ferias" || ((periodoValido(b.periodo) || b.periodo === PERIODO_FOLHA || b.periodo === "*") && Number.isFinite(b.dias) && b.dias >= 0 && Number.isInteger(b.dias * 2)))) {
-        await alterarReserva(b.matricula, b.competencia, { tipo: "aplicar", reserva, periodo: reserva === "ferias" ? b.periodo : "", dias: reserva === "ferias" ? b.dias : 0, esperado: b.esperado }, usuario.email);
-      } else return erro("Informe o início do período de férias e a quantidade de dias.");
+      } else if (b.tipo === "aplicar" && Number.isSafeInteger(b.esperado) && b.esperado > 0 && (reserva !== "ferias" || ((periodoValido(b.periodo) || b.periodo === PERIODO_FOLHA || b.periodo === "*")))) {
+        await alterarReserva(b.matricula, b.competencia, { tipo: "aplicar", reserva, periodo: reserva === "ferias" ? b.periodo : "", esperado: b.esperado }, usuario.email);
+      } else return erro("Informe um crédito válido e o período de férias.");
     }
     return NextResponse.json(await consultarReservas(b.matricula));
   } catch (e) {

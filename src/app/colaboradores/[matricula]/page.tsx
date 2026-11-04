@@ -86,6 +86,7 @@ export default async function EditarColaboradorPage({
         key={competenciaAtual}
         matricula={colaborador.matricula}
         competencia={competenciaAtual}
+        admissao={colaborador.admissao}
         dataDemissao={colaborador.dataDemissao}
         consultarSemFolha
       />
