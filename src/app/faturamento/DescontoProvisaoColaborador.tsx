@@ -104,7 +104,7 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
                   </label>
                   <p>Dias gozados na Folha de {exibirMes(mes)}: <strong>{diasDaFolha.toLocaleString("pt-BR")}</strong></p>
                   {diasDaFolha > 0 && (sugestao > 0 ? (
-                    <p>Reserva anterior ao mês ÷ dias acumulados até hoje × dias gozados: <strong>{valor(base.saldo)} ÷ {base.dias.toLocaleString("pt-BR")} dias × {diasDaFolha.toLocaleString("pt-BR")} dias = {valor(sugestao)}</strong></p>
+                    <p>Reserva anterior ao mês ÷ dias disponíveis antes do abatimento × dias gozados: <strong>{valor(base.saldo)} ÷ {base.dias.toLocaleString("pt-BR")} dias × {diasDaFolha.toLocaleString("pt-BR")} dias = {valor(sugestao)}</strong></p>
                   ) : <p>Confira a data de admissão, o saldo anterior e os dias acumulados para calcular o crédito.</p>)}
                 </>}
                 {tipo === "aviso" && <p>De {exibirMes(mes - 12)} a {exibirMes(mes - 1)}.</p>}

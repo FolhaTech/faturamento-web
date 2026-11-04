@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { mesReserva } from "@/lib/calc/reservasFaturadas";
 import { useState } from "react";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -18,10 +19,13 @@ interface DescontoSaldoView {
   competencia: string;
   tipo: "ferias" | "terco";
   valor: number;
+  gerenciado?: boolean;
+  automatico?: boolean;
 }
 
 interface DescontoPorCompetencia {
   competencia: string;
+  gerenciado: boolean;
   ferias: number;
   terco: number;
 }
@@ -30,9 +34,10 @@ interface DescontoPorCompetencia {
 function agruparDescontosPorCompetencia(descontos: DescontoSaldoView[]): DescontoPorCompetencia[] {
   const porCompetencia = new Map<string, DescontoPorCompetencia>();
   for (const d of descontos) {
-    const linha = porCompetencia.get(d.competencia) ?? { competencia: d.competencia, ferias: 0, terco: 0 };
+    const chave = d.competencia + (d.gerenciado ? ":reserva" : ":manual");
+    const linha = porCompetencia.get(chave) ?? { competencia: d.competencia, gerenciado: Boolean(d.gerenciado), ferias: 0, terco: 0 };
     linha[d.tipo] += Math.abs(d.valor);
-    porCompetencia.set(d.competencia, linha);
+    porCompetencia.set(chave, linha);
   }
   return [...porCompetencia.values()].sort((a, b) => a.competencia.localeCompare(b.competencia));
 }
@@ -52,10 +57,12 @@ export function RescisaoCard({
   matricula,
   provisoes,
   descontos,
+  competenciaAtual,
 }: {
   matricula: number;
   provisoes: ProvisaoMensalView[];
   descontos: DescontoSaldoView[];
+  competenciaAtual: string | null;
 }) {
   const router = useRouter();
   const totalProvFerias = provisoes.reduce((soma, p) => soma + p.provFerias, 0);
@@ -64,6 +71,17 @@ export function RescisaoCard({
   const totalDescontoFerias = descontosPorCompetencia.reduce((soma, d) => soma + d.ferias, 0);
   const totalDesconto13 = descontosPorCompetencia.reduce((soma, d) => soma + d.terco, 0);
   const liquidoFerias = totalProvFerias - totalDescontoFerias;
+  const mesAtual = competenciaAtual ? mesReserva(competenciaAtual) : null;
+  const feriasAbatidasNoMes = mesAtual !== null && descontos.some((d) => d.tipo === "ferias" && d.automatico && mesReserva(d.competencia) === mesAtual);
+  const saldoAposFerias = feriasAbatidasNoMes
+    ? (provisoes.reduce((total, p) => {
+        const mes = mesReserva(p.competencia);
+        return mes !== null && mes < mesAtual ? total + Math.round(p.provFerias * 100) : total;
+      }, 0) - descontos.reduce((total, d) => {
+        const mes = mesReserva(d.competencia);
+        return d.tipo === "ferias" && mes !== null && mes <= mesAtual ? total + Math.round(Math.abs(d.valor) * 100) : total;
+      }, 0)) / 100
+    : null;
   const liquido13 = totalProv13 - totalDesconto13;
 
   const [editando, setEditando] = useState<string | null>(null);
@@ -190,9 +208,9 @@ export function RescisaoCard({
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {descontosPorCompetencia.map((d) => {
-                const emEdicao = editando === d.competencia;
+                const emEdicao = !d.gerenciado && editando === d.competencia;
                 return (
-                  <tr key={d.competencia} className="hover:bg-neutral-50">
+                  <tr key={d.competencia + ":" + d.gerenciado} className="hover:bg-neutral-50">
                     <td className="px-3 py-2">{d.competencia}</td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums">
                       {emEdicao ? (
@@ -223,7 +241,7 @@ export function RescisaoCard({
                       )}
                     </td>
                     <td className="px-3 py-2 text-center">
-                      {emEdicao ? (
+                      {d.gerenciado ? "Reserva da Folha" : emEdicao ? (
                         <div className="flex items-center justify-center gap-2">
                           <button
                             type="button"
@@ -283,9 +301,9 @@ export function RescisaoCard({
 
       {(provisoes.length > 0 || descontosPorCompetencia.length > 0) && (
         <div className="flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900">
-          <span>Acumulado líquido</span>
+          <span>{saldoAposFerias === null ? "Acumulado líquido" : "Saldo de férias após abatimento"}</span>
           <span className="font-mono tabular-nums">
-            férias {fmt(liquidoFerias)} · 13º {fmt(liquido13)}
+            férias {fmt(saldoAposFerias ?? liquidoFerias)} · 13º {fmt(liquido13)}
           </span>
         </div>
       )}

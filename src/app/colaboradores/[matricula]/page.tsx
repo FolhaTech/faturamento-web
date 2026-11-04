@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getColaborador } from "@/lib/repo/colaboradores";
 import { CompetenciaCalendario, type MesDisponivel } from "../CompetenciaCalendario";
-import { getDescontoSaldoPorMatriculaECompetencia, listDescontosSaldoPorMatricula } from "@/lib/repo/descontosSaldo";
+import { getDescontoSaldoPorMatriculaECompetencia, listarDescontosEfetivosDoColaborador, type DescontoProvisao } from "@/lib/repo/descontosSaldo";
 import { listCompetencias } from "@/lib/repo/movimentos";
 import { listProvisoesMensaisPorMatricula } from "@/lib/repo/provisoesMensais";
 import { ColaboradorForm } from "../ColaboradorForm";
@@ -67,7 +67,7 @@ export default async function EditarColaboradorPage({
   // Todo desconto de saldo já lançado (qualquer competência) — abate do acumulado da Rescisão,
   // já que representa dinheiro já pago ao colaborador (ver RescisaoCard.tsx).
   const [descontosSaldoTodos, diasGozados] = await Promise.all([
-    listDescontosSaldoPorMatricula(colaborador.matricula),
+    listarDescontosEfetivosDoColaborador(colaborador.matricula),
     listarDiasGozados([colaborador.matricula]),
   ]);
 
@@ -101,12 +101,12 @@ export default async function EditarColaboradorPage({
         saldoFeriasInicial={colaborador.saldoFerias}
         saldoUmTercoInicial={colaborador.saldoUmTerco}
         competenciaAtual={competenciaAtual}
-        descontoFeriasNaCompetencia={descontoNaCompetencia.ferias}
+        descontoFeriasNaCompetencia={Math.abs(descontosSaldoTodos.find((d) => d.competencia === competenciaAtual && d.tipo === "ferias" && d.aplicado)?.valor ?? 0)}
         descontoUmTercoNaCompetencia={descontoNaCompetencia.terco}
         descontoAvisoPrevioNaCompetencia={descontoNaCompetencia.aviso}
         avisoPrevioAplicado={descontoNaCompetencia.avisoAplicado}
       />
-      <RescisaoCard matricula={colaborador.matricula} provisoes={provisoesMensais} descontos={descontosSaldoTodos} />
+      <RescisaoCard matricula={colaborador.matricula} provisoes={provisoesMensais} descontos={descontosSaldoTodos.filter((d): d is DescontoProvisao => d.aplicado && d.tipo !== "aviso")} competenciaAtual={competenciaAtual} />
       <ColaboradorForm matricula={colaborador.matricula} initialDados={colaborador.dados} />
     </main>
   );

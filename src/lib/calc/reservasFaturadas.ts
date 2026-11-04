@@ -24,7 +24,10 @@ export function saldoReserva(cobrancas: CobrancaReserva[], usos: UsoReserva[], m
 }
 
 export function baseFeriasGozadas(cobrancas: CobrancaReserva[], usos: UsoReserva[], mes: number, periodo: string, diasAcumulados: number) {
-  return { ...saldoReserva(cobrancas, usos, mes - 1, "ferias", periodo), dias: diasAcumulados };
+  const diasJaAbatidos = usos
+    .filter((u) => u.tipo === "ferias" && u.mes < mes)
+    .reduce((total, u) => total + u.dias, 0);
+  return { ...saldoReserva(cobrancas, usos, mes - 1, "ferias", periodo), dias: Math.max(0, diasAcumulados - diasJaAbatidos) };
 }
 
 export function creditoReserva(saldo: ReturnType<typeof saldoReserva>, dias: number, quitar: boolean): number {

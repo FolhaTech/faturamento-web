@@ -20,6 +20,7 @@ export interface DescontoSaldo {
    */
   aplicado: boolean;
   automatico?: boolean;
+  gerenciado?: boolean;
 }
 
 /** Só os descontos de férias e 13º — os que entram na Rescisão (ver listDescontosSaldoPorMatricula). */
@@ -32,10 +33,11 @@ interface Row {
   valor: number;
   aplicado?: boolean;
   automatico?: boolean;
+  gerenciado?: boolean;
 }
 
 function toDescontoSaldo(row: Row): DescontoSaldo {
-  return { matricula: row.matricula, competencia: row.competencia, tipo: row.tipo as TipoDescontoSaldo, valor: row.valor, aplicado: row.aplicado ?? true, ...(row.automatico ? { automatico: true } : {}) };
+  return { matricula: row.matricula, competencia: row.competencia, tipo: row.tipo as TipoDescontoSaldo, valor: row.valor, aplicado: row.aplicado ?? true, ...(row.automatico ? { automatico: true } : {}), ...(row.gerenciado ? { gerenciado: true } : {}) };
 }
 
 /**
@@ -97,14 +99,24 @@ export async function deleteDescontoSaldoPorCompetencia(matricula: number, compe
 /** Descontos lançados para qualquer das competências dadas — usado pelo motor de cálculo (ver generateDescontoSaldoFeriasCharges em engine.ts). */
 export async function listDescontosSaldoPorCompetencias(competencias: string[]): Promise<DescontoSaldo[]> {
   if (competencias.length === 0) return [];
+  return listarDescontosEfetivos(competencias, null);
+}
+
+export function listarDescontosEfetivosDoColaborador(matricula: number) {
+  return listarDescontosEfetivos(null, matricula);
+}
+
+async function listarDescontosEfetivos(competencias: string[] | null, matricula: number | null) {
   await ensureSchema();
   const sql = getDb();
-  const rows = await sql<Row[]>`SELECT d.matricula, d.competencia, d.tipo, d.valor, d.aplicado, false AS automatico
-    FROM descontos_saldo d WHERE d.competencia = ANY(${competencias})
+  const rows = await sql<Row[]>`SELECT d.matricula, d.competencia, d.tipo, d.valor, d.aplicado, false AS automatico, false AS gerenciado
+    FROM descontos_saldo d WHERE (${competencias}::text[] IS NULL OR d.competencia = ANY(${competencias}::text[]))
+      AND (${matricula}::integer IS NULL OR d.matricula = ${matricula}::integer)
       AND NOT EXISTS (SELECT 1 FROM reservas_creditos r WHERE r.matricula = d.matricula AND left(r.competencia, 7) = left(d.competencia, 7) AND r.tipo = d.tipo AND r.retirado_em IS NULL AND r.tomador = (SELECT c.cod_servico FROM colaboradores c WHERE c.matricula = d.matricula))
     UNION ALL
-    SELECT matricula, competencia, tipo, -valor / 100.0::double precision, true, usuario = ${ORIGEM_FERIAS_AUTOMATICAS}
-    FROM reservas_creditos r WHERE competencia = ANY(${competencias}) AND retirado_em IS NULL
+    SELECT matricula, competencia, tipo, -valor / 100.0::double precision, true, usuario = ${ORIGEM_FERIAS_AUTOMATICAS}, true
+    FROM reservas_creditos r WHERE (${competencias}::text[] IS NULL OR competencia = ANY(${competencias}::text[]))
+      AND (${matricula}::integer IS NULL OR r.matricula = ${matricula}::integer) AND retirado_em IS NULL
       AND EXISTS (SELECT 1 FROM colaboradores c WHERE c.matricula = r.matricula AND c.cod_servico = r.tomador)`;
   return rows.map(toDescontoSaldo);
 }
