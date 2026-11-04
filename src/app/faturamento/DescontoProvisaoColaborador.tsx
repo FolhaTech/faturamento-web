@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { creditoReserva, mesReserva, saldoReserva, PERIODO_FOLHA, type ReservaTipo } from "@/lib/calc/reservasFaturadas";
-import { hojeSaoPaulo, saldoDiasFerias } from "@/lib/calc/diasFerias";
+import { hojeSaoPaulo, saldoDiasFerias, type DiasGozados } from "@/lib/calc/diasFerias";
 import type { consultarReservas } from "@/lib/repo/reservasFaturadas";
 
 type Historico = Awaited<ReturnType<typeof consultarReservas>>;
@@ -15,7 +15,7 @@ const campo = "min-h-11 rounded-md border border-neutral-300 px-2 text-sm";
 const botao = "min-h-11 rounded-md border border-neutral-400 px-3 text-sm font-medium hover:bg-neutral-100 disabled:opacity-50";
 const exibirMes = (m: number) => String(m % 12 + 1).padStart(2, "0") + "/" + Math.floor(m / 12);
 
-export function DescontoProvisaoColaborador({ matricula, competencia, admissao = null, dataDemissao, consultarSemFolha = false }: { matricula: number; competencia: string | null; admissao?: string | null; dataDemissao?: string | null; consultarSemFolha?: boolean }) {
+export function DescontoProvisaoColaborador({ matricula, competencia, admissao = null, dataDemissao, diasGozadosIniciais, consultarSemFolha = false }: { matricula: number; competencia: string | null; admissao?: string | null; dataDemissao?: string | null; diasGozadosIniciais?: DiasGozados[]; consultarSemFolha?: boolean }) {
   const router = useRouter();
   const [dados, setDados] = useState<Historico | null>(null);
   const [ocupado, setOcupado] = useState(false);
@@ -34,7 +34,9 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
   const rescisao = mes !== null && mesDemissao === exibirMes(mes);
   const periodos = [...new Set(dados?.cobrancas.filter((c) => mes !== null && c.mes <= mes && c.ferias > 0).map((c) => c.periodo))];
   const periodo = periodoEscolhido || (periodos.includes(PERIODO_FOLHA) ? PERIODO_FOLHA : periodos[0] ?? "");
-  const saldoDias = dados ? saldoDiasFerias(admissao, dataDemissao ?? null, dados.diasGozados, hoje) : null;
+  const saldoDias = consultarSemFolha
+    ? saldoDiasFerias(admissao, dataDemissao ?? null, dados?.diasGozados ?? diasGozadosIniciais ?? [], hoje)
+    : null;
   const endpoint = "/api/faturamento/desconto-provisao";
 
   async function atualizar(body?: Record<string, unknown>) {
@@ -59,20 +61,20 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
     <div className="space-y-3 rounded-lg border border-neutral-200 bg-white p-4 text-sm text-neutral-900">
       <h4 className="font-semibold">Reservas cobradas e abatimentos</h4>
       {!dados && <button type="button" className={botao} disabled={ocupado} onClick={() => atualizar()}>Consultar reservas</button>}
+      {saldoDias && <div className="space-y-2 rounded border border-neutral-200 p-3">
+        <h5 className="font-medium">Dias de férias até {hoje.split("-").reverse().join("/")}</h5>
+        <dl className="grid gap-2 sm:grid-cols-3">
+          <div><dt>Acumulados</dt><dd className="font-semibold">{saldoDias.acumulados?.toLocaleString("pt-BR") ?? "Admissão não informada"}</dd></div>
+          <div><dt>Gozados na Folha</dt><dd className="font-semibold">{saldoDias.utilizados.toLocaleString("pt-BR")}</dd></div>
+          <div><dt>Saldo em dias</dt><dd className="font-semibold">{saldoDias.saldo?.toLocaleString("pt-BR") ?? "—"}</dd></div>
+        </dl>
+        <p className="text-neutral-600">2,5 dias no mês da admissão e a cada mês completo de vínculo, até o desligamento.</p>
+        {saldoDias.historico.length > 0 ? <>
+          <p className="font-medium">Dias gozados por competência</p>
+          <ul>{saldoDias.historico.map((d) => <li key={d.mes}>{exibirMes(d.mes)} · {d.dias.toLocaleString("pt-BR")} dias</li>)}</ul>
+        </> : <p className="text-neutral-600">Nenhum dia de férias registrado na Folha.</p>}
+      </div>}
       {dados && <>
-        {saldoDias && consultarSemFolha && <div className="space-y-2 rounded border border-neutral-200 p-3">
-          <h5 className="font-medium">Dias de férias até {hoje.split("-").reverse().join("/")}</h5>
-          <dl className="grid gap-2 sm:grid-cols-3">
-            <div><dt>Acumulados</dt><dd className="font-semibold">{saldoDias.acumulados?.toLocaleString("pt-BR") ?? "Admissão não informada"}</dd></div>
-            <div><dt>Gozados na Folha</dt><dd className="font-semibold">{saldoDias.utilizados.toLocaleString("pt-BR")}</dd></div>
-            <div><dt>Saldo em dias</dt><dd className="font-semibold">{saldoDias.saldo?.toLocaleString("pt-BR") ?? "—"}</dd></div>
-          </dl>
-          <p className="text-neutral-600">2,5 dias no mês da admissão e a cada mês completo de vínculo, até o desligamento.</p>
-          {saldoDias.historico.length > 0 && <details>
-            <summary className="cursor-pointer py-2">Dias gozados por competência</summary>
-            <ul>{saldoDias.historico.map((d) => <li key={d.mes}>{exibirMes(d.mes)} · {d.dias.toLocaleString("pt-BR")} dias</li>)}</ul>
-          </details>}
-        </div>}
         {mes === null ? <p className="text-neutral-600">Selecione uma competência de Folha para lançar créditos.</p> : <>
           <p className="text-neutral-600">Férias e 13º vêm das provisões da Folha e consideram os abatimentos já registrados. O aviso prévio usa o histórico de faturas salvas. O crédito aplicado entra no cálculo ao vivo; versões salvas precisam ser atualizadas.</p>
           {!podeLancar && <p className="text-neutral-600">Selecione uma competência de Folha para lançar créditos.</p>}
