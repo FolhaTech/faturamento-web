@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { atualizarVinculosEmLote } from "@/lib/repo/colaboradores";
-import { parseEmpregadosFile } from "@/lib/xlsx/parseEmpregados";
+import { atualizarVinculosEmLote, importarColaboradoresEmLote } from "@/lib/repo/colaboradores";
+import { parseCadastrosEmpregadosFile, parseEmpregadosFile } from "@/lib/xlsx/parseEmpregados";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -17,6 +17,19 @@ export async function POST(request: Request) {
   const nome = file.name.toLowerCase();
   if (!nome.endsWith(".xls") && !nome.endsWith(".xlsx")) {
     return NextResponse.json({ error: "Formato inválido — envie o arquivo .xls ou .xlsx de Empregados em Excel." }, { status: 400 });
+  }
+
+  if (formData.get("modo") === "cadastro") {
+    const parsed = await parseCadastrosEmpregadosFile(Buffer.from(await file.arrayBuffer())).catch(() => null);
+    if (!parsed) return NextResponse.json({ error: "Não foi possível ler a planilha. Confira se a aba de empregados contém as colunas Cód Epr e Nome." }, { status: 422 });
+    if (!parsed.cadastros.length) return NextResponse.json({ error: "Nenhum empregado reconhecido no arquivo." }, { status: 422 });
+    try {
+      const resultado = await importarColaboradoresEmLote(parsed.cadastros);
+      return NextResponse.json({ ...resultado, naPlanilha: parsed.cadastros.length, linhasIgnoradas: parsed.linhasIgnoradas, duplicadas: parsed.duplicadas });
+    } catch (error) {
+      console.error("[colaboradores/vinculos] falha ao importar cadastros", error instanceof Error ? error.name : "Erro desconhecido");
+      return NextResponse.json({ error: "Não foi possível salvar os cadastros." }, { status: 500 });
+    }
   }
 
   let parsed;

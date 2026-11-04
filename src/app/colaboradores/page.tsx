@@ -1,3 +1,4 @@
+import { UploadEmpregadosForm } from "../faturamento/UploadEmpregadosForm";
 import Link from "next/link";
 import { listColaboradores, listSituacoes, listValoresDistintosDados } from "@/lib/repo/colaboradores";
 import { listarDiasGozados } from "@/lib/repo/diasFerias";
@@ -86,6 +87,8 @@ export default async function ColaboradoresPage({ searchParams }: { searchParams
           + Novo colaborador
         </Link>
       </header>
+
+      <UploadEmpregadosForm modo="cadastro" />
 
       <form method="GET" className="flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-4">
         <div className="flex flex-col gap-1">

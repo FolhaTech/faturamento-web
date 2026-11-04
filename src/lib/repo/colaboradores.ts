@@ -164,6 +164,43 @@ export async function upsertColaborador(input: ColaboradorInput): Promise<Colabo
   return (await getColaborador(input.matricula))!;
 }
 
+/** Importa por matrícula em uma transação, preservando os campos ausentes no arquivo. */
+export async function importarColaboradoresEmLote(cadastros: ColaboradorInput[]) {
+  await ensureSchema();
+  const entrada = JSON.stringify(cadastros);
+  return getDb().begin(async (sql) => {
+    const inseridos = await sql`
+      INSERT INTO colaboradores (matricula, nome, situacao, salario, admissao, data_demissao, dados)
+      SELECT matricula, dados->>'nome', dados->>'situacao', COALESCE((dados->>'salario')::double precision, 0),
+        dados->>'admissao', dados->>'data_demissao', dados::text
+      FROM jsonb_to_recordset(${entrada}::text::jsonb) AS entrada(matricula integer, dados jsonb)
+      ORDER BY matricula
+      ON CONFLICT (matricula) DO NOTHING
+      RETURNING matricula
+    `;
+    const atualizados = await sql`
+      UPDATE colaboradores c SET
+        nome = COALESCE(e.dados->>'nome', c.nome),
+        situacao = COALESCE(e.dados->>'situacao', c.situacao),
+        salario = COALESCE((e.dados->>'salario')::double precision, c.salario),
+        admissao = COALESCE(e.dados->>'admissao', c.admissao),
+        data_demissao = CASE WHEN e.dados ? 'data_demissao' THEN e.dados->>'data_demissao' ELSE c.data_demissao END,
+        dados = (c.dados::jsonb || e.dados)::text
+      FROM jsonb_to_recordset(${entrada}::text::jsonb) AS e(matricula integer, dados jsonb)
+      WHERE c.matricula = e.matricula AND (
+        c.dados::jsonb IS DISTINCT FROM c.dados::jsonb || e.dados
+        OR c.nome IS DISTINCT FROM COALESCE(e.dados->>'nome', c.nome)
+        OR c.situacao IS DISTINCT FROM COALESCE(e.dados->>'situacao', c.situacao)
+        OR c.salario IS DISTINCT FROM COALESCE((e.dados->>'salario')::double precision, c.salario)
+        OR c.admissao IS DISTINCT FROM COALESCE(e.dados->>'admissao', c.admissao)
+        OR (e.dados ? 'data_demissao' AND c.data_demissao IS DISTINCT FROM e.dados->>'data_demissao')
+      )
+      RETURNING c.matricula
+    `;
+    return { criados: inseridos.length, atualizados: atualizados.length, semAlteracao: cadastros.length - inseridos.length - atualizados.length };
+  });
+}
+
 /**
  * Troca o Tomador (Cód Serviço) do colaborador — é ele que define o regime (FPAS 515 = Terceiro, 655 =
  * Temporário), taxa adm e gross-up da fatura. Usado pelo seletor de regime no Faturamento (ver

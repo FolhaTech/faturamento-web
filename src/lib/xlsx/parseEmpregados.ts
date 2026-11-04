@@ -1,5 +1,7 @@
+import { CAMPOS_COLABORADOR } from "../colaboradorFields";
+import type { DadosColaborador } from "../types";
 import { readWorkbookGrid, type SheetGrid } from "./grid";
-import { asDateString, asString, detectHeaderRow, headerMap } from "./readTable";
+import { asDateString, asNumber, asString, detectHeaderRow, headerMap } from "./readTable";
 
 /** Admissão e rescisão de um colaborador, como vêm da planilha "Empregados em Excel" do sistema de folha. */
 export interface VinculoEmpregado {
@@ -63,9 +65,59 @@ export function parseVinculosDaAba(sheet: SheetGrid): ResultadoParseEmpregados {
   return { vinculos: [...porMatricula.values()], linhasIgnoradas, duplicadas };
 }
 
-export async function parseEmpregadosFile(buffer: Buffer): Promise<ResultadoParseEmpregados> {
+async function lerAbaEmpregados(buffer: Buffer): Promise<SheetGrid> {
   const grid = await readWorkbookGrid(buffer);
   const sheet = grid.getSheet(["Empregados em Excel"]) ?? (grid.sheetNames.length === 1 ? grid.requireSheet([grid.sheetNames[0]]) : null);
   if (!sheet) throw new Error(`Aba "Empregados em Excel" não encontrada. Abas disponíveis: ${grid.sheetNames.join(", ")}`);
-  return parseVinculosDaAba(sheet);
+  return sheet;
+}
+
+export async function parseEmpregadosFile(buffer: Buffer): Promise<ResultadoParseEmpregados> {
+  return parseVinculosDaAba(await lerAbaEmpregados(buffer));
+}
+
+const CAMPOS_FATURAMENTO = new Set(["cod_servico", "descricao_servico", "cod_ccusto", "descricao_ccusto"]);
+const CAMPOS_LIMPAR_QUANDO_VAZIOS = new Set(["data_demissao", "motivo_demissao"]);
+
+export async function parseCadastrosEmpregadosFile(buffer: Buffer) {
+  const sheet = await lerAbaEmpregados(buffer);
+  const cabecalho = detectHeaderRow(sheet, ["Cód Epr"]);
+  const titulos = (sheet.rows[cabecalho] ?? []).map((v) => asString(v));
+  const colunaMatricula = titulos.indexOf("Cód Epr");
+  const colunaNome = titulos.indexOf("Nome");
+  if (colunaMatricula < 0 || colunaNome < 0) throw new Error("A planilha precisa conter as colunas Cód Epr e Nome.");
+
+  const campos = CAMPOS_COLABORADOR.filter((campo) => !CAMPOS_FATURAMENTO.has(campo.key)).map((campo) => {
+    const coluna = campo.key === "categoria2"
+      ? titulos.indexOf("Categoria2") >= 0 ? titulos.indexOf("Categoria2") : titulos.indexOf("Categoria", titulos.indexOf("Categoria") + 1)
+      : titulos.indexOf(campo.label);
+    return { ...campo, coluna };
+  }).filter((campo) => campo.coluna >= 0);
+  const porMatricula = new Map<number, { matricula: number; dados: DadosColaborador }>();
+  let linhasIgnoradas = 0;
+  let duplicadas = 0;
+
+  for (const linha of sheet.rows.slice(cabecalho + 1)) {
+    if (!linha?.some((v) => v != null && v !== "")) continue;
+    const matricula = lerMatricula(linha[colunaMatricula]);
+    if (matricula === null || matricula > 2147483647 || !asString(linha[colunaNome])) {
+      linhasIgnoradas++;
+      continue;
+    }
+    const dados: DadosColaborador = {};
+    for (const campo of campos) {
+      const celula = linha[campo.coluna] ?? null;
+      if (asString(celula) === null) {
+        if (CAMPOS_LIMPAR_QUANDO_VAZIOS.has(campo.key)) dados[campo.key] = null;
+        continue;
+      }
+      const valor = campo.tipo === "number" ? asNumber(celula)
+        : campo.tipo === "date" && !["cidade_nascimento", "pais_nascimento", "motivo_demissao"].includes(campo.key)
+          ? asDateString(celula) : asString(celula);
+      if (valor !== null) dados[campo.key] = valor;
+    }
+    if (porMatricula.has(matricula)) duplicadas++;
+    porMatricula.set(matricula, { matricula, dados });
+  }
+  return { cadastros: [...porMatricula.values()], linhasIgnoradas, duplicadas };
 }
