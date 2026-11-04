@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { creditoReserva, mesReserva, saldoReserva, usosManuais, type CobrancaReserva } from "./reservasFaturadas";
+import { baseFeriasGozadas, creditoReserva, mesReserva, saldoReserva, usosManuais, type CobrancaReserva } from "./reservasFaturadas";
 
 const agosto = mesReserva("08/2026 (Folha)")!;
 const cobrancas: CobrancaReserva[] = Array.from({ length: 13 }, (_, i) => ({
@@ -45,4 +45,20 @@ describe("reservas faturadas", () => {
       { competencia: "08/2026 (Folha)", tipo: "ferias", valor: -100 },
     ])).toEqual([{ mes: agosto, tipo: "ferias", periodo: "", valor: 10000, dias: 0 }]);
   });
+});
+
+it("calcula férias gozadas com a reserva anterior, mesmo com abatimento lançado no mês", () => {
+  const mes = mesReserva("10/2026")!;
+  const periodo = "09/2025";
+  const anteriores = Array.from({ length: 13 }, (_, i) => ({
+    mes: mes - i - 1, periodo, ferias: i === 0 ? 23194 : 23177, terco: 0, aviso: 0,
+  }));
+  const base = baseFeriasGozadas(
+    [...anteriores, { mes, periodo, ferias: 13229, terco: 0, aviso: 0 }],
+    [{ mes, tipo: "ferias", periodo, valor: 316008, dias: 14 }],
+    mes,
+    periodo,
+  );
+  expect(base).toMatchObject({ saldo: 301318, dias: 32.5 });
+  expect(creditoReserva(base, 14, false)).toBe(129799);
 });

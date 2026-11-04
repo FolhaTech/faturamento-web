@@ -2,7 +2,7 @@ import type { Sql, TransactionSql } from "postgres";
 import { CODIGO_AVISO_PREVIO } from "../calc/engine";
 import { listarDiasGozados } from "./diasFerias";
 import { ensureSchema, getDb } from "../db";
-import { creditoReserva, mesReserva, saldoReserva, usosManuais, PERIODO_FOLHA, type CobrancaReserva, type ReservaTipo, type UsoReserva } from "../calc/reservasFaturadas";
+import { baseFeriasGozadas, creditoReserva, mesReserva, saldoReserva, usosManuais, PERIODO_FOLHA, type CobrancaReserva, type ReservaTipo, type UsoReserva } from "../calc/reservasFaturadas";
 
 type Uso = UsoReserva & { competencia: string; retirado: boolean };
 type Acao = { tipo: "cobranca"; cobranca: Omit<CobrancaReserva, "mes">; referencia: string }
@@ -68,8 +68,11 @@ export async function alterarReserva(matricula: number, competencia: string, aca
     if (tipo === "ferias" && !rescisao && acao.periodo === "*") throw new ErroReserva("Selecione um período de férias.");
     const periodo = tipo === "ferias" ? (rescisao ? "*" : acao.periodo) : "";
     if (tipo === "ferias" && existentes.some((u) => u.periodo === "*")) throw new ErroReserva("As férias deste vínculo já foram encerradas em uma rescisão.");
-    const saldo = saldoReserva(cobrancas, [...existentes, ...usosManuais(legados)], mes, tipo, periodo);
     const quitar = tipo !== "ferias" || rescisao;
+    const usos = [...existentes, ...usosManuais(legados)];
+    const saldo = quitar
+      ? saldoReserva(cobrancas, usos, mes, tipo, periodo)
+      : baseFeriasGozadas(cobrancas, usos, mes, periodo);
     const diasDaFolha = tipo === "ferias" && !quitar
       ? (await listarDiasGozados([matricula], sql)).get(matricula)?.find((d) => d.mes === mes)?.dias ?? 0
       : 0;

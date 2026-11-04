@@ -22,6 +22,10 @@ export function saldoReserva(cobrancas: CobrancaReserva[], usos: UsoReserva[], m
   return { cobrado, usado, saldo: Math.max(0, cobrado - usado), dias };
 }
 
+export function baseFeriasGozadas(cobrancas: CobrancaReserva[], usos: UsoReserva[], mes: number, periodo: string) {
+  return saldoReserva(cobrancas, usos, mes - 1, "ferias", periodo);
+}
+
 export function creditoReserva(saldo: ReturnType<typeof saldoReserva>, dias: number, quitar: boolean): number {
   if (quitar) return saldo.saldo;
   if (dias <= 0 || dias > saldo.dias) return 0;

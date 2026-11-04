@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { creditoReserva, mesReserva, saldoReserva, PERIODO_FOLHA, type ReservaTipo } from "@/lib/calc/reservasFaturadas";
+import { baseFeriasGozadas, creditoReserva, mesReserva, saldoReserva, PERIODO_FOLHA, type ReservaTipo } from "@/lib/calc/reservasFaturadas";
 import { hojeSaoPaulo, saldoDiasFerias, type DiasGozados } from "@/lib/calc/diasFerias";
 import type { consultarReservas } from "@/lib/repo/reservasFaturadas";
 
@@ -82,10 +82,12 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
             {tipos.map((tipo) => {
               const atual = dados.usos.find((u) => u.tipo === tipo && u.mes === mes && !u.retirado);
               const periodoAplicado = tipo === "ferias" && rescisao ? "*" : periodo;
-              const saldo = saldoReserva(dados.cobrancas, [...dados.usos.filter((u) => !u.retirado), ...dados.manuais], mes, tipo, periodoAplicado);
+              const usos = [...dados.usos.filter((u) => !u.retirado), ...dados.manuais];
+              const saldo = saldoReserva(dados.cobrancas, usos, mes, tipo, periodoAplicado);
               const manual = dados.manuais.some((u) => u.tipo === tipo && u.mes === mes);
               const quitar = tipo !== "ferias" || rescisao;
-              const sugestao = creditoReserva(saldo, diasDaFolha, quitar);
+              const base = quitar ? saldo : baseFeriasGozadas(dados.cobrancas, usos, mes, periodoAplicado);
+              const sugestao = creditoReserva(base, diasDaFolha, quitar);
               const elegivel = tipo === "ferias" || rescisao || (tipo === "terco" && mes % 12 === 11);
               return <div className="space-y-2 rounded border border-neutral-200 p-3" key={tipo}>
                 <h5 className="font-medium">{rotulos[tipo]}</h5>
@@ -97,7 +99,10 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
                       {periodos.map((p) => <option key={p} value={p}>{p === PERIODO_FOLHA ? "Histórico da Folha" : p}</option>)}
                     </select>
                   </label>
-                  {!quitar && <p>Dias gozados na Folha de {exibirMes(mes)}: <strong>{diasDaFolha.toLocaleString("pt-BR")}</strong></p>}
+                  <p>Dias gozados na Folha de {exibirMes(mes)}: <strong>{diasDaFolha.toLocaleString("pt-BR")}</strong></p>
+                  {diasDaFolha > 0 && (sugestao > 0 ? (
+                    <p>Valor proporcional pela reserva anterior ao mês: <strong>{valor(base.saldo)} ÷ {base.dias.toLocaleString("pt-BR")} dias × {diasDaFolha.toLocaleString("pt-BR")} dias = {valor(sugestao)}</strong></p>
+                  ) : <p>Saldo anterior insuficiente para calcular o crédito desses dias.</p>)}
                 </>}
                 {tipo === "aviso" && <p>De {exibirMes(mes - 12)} a {exibirMes(mes - 1)}.</p>}
                 {tipo === "terco" && <p>Exercício de {Math.floor(mes / 12)}.</p>}
