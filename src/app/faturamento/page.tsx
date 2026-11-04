@@ -3,18 +3,15 @@ import { getUsuarioAtual } from "@/lib/auth/sessao";
 import { aggregateByCcusto } from "@/lib/calc/aggregate";
 import { calcularPreviaTotalFaturaPorCcusto, carregarEngineLines, type PreviaTotalPorCcusto } from "@/lib/calc/faturaCompetencia";
 import { filtrarLinesPorColaborador, type FiltrosColaborador } from "@/lib/calc/filtroColaboradores";
-import { listarAcumuladoLiquido } from "@/lib/calc/descontoProvisaoAcumulada";
 import { camposVazios, type CamposCompartilhados } from "@/lib/camposCompartilhados";
 import { listCampos } from "@/lib/repo/camposFaturamento";
 import { listEventosExcluidos } from "@/lib/repo/eventosExcluidos";
-import { listDescontosSaldoPorCompetencias } from "@/lib/repo/descontosSaldo";
 import { listMinhasCompetenciasComFaturaSalva } from "@/lib/repo/faturasSalvas";
 import { listCompetencias } from "@/lib/repo/movimentos";
 import { getColaboradoresPorMatriculas, listValoresDistintosDados } from "@/lib/repo/colaboradores";
 import { CHAVE_PLR_CELETISTA, getConfigNumero } from "@/lib/repo/configuracoes";
 import { listEncargos } from "@/lib/repo/encargos";
 import { listTomadores } from "@/lib/repo/tomadores";
-import { SEM_AVISO_PREVIO, SEM_RESUMO, type ProvisaoColaborador } from "./DescontoProvisaoColaborador";
 import { FaturaTimeline } from "./FaturaTimeline";
 import { FaturamentoViewer } from "./FaturamentoViewer";
 import type { TomadorOpcao } from "./RegimeColaborador";
@@ -149,28 +146,6 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
     };
   });
   const colaboradoresTomador = matriculasNaTela.map((matricula) => ({ matricula, codServico: colaboradoresPorMatricula.get(matricula)?.codServico ?? null }));
-
-  // Botões Sim/Não de Prov. Férias / Prov. 13º por colaborador (ver DescontoProvisaoColaborador.tsx):
-  // "Sim" = já existe desconto desse tipo lançado nessa competência; a tela mostra o Subtotal provisão,
-  // o Subtotal desconto e o valor que vira desconto ao marcar "Sim" (ver calcularAcumuladoLiquido).
-  let colaboradoresProvisao: ProvisaoColaborador[] = [];
-  if (competenciaAtual && matriculasNaTela.length > 0) {
-    const [acumulados, descontosDaCompetencia] = await Promise.all([
-      listarAcumuladoLiquido(matriculasNaTela, competenciaAtual),
-      listDescontosSaldoPorCompetencias([competenciaAtual]),
-    ]);
-    // Aviso prévio em "Não" (aplicado = false) continua guardado, mas não conta como lançado na fatura.
-    const aplicados = new Set(descontosDaCompetencia.filter((d) => d.valor !== 0 && d.aplicado).map((d) => `${d.matricula}:${d.tipo}`));
-    const avisoPorMatricula = new Map(descontosDaCompetencia.filter((d) => d.tipo === "aviso" && d.valor !== 0).map((d) => [d.matricula, { valor: Math.abs(d.valor), aplicado: d.aplicado }]));
-    colaboradoresProvisao = matriculasNaTela.map((matricula) => ({
-      matricula,
-      aplicadoFerias: aplicados.has(`${matricula}:ferias`),
-      aplicado13: aplicados.has(`${matricula}:terco`),
-      avisoPrevio: avisoPorMatricula.get(matricula) ?? SEM_AVISO_PREVIO,
-      ferias: acumulados.get(matricula)?.ferias ?? SEM_RESUMO,
-      decimoTerceiro: acumulados.get(matricula)?.terco ?? SEM_RESUMO,
-    }));
-  }
 
   const filtrosQuery = new URLSearchParams();
   if (codEmp) filtrosQuery.set("codEmp", codEmp);
@@ -363,7 +338,6 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
             regimeLabel={fpas === 515 ? "Terceiro (CLT)" : fpas === 655 ? "Temporário" : null}
             encargos={encargos}
             colaboradoresCc={colaboradoresCc}
-            colaboradoresProvisao={colaboradoresProvisao}
             colaboradoresTomador={colaboradoresTomador}
             colaboradoresVinculo={colaboradoresVinculo}
             camposIniciais={{ competencia: competenciaAtual ?? "", valores: camposIniciais, somenteLocal: Boolean(versaoDe) }}

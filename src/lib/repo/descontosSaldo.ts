@@ -96,7 +96,13 @@ export async function listDescontosSaldoPorCompetencias(competencias: string[]):
   if (competencias.length === 0) return [];
   await ensureSchema();
   const sql = getDb();
-  const rows = await sql<Row[]>`SELECT * FROM descontos_saldo WHERE competencia = ANY(${competencias})`;
+  const rows = await sql<Row[]>`SELECT d.matricula, d.competencia, d.tipo, d.valor, d.aplicado
+    FROM descontos_saldo d WHERE d.competencia = ANY(${competencias})
+      AND NOT EXISTS (SELECT 1 FROM reservas_creditos r WHERE r.matricula = d.matricula AND left(r.competencia, 7) = left(d.competencia, 7) AND r.tipo = d.tipo AND r.retirado_em IS NULL AND r.tomador = (SELECT c.cod_servico FROM colaboradores c WHERE c.matricula = d.matricula))
+    UNION ALL
+    SELECT matricula, competencia, tipo, -valor / 100.0::double precision, true
+    FROM reservas_creditos r WHERE competencia = ANY(${competencias}) AND retirado_em IS NULL
+      AND EXISTS (SELECT 1 FROM colaboradores c WHERE c.matricula = r.matricula AND c.cod_servico = r.tomador)`;
   return rows.map(toDescontoSaldo);
 }
 

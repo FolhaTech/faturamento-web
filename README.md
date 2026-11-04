@@ -43,3 +43,11 @@ Next.js (App Router) + TypeScript + Tailwind CSS · SQLite (`node:sqlite`) · Sh
 ## Dados sensíveis
 
 `data/` (banco com CPF, salário e demais dados pessoais) e qualquer planilha (`.xlsx`/`.xls`) ou PDF gerado ficam fora do controle de versão — ver `.gitignore`.
+
+### Reservas cobradas no faturamento
+
+No detalhamento do colaborador em **Faturamento → Folha**, abra **Consultar reservas**. Registre, por competência, somente os valores efetivamente cobrados de férias + 1/3, 13º e aviso prévio, com a referência da fatura emitida. Para férias, informe o mês inicial do período aquisitivo. As provisões estimadas do upload não são importadas como cobranças; registre o histórico conferido antes de lançar um crédito.
+
+O painel mostra o saldo e exige que o operador aplique o crédito. Férias são proporcionais aos dias usados (2,5 dias por mês com cobrança no período). O 13º é encerrado em dezembro ou no desligamento, dentro do mesmo exercício. Na rescisão, as férias são quitadas pelo saldo dos períodos do vínculo e o aviso considera os 12 meses fechados anteriores ao mês de desligamento. Confira essa janela e os valores com a fatura e as condições do tomador.
+
+A retirada de um crédito é registrada no histórico. Créditos mudam o cálculo ao vivo; para usar o novo cálculo em uma versão salva, salve uma nova versão antes de exportar. Créditos posteriores precisam ser revistos antes de lançar cobranças ou créditos retroativos que mudariam sua base.

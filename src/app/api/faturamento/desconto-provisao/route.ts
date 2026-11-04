@@ -1,41 +1,46 @@
 import { NextResponse } from "next/server";
-import { definirDescontoProvisao } from "@/lib/calc/descontoProvisaoAcumulada";
-import { getColaborador } from "@/lib/repo/colaboradores";
-import { definirAvisoPrevioAplicado } from "@/lib/repo/descontosSaldo";
+import { getUsuarioAtual } from "@/lib/auth/sessao";
+import { mesReserva, type ReservaTipo } from "@/lib/calc/reservasFaturadas";
+import { alterarReserva, consultarReservas, ErroReserva } from "@/lib/repo/reservasFaturadas";
 
 export const runtime = "nodejs";
+const erro = (error: string, status = 400) => NextResponse.json({ error }, { status });
+const periodoValido = (p: unknown): p is string => typeof p === "string" && /^(0[1-9]|1[0-2])\/\d{4}$/.test(p);
 
-/** "ferias" = Prov. Férias, "13" = Prov. 13º (vira o tipo "terco" em descontos_saldo, igual ao resto do sistema). */
-const TIPOS = { ferias: "ferias", "13": "terco" } as const;
+export async function GET(request: Request) {
+  if (!await getUsuarioAtual()) return erro("Sessão expirada.", 401);
+  const matricula = Number(new URL(request.url).searchParams.get("matricula"));
+  if (!Number.isSafeInteger(matricula) || matricula <= 0) return erro("Matrícula inválida.");
+  return NextResponse.json(await consultarReservas(matricula));
+}
 
-/**
- * Sim/Não por colaborador no Faturamento. Prov. Férias ("ferias") e Prov. 13º ("13") lançam/tiram o desconto calculado da provisão
- * acumulada; "aviso" liga/desliga a cobrança do desconto de aviso prévio já lançado (valor digitado na tela do colaborador) — "Não"
- * só tira da fatura e guarda o valor, "Sim" volta a cobrá-lo.
- */
 export async function PUT(request: Request) {
-  const body = (await request.json()) as { matricula?: unknown; competencia?: unknown; tipo?: unknown; aplicar?: unknown };
-  const matricula = Number(body.matricula);
-  const competencia = typeof body.competencia === "string" ? body.competencia.trim() : "";
-  const avisoPrevio = body.tipo === "aviso";
-  const tipo = typeof body.tipo === "string" && body.tipo in TIPOS ? TIPOS[body.tipo as keyof typeof TIPOS] : null;
-
-  if (!Number.isInteger(matricula) || competencia === "" || (!tipo && !avisoPrevio) || typeof body.aplicar !== "boolean") {
-    return NextResponse.json({ error: "Informe matricula, competencia, tipo (ferias|13|aviso) e aplicar (true|false)." }, { status: 400 });
-  }
-  if (!(await getColaborador(matricula))) {
-    return NextResponse.json({ error: "Colaborador não encontrado." }, { status: 404 });
-  }
-
+  const usuario = await getUsuarioAtual();
+  if (!usuario) return erro("Sessão expirada.", 401);
+  const b = await request.json().catch(() => null);
+  if (!b || !Number.isSafeInteger(b.matricula) || b.matricula <= 0 || typeof b.competencia !== "string" || mesReserva(b.competencia) === null) return erro("Matrícula ou competência inválida.");
   try {
-    if (avisoPrevio) {
-      const valor = await definirAvisoPrevioAplicado(matricula, competencia, body.aplicar);
-      return NextResponse.json({ valor });
+    if (b.tipo === "cobranca") {
+      const { ferias, terco, aviso, periodo, referencia } = b;
+      if (![ferias, terco, aviso].every((n) => Number.isInteger(n) && n >= 0 && n <= 2147483647)
+        || ferias + terco + aviso === 0 || (ferias > 0 && !periodoValido(periodo))
+        || typeof referencia !== "string" || !referencia.trim() || referencia.length > 160) {
+        return erro("Informe os valores cobrados, o início do período das férias e a referência da fatura.");
+      }
+      await alterarReserva(b.matricula, b.competencia, { tipo: "cobranca", referencia: referencia.trim(), cobranca: { ferias, terco, aviso, periodo: ferias > 0 ? periodo : "" } }, usuario.email);
+    } else {
+      if (!["ferias", "terco", "aviso"].includes(b.reserva)) return erro("Reserva inválida.");
+      const reserva = b.reserva as ReservaTipo;
+      if (b.tipo === "retirar") {
+        await alterarReserva(b.matricula, b.competencia, { tipo: "retirar", reserva }, usuario.email);
+      } else if (b.tipo === "aplicar" && Number.isSafeInteger(b.esperado) && b.esperado > 0 && (reserva !== "ferias" || ((periodoValido(b.periodo) || b.periodo === "*") && Number.isFinite(b.dias) && b.dias >= 0 && Number.isInteger(b.dias * 2)))) {
+        await alterarReserva(b.matricula, b.competencia, { tipo: "aplicar", reserva, periodo: reserva === "ferias" ? b.periodo : "", dias: reserva === "ferias" ? b.dias : 0, esperado: b.esperado }, usuario.email);
+      } else return erro("Informe o início do período de férias e a quantidade de dias.");
     }
-    const valor = await definirDescontoProvisao(matricula, competencia, tipo!, body.aplicar);
-    return NextResponse.json({ valor });
-  } catch (error) {
-    console.error("[faturamento/desconto-provisao] erro:", error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao salvar." }, { status: 500 });
+    return NextResponse.json(await consultarReservas(b.matricula));
+  } catch (e) {
+    if (e instanceof ErroReserva) return erro(e.message, 409);
+    console.error("[reservas faturadas]", e);
+    return erro("Não foi possível atualizar a reserva.", 500);
   }
 }

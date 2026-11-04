@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { PERCENTUAL_ISS_PADRAO, type CcustoResumo, type ColaboradorResumo, type RubricaSomada } from "@/lib/calc/aggregate";
 import { normalizaTexto } from "@/lib/text";
 import type { Encargo } from "@/lib/types";
-import { DescontoProvisaoColaborador, type ProvisaoColaborador } from "./DescontoProvisaoColaborador";
+import { DescontoProvisaoColaborador } from "./DescontoProvisaoColaborador";
 import { GrossUpConfigForm } from "./GrossUpConfigForm";
 import {
   adiantamentoAtivo,
@@ -49,7 +49,6 @@ export function FaturamentoViewer({
   regimeLabel = null,
   encargos,
   colaboradoresCc,
-  colaboradoresProvisao,
   colaboradoresTomador,
   colaboradoresVinculo,
   camposIniciais,
@@ -73,8 +72,6 @@ export function FaturamentoViewer({
   encargos: Encargo[];
   /** CC (não obrigatório) de cada colaborador mostrado — ver ColaboradoresTable/CcInput. Array (não Map) pelo mesmo motivo de filtrosQuery acima. */
   colaboradoresCc: { matricula: number; cc: string | null }[];
-  /** Estado dos botões Sim/Não de Prov. Férias / Prov. 13º de cada colaborador mostrado — ver DescontoProvisaoColaborador. */
-  colaboradoresProvisao: ProvisaoColaborador[];
   /** Tomador (Cód Serviço) atual de cada colaborador mostrado e a lista de Tomadores pra escolher — ver RegimeColaborador. */
   colaboradoresTomador: { matricula: number; codServico: number | null }[];
   /** Admissão e rescisão de cada colaborador mostrado (planilha mensal Empregados em Excel) — colunas do detalhamento por colaborador. */
@@ -178,7 +175,6 @@ export function FaturamentoViewer({
   }
   const encargosPorCodigo = useMemo(() => new Map(encargos.map((e) => [e.codigo, e])), [encargos]);
   const ccPorMatricula = useMemo(() => new Map(colaboradoresCc.map((c) => [c.matricula, c.cc])), [colaboradoresCc]);
-  const provisaoPorMatricula = useMemo(() => new Map(colaboradoresProvisao.map((p) => [p.matricula, p])), [colaboradoresProvisao]);
   const vinculoPorMatricula = useMemo(() => new Map(colaboradoresVinculo.map((v) => [v.matricula, v])), [colaboradoresVinculo]);
   const codServicoPorMatricula = useMemo(() => new Map(colaboradoresTomador.map((c) => [c.matricula, c.codServico])), [colaboradoresTomador]);
   const previaPorCcusto = useMemo(() => new Map(previaTotalFaturaPorCcusto.map((p) => [p.ccustoCodigo, p.totalFatura])), [previaTotalFaturaPorCcusto]);
@@ -351,7 +347,6 @@ export function FaturamentoViewer({
             onAdiantamentoChange={setAdiantamentoColaborador}
             hrefExportColaborador={hrefExportColaborador}
             competencia={resumo.competencia}
-            provisaoPorMatricula={provisaoPorMatricula}
             codServicoPorMatricula={codServicoPorMatricula}
             vinculoPorMatricula={vinculoPorMatricula}
             tomadoresOpcoes={tomadoresOpcoes}
@@ -789,7 +784,6 @@ function ColaboradoresTable({
   onAdiantamentoChange,
   hrefExportColaborador,
   competencia,
-  provisaoPorMatricula,
   codServicoPorMatricula,
   vinculoPorMatricula,
   tomadoresOpcoes,
@@ -812,7 +806,6 @@ function ColaboradoresTable({
   hrefExportColaborador: (matricula: number, formato: FormatoExport) => string;
   /** Competência mostrada — pra qual os botões de Prov. Férias / Prov. 13º lançam o desconto. */
   competencia: string;
-  provisaoPorMatricula: Map<number, ProvisaoColaborador>;
   /** Tomador atual de cada colaborador + Tomadores disponíveis — alimentam o seletor de regime (ver RegimeColaborador). */
   codServicoPorMatricula: Map<number, number | null>;
   /** Admissão e rescisão de cada colaborador — colunas "Admissão" e "Rescisão" (motivo no tooltip). */
@@ -953,9 +946,7 @@ function ColaboradoresTable({
                       <td colSpan={15} className="bg-neutral-50 p-3">
                         <div className="flex flex-col gap-3">
                           <RegimeColaborador matricula={c.matricula} codServicoAtual={codServicoPorMatricula.get(c.matricula) ?? null} tomadores={tomadoresOpcoes} />
-                          {provisaoPorMatricula.has(c.matricula) && (
-                            <DescontoProvisaoColaborador matricula={c.matricula} competencia={competencia} provisao={provisaoPorMatricula.get(c.matricula)!} />
-                          )}
+                          <DescontoProvisaoColaborador key={competencia} matricula={c.matricula} competencia={competencia} dataDemissao={vinculoPorMatricula.get(c.matricula)?.dataDemissao} />
                           <RubricasTable
                             rubricas={c.rubricas}
                             encargosPorCodigo={encargosPorCodigo}

@@ -1,217 +1,121 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import type { ResumoAcumulado } from "@/lib/calc/acumuladoLiquido";
+import { useState, type FormEvent } from "react";
+import { creditoReserva, mesReserva, saldoReserva, type ReservaTipo } from "@/lib/calc/reservasFaturadas";
+import type { consultarReservas } from "@/lib/repo/reservasFaturadas";
 
-const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+type Historico = Awaited<ReturnType<typeof consultarReservas>>;
+const moeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+const valor = (n: number) => moeda.format(n / 100);
+const rotulos = { ferias: "Férias + 1/3", terco: "13º salário", aviso: "Aviso prévio" } as const;
+const tipos = Object.keys(rotulos) as ReservaTipo[];
+const campo = "min-h-11 rounded-md border border-neutral-300 px-2 text-sm";
+const botao = "min-h-11 rounded-md border border-neutral-400 px-3 text-sm font-medium hover:bg-neutral-100 disabled:opacity-50";
+const exibirMes = (m: number) => String(m % 12 + 1).padStart(2, "0") + "/" + Math.floor(m / 12);
 
-export const SEM_RESUMO: ResumoAcumulado = { provisao: 0, desconto: 0, aLancar: 0 };
-
-/** Desconto de aviso prévio lançado pra esse colaborador nessa competência (valor digitado na tela dele) e se está sendo cobrado na fatura. */
-export interface AvisoPrevioColaborador {
-  /** Valor do aviso prévio (positivo) — 0 quando nada foi lançado nessa competência. */
-  valor: number;
-  /** true = cobrado na fatura ("Sim"); false = guardado, mas fora da fatura ("Não"). */
-  aplicado: boolean;
-}
-
-export const SEM_AVISO_PREVIO: AvisoPrevioColaborador = { valor: 0, aplicado: false };
-
-export interface ProvisaoColaborador {
-  matricula: number;
-  /** Já tem desconto de Prov. Férias lançado nessa competência (= "Sim"). */
-  aplicadoFerias: boolean;
-  aplicado13: boolean;
-  /** Subtotais da Rescisão (sem contar o desconto dessa competência) e o valor que vira desconto quando marcar "Sim". */
-  ferias: ResumoAcumulado;
-  decimoTerceiro: ResumoAcumulado;
-  /** Aviso prévio lançado nessa competência (campo "Desconto de aviso prévio" da tela do colaborador). */
-  avisoPrevio: AvisoPrevioColaborador;
-}
-
-/**
- * Três seletores Sim/Não no detalhamento do colaborador: Prov. Férias, Prov. 13º e Aviso prévio. "Sim" lança como
- * desconto desse colaborador nessa competência o Subtotal desconto da Rescisão (sem abater o Subtotal
- * provisão); "Não" tira esse desconto. No Aviso prévio o valor é o digitado na tela do colaborador: "Sim" cobra esse
- * valor na fatura e "Não" tira da fatura mas guarda o valor. Salva na hora ao trocar (ver /api/faturamento/desconto-provisao).
- */
-export function DescontoProvisaoColaborador({ matricula, competencia, provisao }: { matricula: number; competencia: string; provisao: ProvisaoColaborador }) {
+export function DescontoProvisaoColaborador({ matricula, competencia, dataDemissao }: { matricula: number; competencia: string; dataDemissao?: string | null }) {
   const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-  const [avisos, setAvisos] = useState<{ ferias?: string; "13"?: string; aviso?: string }>({});
+  const [dados, setDados] = useState<Historico | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState("");
+  const [periodo, setPeriodo] = useState("");
+  const [dias, setDias] = useState("");
+  const mes = mesReserva(competencia);
+  if (mes === null || competencia.endsWith(" (Prévia)")) return null;
+  const mesDemissao = dataDemissao?.includes("-") ? dataDemissao.slice(5, 7) + "/" + dataDemissao.slice(0, 4) : dataDemissao?.slice(3);
+  const rescisao = mesDemissao === exibirMes(mes);
+  const endpoint = "/api/faturamento/desconto-provisao";
 
-  async function definir(tipo: "ferias" | "13" | "aviso", aplicar: boolean) {
-    setErro(null);
-    setAvisos((a) => ({ ...a, [tipo]: undefined }));
-    setBusy(true);
+  async function atualizar(body?: Record<string, unknown>) {
+    setOcupado(true);
+    setErro("");
     try {
-      const res = await fetch("/api/faturamento/desconto-provisao", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ matricula, competencia, tipo, aplicar }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setErro(data.error ?? "Falha ao salvar.");
-        return;
-      }
-      // "Sim" sem nada a lançar não grava desconto (valor 0) — avisa em vez de parecer que não funcionou.
-      if (aplicar && !(data.valor > 0)) {
-        setAvisos((a) => ({
-          ...a,
-          [tipo]:
-            tipo === "aviso"
-              ? "Nenhum aviso prévio lançado nessa competência: informe o valor no campo Desconto de aviso prévio da tela do colaborador."
-              : "Nenhum desconto lançado: não há Subtotal desconto nem Subtotal provisão para esse colaborador.",
-        }));
-      }
-      router.refresh();
-    } catch {
-      setErro("Falha de rede ao salvar.");
+      const resposta = await fetch(body ? endpoint : endpoint + "?matricula=" + matricula, body ? {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, matricula, competencia }),
+      } : undefined);
+      const resultado = await resposta.json();
+      if (!resposta.ok) throw new Error(resultado.error ?? "Não foi possível consultar o histórico.");
+      setDados(resultado);
+      if (body) router.refresh();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao consultar as reservas.");
     } finally {
-      setBusy(false);
+      setOcupado(false);
     }
   }
 
+  function confirmar(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    const centavos = (k: ReservaTipo) => Math.round(Number(form.get(k) || 0) * 100);
+    void atualizar({ tipo: "cobranca", ferias: centavos("ferias"), terco: centavos("terco"), aviso: centavos("aviso"), periodo: form.get("periodo"), referencia: form.get("referencia") });
+  }
+
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 bg-white p-4">
-      <div>
-        <h4 className="text-sm font-semibold text-neutral-900">Desconto da provisão acumulada (Rescisão)</h4>
-        <p className="text-xs text-neutral-500">
-          <strong>Sim</strong> lança o valor a descontar (o <strong>Subtotal desconto</strong> da Rescisão, sem abater o Subtotal provisão) como desconto
-          desse colaborador em {competencia}; <strong>Não</strong> tira o desconto. No <strong>Aviso prévio</strong>, o valor é o digitado na tela do
-          colaborador: <strong>Sim</strong> cobra esse valor na fatura e <strong>Não</strong> tira da fatura (o valor fica guardado). Se a fatura dessa
-          competência já foi salva, descarte-a ou salve uma nova versão pra ver a mudança.
-        </p>
-      </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Seletor
-          rotulo="Prov. Férias"
-          valor={provisao.aplicadoFerias}
-          resumo={provisao.ferias}
-          disabled={busy}
-          aviso={avisos.ferias}
-          onChange={(aplicar) => definir("ferias", aplicar)}
-        />
-        <Seletor
-          rotulo="Prov. 13º"
-          valor={provisao.aplicado13}
-          resumo={provisao.decimoTerceiro}
-          disabled={busy}
-          aviso={avisos["13"]}
-          onChange={(aplicar) => definir("13", aplicar)}
-        />
-        <SeletorAvisoPrevio
-          matricula={matricula}
-          competencia={competencia}
-          aviso={provisao.avisoPrevio}
-          disabled={busy}
-          mensagem={avisos.aviso}
-          onChange={(aplicar) => definir("aviso", aplicar)}
-        />
-      </div>
-      {erro && <span className="text-xs text-red-700">{erro}</span>}
+    <div className="space-y-3 rounded-lg border border-neutral-200 bg-white p-4 text-sm text-neutral-900">
+      <h4 className="font-semibold">Reservas cobradas e abatimentos</h4>
+      {!dados && <button type="button" className={botao} disabled={ocupado} onClick={() => atualizar()}>Consultar reservas</button>}
+      {dados && <>
+        <p className="text-neutral-600">Confira os valores com a fatura emitida. O crédito aplicado entra no cálculo ao vivo; versões salvas precisam ser atualizadas.</p>
+        {!dados.cobrancas.some((c) => c.mes === mes) && (
+          <form onSubmit={confirmar} className="space-y-3 border-b border-neutral-200 pb-4">
+            <h5 className="font-medium">Registrar cobrança de {exibirMes(mes)}</h5>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {tipos.map((tipo) => <label key={tipo} className="flex flex-col gap-1">{rotulos[tipo]} (R$)<input name={tipo} className={campo} type="number" min="0" step="0.01" placeholder="0,00" /></label>)}
+              <label className="flex flex-col gap-1">Início do período de férias (MM/AAAA)<input name="periodo" className={campo} pattern="(0[1-9]|1[0-2])/[0-9]{4}" placeholder="MM/AAAA" /></label>
+              <label className="flex flex-col gap-1">Referência da fatura emitida<input name="referencia" required maxLength={160} className={campo} /></label>
+            </div>
+            <button className={botao} disabled={ocupado}>Confirmar valores cobrados</button>
+          </form>
+        )}
+        <div className="grid gap-3 lg:grid-cols-3">
+          {tipos.map((tipo) => {
+            const atual = dados.usos.find((u) => u.tipo === tipo && u.mes === mes && !u.retirado);
+            const periodoAplicado = tipo === "ferias" && rescisao ? "*" : periodo;
+            const saldo = saldoReserva(dados.cobrancas, [...dados.usos.filter((u) => !u.retirado), ...dados.manuais], mes, tipo, periodoAplicado);
+            const manual = dados.manuais.some((u) => u.tipo === tipo && u.mes === mes);
+            const quitar = tipo !== "ferias" || rescisao;
+            const sugestao = creditoReserva(saldo, Number(dias), quitar);
+            const elegivel = tipo === "ferias" || rescisao || (tipo === "terco" && mes % 12 === 11);
+            return <div className="space-y-2 rounded border border-neutral-200 p-3" key={tipo}>
+              <h5 className="font-medium">{rotulos[tipo]}</h5>
+              {tipo === "ferias" && rescisao && <p>Quitação dos períodos de férias deste vínculo.</p>}
+              {tipo === "ferias" && !rescisao && <>
+                <label className="flex flex-col gap-1">Período de férias
+                  <select className={campo} value={periodo} onChange={(e) => setPeriodo(e.target.value)}>
+                    <option value="">Selecione o início</option>
+                    {[...new Set(dados.cobrancas.filter((c) => c.mes <= mes && c.ferias > 0).map((c) => c.periodo))].map((p) => <option key={p}>{p}</option>)}
+                  </select>
+                </label>
+                {!quitar && <label className="flex flex-col gap-1">Dias utilizados<input className={campo} type="number" min="0.5" max={saldo.dias} step="0.5" value={dias} onChange={(e) => setDias(e.target.value)} /></label>}
+              </>}
+              {tipo === "aviso" && <p>De {exibirMes(mes - 12)} a {exibirMes(mes - 1)}.</p>}
+              {tipo === "terco" && <p>Exercício de {Math.floor(mes / 12)}.</p>}
+              <p>Cobrado: {valor(saldo.cobrado)} · Usado: {valor(saldo.usado)}</p>
+              <p>Saldo: <strong>{valor(saldo.saldo)}</strong>{tipo === "ferias" && " · " + saldo.dias + " dias"}</p>
+              {atual ? <>
+                <p>Crédito em {atual.competencia}: <strong>{valor(atual.valor)}</strong></p>
+                {atual.competencia === competencia && <button type="button" className={botao} disabled={ocupado} onClick={() => atualizar({ tipo: "retirar", reserva: tipo })}>Retirar crédito</button>}
+              </> : <>
+                {manual && <p>Já há um abatimento neste mês.</p>}
+                {!elegivel && <p>{tipo === "aviso" ? "Disponível no mês do desligamento." : "Disponível em dezembro ou na rescisão."}</p>}
+                <button type="button" className={botao} disabled={ocupado || manual || !elegivel || sugestao <= 0} onClick={() => atualizar({ tipo: "aplicar", reserva: tipo, periodo: periodoAplicado, dias: Number(dias), esperado: sugestao })}>Aplicar {valor(sugestao)}</button>
+              </>}
+            </div>;
+          })}
+        </div>
+        <details>
+          <summary className="cursor-pointer py-2 font-medium">Histórico de cobranças e créditos</summary>
+          <ul className="space-y-1">
+            {dados.cobrancas.map((c) => <li key={c.mes}>{exibirMes(c.mes)} · {c.referencia} · Férias {valor(c.ferias)}{c.periodo && " (" + c.periodo + ")"} · 13º {valor(c.terco)} · Aviso {valor(c.aviso)}</li>)}
+            {dados.usos.map((u, i) => <li key={i}>{u.competencia} · {u.retirado ? "Crédito retirado" : "Crédito"} de {rotulos[u.tipo]}: {valor(u.valor)}{u.periodo && " · " + (u.periodo === "*" ? "Rescisão" : u.periodo) + " · " + u.dias + " dias"}</li>)}
+            {!dados.cobrancas.length && !dados.usos.length && <li>Nenhum registro confirmado.</li>}
+          </ul>
+        </details>
+      </>}
+      {ocupado && <p role="status">Atualizando reservas…</p>}
+      {erro && <p role="alert" className="text-red-700">{erro}</p>}
     </div>
-  );
-}
-
-/**
- * Sim/Não do desconto de aviso prévio do colaborador nessa competência. O valor é o digitado na tela do colaborador (campo
- * "Desconto de aviso prévio"); aqui só se liga ("Sim": cobra na fatura) ou desliga ("Não": tira da fatura, o valor fica guardado).
- */
-function SeletorAvisoPrevio({
-  matricula,
-  competencia,
-  aviso,
-  disabled,
-  mensagem,
-  onChange,
-}: {
-  matricula: number;
-  competencia: string;
-  aviso: AvisoPrevioColaborador;
-  disabled: boolean;
-  mensagem?: string;
-  onChange: (aplicar: boolean) => void;
-}) {
-  const semValor = aviso.valor <= 0;
-  return (
-    <label className="flex flex-col gap-1 text-xs font-medium text-neutral-500">
-      <span>
-        Aviso prévio — desconto a lançar: <span className="font-mono tabular-nums text-neutral-900">{currency.format(aviso.valor)}</span>
-      </span>
-      <span className="font-normal text-neutral-400">Valor digitado na tela do colaborador (Desconto de aviso prévio)</span>
-      <select
-        value={aviso.aplicado ? "1" : "0"}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value === "1")}
-        className="rounded-md border border-neutral-300 px-2 py-1.5 text-sm font-normal text-neutral-900 disabled:bg-neutral-100"
-      >
-        <option value="0">Não</option>
-        <option value="1">Sim</option>
-      </select>
-      {mensagem ? (
-        <span className="text-xs font-normal text-amber-700">{mensagem}</span>
-      ) : semValor ? (
-        <span className="text-xs font-normal text-amber-700">
-          Nenhum aviso prévio lançado nessa competência.{" "}
-          <Link href={`/colaboradores/${matricula}?competencia=${encodeURIComponent(competencia)}`} className="underline hover:text-amber-900">
-            Informar o valor
-          </Link>
-        </span>
-      ) : (
-        !aviso.aplicado && <span className="text-xs font-normal text-neutral-500">Valor guardado, mas fora da fatura enquanto estiver em Não.</span>
-      )}
-    </label>
-  );
-}
-
-function Seletor({
-  rotulo,
-  valor,
-  resumo,
-  disabled,
-  aviso,
-  onChange,
-}: {
-  rotulo: string;
-  valor: boolean;
-  resumo: ResumoAcumulado;
-  disabled: boolean;
-  aviso?: string;
-  onChange: (aplicar: boolean) => void;
-}) {
-  // O seletor fica sempre liberado (só trava enquanto salva).
-  const semValor = !valor && resumo.aLancar <= 0;
-  return (
-    <label className="flex flex-col gap-1 text-xs font-medium text-neutral-500">
-      <span>
-        {rotulo} — desconto a lançar: <span className="font-mono tabular-nums text-neutral-900">{currency.format(resumo.aLancar)}</span>
-      </span>
-      <span className="font-normal text-neutral-400">
-        Subtotal provisão {currency.format(resumo.provisao)} · Subtotal desconto {currency.format(resumo.desconto)}
-      </span>
-      <select
-        value={valor ? "1" : "0"}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value === "1")}
-        className="rounded-md border border-neutral-300 px-2 py-1.5 text-sm font-normal text-neutral-900 disabled:bg-neutral-100"
-      >
-        <option value="0">Não</option>
-        <option value="1">Sim</option>
-      </select>
-      {aviso ? (
-        <span className="text-xs font-normal text-amber-700">{aviso}</span>
-      ) : (
-        semValor && (
-          <span className="text-xs font-normal text-amber-700">
-            Sem Subtotal desconto nem Subtotal provisão para descontar — as provisões vêm das Folhas já enviadas deste colaborador.
-          </span>
-        )
-      )}
-    </label>
   );
 }
