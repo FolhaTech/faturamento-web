@@ -138,3 +138,23 @@ describe("parseMovimentosFile — layout 'rico' (planilha-modelo com cabeçalho 
     expect(linhas).toHaveLength(1);
   });
 });
+
+ it("ignora 30/14 no evento de férias ao resolver o centro de custo", async () => {
+   const linha = new Array(30).fill(null);
+   linha[0] = 8783;
+   linha[4] = "DIAS FERIAS";
+   linha[15] = "10/2026";
+   linha[18] = 1041.85;
+   linha[21] = 14;
+   linha[24] = "P";
+   linha[27] = "Dias";
+   linha[29] = "30/14";
+   const buffer = bufferFromRows("Movimentos", [
+     ["Empresa:", null, null, null, null, null, "4 - GENTER"],
+     [null, null, "90103312 - NATALIA ARIMURA NASCIMENTO"],
+     linha,
+   ]);
+   const parsed = await parseMovimentosFile(buffer);
+   expect(parsed.localTrabalhoPorMatricula.has(90103312)).toBe(false);
+   expect(parsed.linhas[0]).toMatchObject({ codigo: 8783, ref: 14, valor: 1041.85 });
+ });

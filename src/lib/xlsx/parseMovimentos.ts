@@ -226,7 +226,12 @@ function parseRelatorio(sheet: SheetGrid): ParseRelatorioResult {
     const evento = asString(row[4]);
     if (!evento) continue;
 
-    const localTrabalho = asString(row[colLocalTrabalho]) ?? ccustoAnunciado;
+    const localInformado = asString(row[colLocalTrabalho]);
+    // Alguns relatórios mostram a referência de férias (ex.: 30/14) nesta coluna.
+    const referenciaFerias = localInformado !== null
+      && /^\d{1,2}\s*\/\s*\d{1,2}$/.test(localInformado)
+      && normalizaTexto(evento).includes("FERIAS");
+    const localTrabalho = (referenciaFerias ? null : localInformado) ?? ccustoAnunciado;
     if (localTrabalho && !localTrabalhoPorMatricula.has(matricula)) {
       localTrabalhoPorMatricula.set(matricula, localTrabalho);
     }
