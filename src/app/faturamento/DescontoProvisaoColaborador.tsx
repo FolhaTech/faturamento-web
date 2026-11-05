@@ -21,6 +21,10 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
   const [diasInformados, setDiasInformados] = useState("");
+  const [mesLancamento, setMesLancamento] = useState(() => {
+    const m = competencia ? mesReserva(competencia) : null;
+    return m === null ? hojeSaoPaulo().slice(0, 7) : Math.floor(m / 12) + "-" + String(m % 12 + 1).padStart(2, "0");
+  });
   const chaveLancamento = useRef<string | null>(null);
   const [periodoEscolhido, setPeriodoEscolhido] = useState("");
   const [hoje, setHoje] = useState(hojeSaoPaulo);
@@ -44,7 +48,7 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
     setErro("");
     try {
       const resposta = await fetch(body ? endpoint : endpoint + "?matricula=" + matricula, body ? {
-        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, matricula, competencia }),
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, matricula, competencia: body.competencia ?? competencia }),
       } : undefined);
       const resultado = await resposta.json();
       if (!resposta.ok) throw new Error(resultado.error ?? "Não foi possível consultar o histórico.");
@@ -79,28 +83,30 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
         </> : <p className="text-neutral-600">Nenhum dia de férias registrado na Folha.</p>}
       </div>}
       {dados && <>
-        {mes === null ? <p className="text-neutral-600">Selecione uma competência de Folha para lançar créditos.</p> : <>
-          <p className="text-neutral-600">Férias e 13º vêm das provisões da Folha e consideram os abatimentos já registrados. O aviso prévio usa o histórico de faturas salvas. O crédito aplicado entra no cálculo ao vivo; versões salvas precisam ser atualizadas.</p>
-          {!podeLancar && <p className="text-neutral-600">Selecione uma competência de Folha para lançar créditos.</p>}
-          {competencia?.endsWith(" (Folha)") && (
             <form className="space-y-2 rounded border border-neutral-200 p-3" onSubmit={(event) => {
               event.preventDefault();
-              if (diasInformados.trim()) {
+              if (diasInformados.trim() && mesLancamento) {
                 chaveLancamento.current ??= crypto.randomUUID();
-                void atualizar({ tipo: "dias-gozados", dias: Number(diasInformados), chave: chaveLancamento.current });
+                void atualizar({ tipo: "dias-gozados", competencia: mesLancamento.slice(5, 7) + "/" + mesLancamento.slice(0, 4) + " (Folha)", dias: Number(diasInformados), chave: chaveLancamento.current });
               }
             }}>
               <label className="flex flex-col gap-1 text-sm font-medium">
-                Adicionar dias gozados em {exibirMes(mes)}
+                Mês em que gozou as férias
+                <input type="month" className={campo} required value={mesLancamento} disabled={ocupado} onChange={(event) => { setMesLancamento(event.target.value); chaveLancamento.current = null; }} />
+              </label>
+              <label className="flex flex-col gap-1 text-sm font-medium">
+                Dias gozados a adicionar
                 <input type="number" className={campo} min="0.5" max="31" step="0.5" required value={diasInformados} disabled={ocupado} onChange={(event) => { setDiasInformados(event.target.value); chaveLancamento.current = null; }} />
               </label>
-              <p className="text-xs text-neutral-600">Cada lançamento soma dias ao total da competência e fica registrado no histórico. O crédito automático é recalculado no cálculo ao vivo.</p>
+              <p className="text-xs text-neutral-600">Escolha qualquer mês, mesmo sem registro na Folha. Cada lançamento soma dias ao histórico. Abatimentos posteriores já registrados ficam preservados.</p>
               <div className="flex flex-wrap gap-2">
                 <button type="submit" className={botao} disabled={ocupado}>Lançar dias gozados</button>
 
               </div>
             </form>
-          )}
+        {mes === null ? <p className="text-neutral-600">Selecione uma competência de Folha para lançar créditos.</p> : <>
+          <p className="text-neutral-600">Férias e 13º vêm das provisões da Folha e consideram os abatimentos já registrados. O aviso prévio usa o histórico de faturas salvas. O crédito aplicado entra no cálculo ao vivo; versões salvas precisam ser atualizadas.</p>
+          {!podeLancar && <p className="text-neutral-600">Selecione uma competência de Folha para lançar créditos.</p>}
           <div className="grid gap-3 lg:grid-cols-3">
             {tipos.map((tipo) => {
               const atual = dados.usos.find((u) => u.tipo === tipo && u.mes === mes && !u.retirado);

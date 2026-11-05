@@ -17,21 +17,23 @@ export async function lancarDiasGozados(matricula: number, competencia: string, 
   const mes = mesReserva(competencia);
   if (mes === null || !competencia.endsWith(" (Folha)")) throw new ErroReserva("Selecione uma competência de Folha.");
   await ensureSchema();
-  await getDb().begin(async (sql) => {
+  const deveSincronizar = await getDb().begin(async (sql) => {
     const [colaborador] = await sql`SELECT 1 FROM colaboradores WHERE matricula = ${matricula} FOR UPDATE`;
     if (!colaborador) throw new ErroReserva("Colaborador não encontrado.");
     const [posterior] = await sql`SELECT 1 FROM reservas_creditos WHERE matricula = ${matricula} AND tipo = 'ferias' AND mes > ${mes} AND retirado_em IS NULL LIMIT 1`;
-    if (posterior) throw new ErroReserva("Revise os créditos de férias posteriores antes de alterar estes dias.");
+    const [folhaImportada] = await sql`SELECT 1 FROM movimentos WHERE matricula = ${matricula} AND competencia = ${competencia} LIMIT 1`;
+    const sincronizar = Boolean(folhaImportada) && !posterior;
     const [existente] = await sql<{ matricula: number; mes: number; dias: number }[]>`SELECT matricula, mes, dias FROM dias_ferias_informados WHERE chave = ${chave}`;
     if (existente) {
       if (existente.matricula !== matricula || existente.mes !== mes || existente.dias !== dias) throw new ErroReserva("Este lançamento já foi usado com outros valores.");
-      return;
+      return sincronizar;
     }
     const acumulado = (await listarDiasGozados([matricula], sql)).get(matricula)?.find((d) => d.mes === mes)?.dias ?? 0;
     if (acumulado + dias > 31) throw new ErroReserva("O total de dias gozados nesta competência não pode ultrapassar 31.");
     await sql`INSERT INTO dias_ferias_informados (matricula, mes, dias, usuario, modo, chave) VALUES (${matricula}, ${mes}, ${dias}, ${usuario}, 'adicionar', ${chave})`;
+    return sincronizar;
   });
-  await sincronizarCreditosFeriasDaFolha(competencia, [matricula]);
+  if (deveSincronizar) await sincronizarCreditosFeriasDaFolha(competencia, [matricula]);
 }
 
 export async function consultarReservas(matricula: number) {
