@@ -13,7 +13,7 @@ type Acao = { tipo: "cobranca"; cobranca: Omit<CobrancaReserva, "mes">; referenc
 
 export class ErroReserva extends Error {}
 
-export async function lancarDiasGozados(matricula: number, competencia: string, dias: number, usuario: string, chave: string) {
+export async function lancarDiasGozados(matricula: number, competencia: string, dias: number, usuario: string, chave: string, substituirId: string | null = null) {
   const mes = mesReserva(competencia);
   if (mes === null || !competencia.endsWith(" (Folha)")) throw new ErroReserva("Selecione uma competência de Folha.");
   await ensureSchema();
@@ -23,14 +23,24 @@ export async function lancarDiasGozados(matricula: number, competencia: string, 
     const [posterior] = await sql`SELECT 1 FROM reservas_creditos WHERE matricula = ${matricula} AND tipo = 'ferias' AND mes > ${mes} AND retirado_em IS NULL LIMIT 1`;
     const [folhaImportada] = await sql`SELECT 1 FROM movimentos WHERE matricula = ${matricula} AND competencia = ${competencia} LIMIT 1`;
     const sincronizar = Boolean(folhaImportada) && !posterior;
-    const [existente] = await sql<{ matricula: number; mes: number; dias: number }[]>`SELECT matricula, mes, dias FROM dias_ferias_informados WHERE chave = ${chave}`;
+    const [existente] = await sql<{ matricula: number; mes: number; dias: number; substituiId: string | null }[]>`SELECT matricula, mes, dias, substitui_id::text AS "substituiId" FROM dias_ferias_informados WHERE chave = ${chave}`;
     if (existente) {
-      if (existente.matricula !== matricula || existente.mes !== mes || existente.dias !== dias) throw new ErroReserva("Este lançamento já foi usado com outros valores.");
+      if (existente.matricula !== matricula || existente.mes !== mes || existente.dias !== dias || existente.substituiId !== substituirId) throw new ErroReserva("Este lançamento já foi usado com outros valores.");
       return sincronizar;
     }
+    let diasAnteriores = 0;
+    if (substituirId !== null) {
+      const [anterior] = await sql<{ dias: number }[]>`
+        SELECT d.dias FROM dias_ferias_informados d
+        WHERE d.id = ${substituirId} AND d.matricula = ${matricula} AND d.mes = ${mes} AND d.modo = 'adicionar'
+          AND NOT EXISTS (SELECT 1 FROM dias_ferias_informados r WHERE r.substitui_id = d.id)
+      `;
+      if (!anterior) throw new ErroReserva("O lançamento já foi corrigido ou não pertence a este colaborador. Atualize a consulta.");
+      diasAnteriores = anterior.dias;
+    }
     const acumulado = (await listarDiasGozados([matricula], sql)).get(matricula)?.find((d) => d.mes === mes)?.dias ?? 0;
-    if (acumulado + dias > 31) throw new ErroReserva("O total de dias gozados nesta competência não pode ultrapassar 31.");
-    await sql`INSERT INTO dias_ferias_informados (matricula, mes, dias, usuario, modo, chave) VALUES (${matricula}, ${mes}, ${dias}, ${usuario}, 'adicionar', ${chave})`;
+    if (acumulado - diasAnteriores + dias > 31) throw new ErroReserva("O total de dias gozados nesta competência não pode ultrapassar 31.");
+    await sql`INSERT INTO dias_ferias_informados (matricula, mes, dias, usuario, modo, chave, substitui_id) VALUES (${matricula}, ${mes}, ${dias}, ${usuario}, 'adicionar', ${chave}, ${substituirId})`;
     return sincronizar;
   });
   if (deveSincronizar) await sincronizarCreditosFeriasDaFolha(competencia, [matricula]);
@@ -44,9 +54,10 @@ export async function consultarReservas(matricula: number) {
     sql<Uso[]>`SELECT mes, competencia, tipo, periodo, valor, dias, retirado_em IS NOT NULL AS retirado, usuario = ${ORIGEM_FERIAS_AUTOMATICAS} AS automatico FROM reservas_creditos WHERE matricula = ${matricula} AND tomador = (SELECT cod_servico FROM colaboradores WHERE matricula = ${matricula}) ORDER BY mes DESC, id DESC`,
     listarAbatimentosAnteriores(sql, matricula),
     listarDiasGozados([matricula], sql),
-    sql<{ id: string; mes: number; dias: number; usuario: string; registradoEm: string }[]>`
-      SELECT id::text, mes, dias, usuario, registrado_em::text AS "registradoEm" FROM dias_ferias_informados
-      WHERE matricula = ${matricula} AND modo = 'adicionar' ORDER BY mes DESC, id DESC
+    sql<{ id: string; mes: number; dias: number; usuario: string; registradoEm: string; corrigido: boolean }[]>`
+      SELECT d.id::text, d.mes, d.dias, d.usuario, d.registrado_em::text AS "registradoEm",
+        EXISTS (SELECT 1 FROM dias_ferias_informados r WHERE r.substitui_id = d.id) AS corrigido
+      FROM dias_ferias_informados d WHERE d.matricula = ${matricula} AND d.modo = 'adicionar' ORDER BY d.mes DESC, d.id DESC
     `,
   ]);
   return { cobrancas, usos, manuais: usosManuais(manuais), diasGozados: diasGozados.get(matricula) ?? [], lancamentosDias };

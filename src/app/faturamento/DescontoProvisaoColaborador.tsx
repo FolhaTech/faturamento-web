@@ -21,6 +21,7 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
   const [diasInformados, setDiasInformados] = useState("");
+  const [edicaoDias, setEdicaoDias] = useState<{ id: string; mes: number; dias: string; chave: string } | null>(null);
   const [mesLancamento, setMesLancamento] = useState(() => {
     const m = competencia ? mesReserva(competencia) : null;
     return m === null ? hojeSaoPaulo().slice(0, 7) : Math.floor(m / 12) + "-" + String(m % 12 + 1).padStart(2, "0");
@@ -55,6 +56,7 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
       setDados(resultado);
       if (body?.tipo === "dias-gozados") {
         setDiasInformados("");
+        setEdicaoDias(null);
         chaveLancamento.current = null;
       }
       if (body) router.refresh();
@@ -163,8 +165,20 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
           <HistoricoReservas dados={dados} />
           {dados.lancamentosDias.length > 0 && <div className="space-y-2 border-t border-neutral-200 pt-3">
             <h5 className="font-medium">Lançamentos adicionais de dias gozados</h5>
-            <ul>{dados.lancamentosDias.map((lancamento) => <li key={lancamento.id}>
-              {exibirMes(lancamento.mes)} · +{lancamento.dias.toLocaleString("pt-BR")} dias · {lancamento.usuario} · {new Date(lancamento.registradoEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+            <ul className="space-y-2">{dados.lancamentosDias.map((lancamento) => <li key={lancamento.id} className="rounded border border-neutral-200 p-2">
+              <p>{exibirMes(lancamento.mes)} · +{lancamento.dias.toLocaleString("pt-BR")} dias · {lancamento.usuario} · {new Date(lancamento.registradoEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</p>
+              {lancamento.corrigido ? <p className="text-neutral-500">Valor anterior corrigido</p> : edicaoDias?.id === lancamento.id ? (
+                <form className="mt-2 flex flex-wrap items-end gap-2" onSubmit={(event) => {
+                  event.preventDefault();
+                  void atualizar({ tipo: "dias-gozados", competencia: exibirMes(edicaoDias.mes) + " (Folha)", id: edicaoDias.id, dias: Number(edicaoDias.dias), chave: edicaoDias.chave });
+                }}>
+                  <label className="flex flex-col gap-1">Dias gozados
+                    <input className={campo} type="number" min="0" max="31" step="0.5" required disabled={ocupado} value={edicaoDias.dias} onChange={(event) => setEdicaoDias({ ...edicaoDias, dias: event.target.value, chave: crypto.randomUUID() })} />
+                  </label>
+                  <button className={botao} disabled={ocupado}>Salvar correção</button>
+                  <button type="button" className={botao} disabled={ocupado} onClick={() => setEdicaoDias(null)}>Cancelar</button>
+                </form>
+              ) : <button type="button" className={botao} disabled={ocupado} onClick={() => setEdicaoDias({ id: lancamento.id, mes: lancamento.mes, dias: String(lancamento.dias), chave: crypto.randomUUID() })}>Editar</button>}
             </li>)}</ul>
           </div>}
         </details>

@@ -29,8 +29,10 @@ export async function listarDiasGozados(matriculas: number[], conexao?: Sql | Tr
       SELECT DISTINCT ON (matricula, mes) matricula, mes, dias FROM dias_ferias_informados
       WHERE matricula = ANY(${matriculas}) AND modo = 'substituir' ORDER BY matricula, mes, id DESC
     ), adicionais AS (
-      SELECT matricula, mes, SUM(dias) AS dias FROM dias_ferias_informados
-      WHERE matricula = ANY(${matriculas}) AND modo = 'adicionar' GROUP BY matricula, mes
+      SELECT d.matricula, d.mes, SUM(d.dias) AS dias FROM dias_ferias_informados d
+      WHERE d.matricula = ANY(${matriculas}) AND d.modo = 'adicionar'
+        AND NOT EXISTS (SELECT 1 FROM dias_ferias_informados r WHERE r.substitui_id = d.id)
+      GROUP BY d.matricula, d.mes
     )
     SELECT COALESCE(a.matricula, b.matricula) AS matricula, COALESCE(a.mes, b.mes) AS mes,
       a.dias, COALESCE(b.dias, 0)::double precision AS adicionais

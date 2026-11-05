@@ -142,6 +142,8 @@ CREATE TABLE IF NOT EXISTS dias_ferias_informados (
 );
 ALTER TABLE dias_ferias_informados ADD COLUMN IF NOT EXISTS modo TEXT NOT NULL DEFAULT 'substituir';
 ALTER TABLE dias_ferias_informados ADD COLUMN IF NOT EXISTS chave TEXT;
+ALTER TABLE dias_ferias_informados ADD COLUMN IF NOT EXISTS substitui_id BIGINT REFERENCES dias_ferias_informados(id);
+CREATE UNIQUE INDEX IF NOT EXISTS dias_ferias_informados_revisao ON dias_ferias_informados (substitui_id);
 CREATE UNIQUE INDEX IF NOT EXISTS dias_ferias_informados_chave ON dias_ferias_informados (chave);
 CREATE INDEX IF NOT EXISTS dias_ferias_informados_colaborador_mes ON dias_ferias_informados (matricula, mes, id DESC);
 

@@ -21,10 +21,11 @@ export async function PUT(request: Request) {
   if (!b || !Number.isSafeInteger(b.matricula) || b.matricula <= 0 || typeof b.competencia !== "string" || mesReserva(b.competencia) === null) return erro("Matrícula ou competência inválida.");
   try {
     if (b.tipo === "dias-gozados") {
-      if (typeof b.dias !== "number" || !Number.isFinite(b.dias) || b.dias <= 0 || b.dias > 31 || !Number.isInteger(b.dias * 2) || typeof b.chave !== "string" || !/^[0-9a-f-]{36}$/i.test(b.chave)) {
+      if (typeof b.dias !== "number" || !Number.isFinite(b.dias) || (b.id ? b.dias < 0 : b.dias <= 0) || b.dias > 31 || !Number.isInteger(b.dias * 2) || typeof b.chave !== "string" || !/^[0-9a-f-]{36}$/i.test(b.chave)) {
         return erro("Informe entre 0,5 e 31 dias, em intervalos de meio dia.");
       }
-      await lancarDiasGozados(b.matricula, b.competencia, b.dias, usuario.email, b.chave);
+      if (b.id !== undefined && (typeof b.id !== "string" || !/^[1-9][0-9]{0,18}$/.test(b.id))) return erro("Lançamento inválido.");
+      await lancarDiasGozados(b.matricula, b.competencia, b.dias, usuario.email, b.chave, b.id ?? null);
     } else if (b.tipo === "cobranca") {
       const { ferias, terco, aviso, periodo, referencia } = b;
       if (![ferias, terco, aviso].every((n) => Number.isInteger(n) && n >= 0 && n <= 2147483647)
