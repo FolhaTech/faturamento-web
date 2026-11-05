@@ -40,12 +40,10 @@ export function asNumber(v: CellValue): number {
   if (typeof v === "string") {
     const s = v.trim();
     if (!s) return 0;
-    // formato BR "1.251,60" -> 1251.60; também aceita "1251.60" puro
-    const brNormalized = s.replace(/\./g, "").replace(",", ".");
-    const n = Number(brNormalized);
-    if (Number.isFinite(n)) return n;
-    const n2 = Number(s);
-    return Number.isFinite(n2) ? n2 : 0;
+    // A exportação de empregados traz números como "2232.530000".
+    const normalizado = s.includes(",") ? s.replace(/\./g, "").replace(",", ".") : s;
+    const n = Number(normalizado);
+    return Number.isFinite(n) ? n : 0;
   }
   return 0;
 }
