@@ -132,6 +132,16 @@ CREATE TABLE IF NOT EXISTS descontos_saldo (
 -- precisar digitar de novo. Férias e 13º nunca ficam com false (o "Não" deles apaga a linha — o valor é recalculado das provisões).
 ALTER TABLE descontos_saldo ADD COLUMN IF NOT EXISTS aplicado BOOLEAN NOT NULL DEFAULT true;
 
+CREATE TABLE IF NOT EXISTS dias_ferias_informados (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  matricula INTEGER NOT NULL,
+  mes INTEGER NOT NULL,
+  dias DOUBLE PRECISION CHECK (dias >= 0 AND dias <= 31),
+  usuario TEXT NOT NULL,
+  registrado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS dias_ferias_informados_colaborador_mes ON dias_ferias_informados (matricula, mes, id DESC);
+
 CREATE TABLE IF NOT EXISTS reservas_faturadas (
   matricula INTEGER NOT NULL,
   tomador INTEGER NOT NULL,
@@ -351,6 +361,6 @@ export async function resetDbForTests(): Promise<void> {
   }
   await ensureSchema();
   const sql = getDb();
-  await sql`TRUNCATE reservas_faturadas, reservas_creditos, tomadores, encargos, informativas, colaboradores, movimentos, descontos_saldo, faturas_salvas, eventos_excluidos, provisoes_mensais, usuarios, sessoes`;
+  await sql`TRUNCATE dias_ferias_informados, reservas_faturadas, reservas_creditos, tomadores, encargos, informativas, colaboradores, movimentos, descontos_saldo, faturas_salvas, eventos_excluidos, provisoes_mensais, usuarios, sessoes`;
   await sql`UPDATE configuracoes SET valor = 29.32 WHERE chave = 'plr_celetista'`;
 }

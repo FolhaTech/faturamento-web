@@ -1,7 +1,7 @@
 import { normalizaTexto } from "../text";
 import { mesReserva } from "./reservasFaturadas";
 
-export type DiasGozados = { mes: number; dias: number };
+export type DiasGozados = { mes: number; dias: number; manual?: boolean; importados?: number };
 
 export function hojeSaoPaulo(agora = new Date()): string {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(agora);

@@ -20,6 +20,7 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
   const [dados, setDados] = useState<Historico | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
+  const [diasInformados, setDiasInformados] = useState("");
   const [periodoEscolhido, setPeriodoEscolhido] = useState("");
   const [hoje, setHoje] = useState(hojeSaoPaulo);
   useEffect(() => {
@@ -47,6 +48,8 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
       const resultado = await resposta.json();
       if (!resposta.ok) throw new Error(resultado.error ?? "Não foi possível consultar o histórico.");
       setDados(resultado);
+      const diasDoMes = resultado.diasGozados.find((d: DiasGozados) => d.mes === (competencia ? mesReserva(competencia) : null));
+      setDiasInformados(String(diasDoMes?.dias ?? 0));
       if (body) router.refresh();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao consultar as reservas.");
@@ -69,13 +72,29 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
         <p className="text-neutral-600">2,5 dias no mês da admissão e a cada mês completo de vínculo, até o desligamento.</p>
         {saldoDias.historico.length > 0 ? <>
           <p className="font-medium">Dias gozados por competência</p>
-          <ul>{saldoDias.historico.map((d) => <li key={d.mes}>{exibirMes(d.mes)} · {d.dias.toLocaleString("pt-BR")} dias</li>)}</ul>
+          <ul>{saldoDias.historico.map((d) => <li key={d.mes}>{exibirMes(d.mes)} · {d.dias.toLocaleString("pt-BR")} dias{d.manual ? " · informado manualmente" : ""}</li>)}</ul>
         </> : <p className="text-neutral-600">Nenhum dia de férias registrado na Folha.</p>}
       </div>}
       {dados && <>
         {mes === null ? <p className="text-neutral-600">Selecione uma competência de Folha para lançar créditos.</p> : <>
           <p className="text-neutral-600">Férias e 13º vêm das provisões da Folha e consideram os abatimentos já registrados. O aviso prévio usa o histórico de faturas salvas. O crédito aplicado entra no cálculo ao vivo; versões salvas precisam ser atualizadas.</p>
           {!podeLancar && <p className="text-neutral-600">Selecione uma competência de Folha para lançar créditos.</p>}
+          {competencia?.endsWith(" (Folha)") && (
+            <form className="space-y-2 rounded border border-neutral-200 p-3" onSubmit={(event) => {
+              event.preventDefault();
+              if (diasInformados.trim()) void atualizar({ tipo: "dias-gozados", dias: Number(diasInformados) });
+            }}>
+              <label className="flex flex-col gap-1 text-sm font-medium">
+                Gozados na Folha de {exibirMes(mes)} (dias)
+                <input type="number" className={campo} min="0" max="31" step="0.5" required value={diasInformados} disabled={ocupado} onChange={(event) => setDiasInformados(event.target.value)} />
+              </label>
+              <p className="text-xs text-neutral-600">O valor informado atualiza o saldo em dias e o crédito automático no cálculo ao vivo.</p>
+              <div className="flex flex-wrap gap-2">
+                <button type="submit" className={botao} disabled={ocupado}>Salvar dias gozados</button>
+                {dados.diasGozados.some((d) => d.mes === mes && d.manual) && <button type="button" className={botao} disabled={ocupado} onClick={() => atualizar({ tipo: "dias-gozados", dias: null })}>Usar dias importados da Folha</button>}
+              </div>
+            </form>
+          )}
           <div className="grid gap-3 lg:grid-cols-3">
             {tipos.map((tipo) => {
               const atual = dados.usos.find((u) => u.tipo === tipo && u.mes === mes && !u.retirado);

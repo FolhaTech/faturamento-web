@@ -13,6 +13,22 @@ type Acao = { tipo: "cobranca"; cobranca: Omit<CobrancaReserva, "mes">; referenc
 
 export class ErroReserva extends Error {}
 
+export async function definirDiasGozados(matricula: number, competencia: string, dias: number | null, usuario: string) {
+  const mes = mesReserva(competencia);
+  if (mes === null || !competencia.endsWith(" (Folha)")) throw new ErroReserva("Selecione uma competência de Folha.");
+  await ensureSchema();
+  await getDb().begin(async (sql) => {
+    const [colaborador] = await sql`SELECT 1 FROM colaboradores WHERE matricula = ${matricula} FOR UPDATE`;
+    if (!colaborador) throw new ErroReserva("Colaborador não encontrado.");
+    const [posterior] = await sql`SELECT 1 FROM reservas_creditos WHERE matricula = ${matricula} AND tipo = 'ferias' AND mes > ${mes} AND retirado_em IS NULL LIMIT 1`;
+    if (posterior) throw new ErroReserva("Revise os créditos de férias posteriores antes de alterar estes dias.");
+    const [atual] = await sql<{ dias: number | null }[]>`SELECT dias FROM dias_ferias_informados WHERE matricula = ${matricula} AND mes = ${mes} ORDER BY id DESC LIMIT 1`;
+    if ((atual?.dias ?? null) === dias) return;
+    await sql`INSERT INTO dias_ferias_informados (matricula, mes, dias, usuario) VALUES (${matricula}, ${mes}, ${dias}, ${usuario})`;
+  });
+  await sincronizarCreditosFeriasDaFolha(competencia, [matricula]);
+}
+
 export async function consultarReservas(matricula: number) {
   await ensureSchema();
   const sql = getDb();

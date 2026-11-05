@@ -23,5 +23,17 @@ export async function listarDiasGozados(matriculas: number[], conexao?: Sql | Tr
     registros.push(linha);
     porMatricula.set(linha.matricula, registros);
   }
-  return new Map([...porMatricula].map(([matricula, registros]) => [matricula, diasGozadosPorMes(registros)]));
+  const resultado = new Map([...porMatricula].map(([matricula, registros]) => [matricula, diasGozadosPorMes(registros)]));
+  const informados = await sql<{ matricula: number; mes: number; dias: number | null }[]>`
+    SELECT DISTINCT ON (matricula, mes) matricula, mes, dias FROM dias_ferias_informados
+    WHERE matricula = ANY(${matriculas}) ORDER BY matricula, mes, id DESC
+  `;
+  for (const informado of informados) {
+    if (informado.dias === null) continue;
+    const registros = resultado.get(informado.matricula) ?? [];
+    const importado = registros.find((d) => d.mes === informado.mes);
+    const ajustado = { mes: informado.mes, dias: informado.dias, manual: true, importados: importado?.dias ?? 0 };
+    resultado.set(informado.matricula, [...registros.filter((d) => d.mes !== informado.mes), ajustado].sort((a, b) => b.mes - a.mes));
+  }
+  return resultado;
 }
