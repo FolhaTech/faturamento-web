@@ -140,6 +140,9 @@ CREATE TABLE IF NOT EXISTS dias_ferias_informados (
   usuario TEXT NOT NULL,
   registrado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE dias_ferias_informados ADD COLUMN IF NOT EXISTS modo TEXT NOT NULL DEFAULT 'substituir';
+ALTER TABLE dias_ferias_informados ADD COLUMN IF NOT EXISTS chave TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS dias_ferias_informados_chave ON dias_ferias_informados (chave);
 CREATE INDEX IF NOT EXISTS dias_ferias_informados_colaborador_mes ON dias_ferias_informados (matricula, mes, id DESC);
 
 CREATE TABLE IF NOT EXISTS reservas_faturadas (

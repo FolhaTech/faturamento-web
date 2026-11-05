@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getUsuarioAtual } from "@/lib/auth/sessao";
 import { mesReserva, PERIODO_FOLHA, type ReservaTipo } from "@/lib/calc/reservasFaturadas";
-import { alterarReserva, definirDiasGozados, consultarReservas, ErroReserva } from "@/lib/repo/reservasFaturadas";
+import { alterarReserva, lancarDiasGozados, consultarReservas, ErroReserva } from "@/lib/repo/reservasFaturadas";
 
 export const runtime = "nodejs";
 const erro = (error: string, status = 400) => NextResponse.json({ error }, { status });
@@ -21,10 +21,10 @@ export async function PUT(request: Request) {
   if (!b || !Number.isSafeInteger(b.matricula) || b.matricula <= 0 || typeof b.competencia !== "string" || mesReserva(b.competencia) === null) return erro("Matrícula ou competência inválida.");
   try {
     if (b.tipo === "dias-gozados") {
-      if (b.dias !== null && (typeof b.dias !== "number" || !Number.isFinite(b.dias) || b.dias < 0 || b.dias > 31 || !Number.isInteger(b.dias * 2))) {
-        return erro("Informe entre 0 e 31 dias, em intervalos de meio dia.");
+      if (typeof b.dias !== "number" || !Number.isFinite(b.dias) || b.dias <= 0 || b.dias > 31 || !Number.isInteger(b.dias * 2) || typeof b.chave !== "string" || !/^[0-9a-f-]{36}$/i.test(b.chave)) {
+        return erro("Informe entre 0,5 e 31 dias, em intervalos de meio dia.");
       }
-      await definirDiasGozados(b.matricula, b.competencia, b.dias, usuario.email);
+      await lancarDiasGozados(b.matricula, b.competencia, b.dias, usuario.email, b.chave);
     } else if (b.tipo === "cobranca") {
       const { ferias, terco, aviso, periodo, referencia } = b;
       if (![ferias, terco, aviso].every((n) => Number.isInteger(n) && n >= 0 && n <= 2147483647)

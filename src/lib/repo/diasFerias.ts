@@ -24,15 +24,23 @@ export async function listarDiasGozados(matriculas: number[], conexao?: Sql | Tr
     porMatricula.set(linha.matricula, registros);
   }
   const resultado = new Map([...porMatricula].map(([matricula, registros]) => [matricula, diasGozadosPorMes(registros)]));
-  const informados = await sql<{ matricula: number; mes: number; dias: number | null }[]>`
-    SELECT DISTINCT ON (matricula, mes) matricula, mes, dias FROM dias_ferias_informados
-    WHERE matricula = ANY(${matriculas}) ORDER BY matricula, mes, id DESC
+  const informados = await sql<{ matricula: number; mes: number; dias: number | null; adicionais: number }[]>`
+    WITH anteriores AS (
+      SELECT DISTINCT ON (matricula, mes) matricula, mes, dias FROM dias_ferias_informados
+      WHERE matricula = ANY(${matriculas}) AND modo = 'substituir' ORDER BY matricula, mes, id DESC
+    ), adicionais AS (
+      SELECT matricula, mes, SUM(dias) AS dias FROM dias_ferias_informados
+      WHERE matricula = ANY(${matriculas}) AND modo = 'adicionar' GROUP BY matricula, mes
+    )
+    SELECT COALESCE(a.matricula, b.matricula) AS matricula, COALESCE(a.mes, b.mes) AS mes,
+      a.dias, COALESCE(b.dias, 0)::double precision AS adicionais
+    FROM anteriores a FULL JOIN adicionais b ON a.matricula = b.matricula AND a.mes = b.mes
   `;
   for (const informado of informados) {
-    if (informado.dias === null) continue;
+    if (informado.dias === null && informado.adicionais === 0) continue;
     const registros = resultado.get(informado.matricula) ?? [];
     const importado = registros.find((d) => d.mes === informado.mes);
-    const ajustado = { mes: informado.mes, dias: informado.dias, manual: true, importados: importado?.dias ?? 0 };
+    const ajustado = { mes: informado.mes, dias: (informado.dias ?? importado?.dias ?? 0) + informado.adicionais, manual: true, importados: importado?.dias ?? 0 };
     resultado.set(informado.matricula, [...registros.filter((d) => d.mes !== informado.mes), ajustado].sort((a, b) => b.mes - a.mes));
   }
   return resultado;

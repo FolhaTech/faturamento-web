@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { baseFeriasGozadas, creditoReserva, mesReserva, saldoReserva, PERIODO_FOLHA, type ReservaTipo } from "@/lib/calc/reservasFaturadas";
 import { hojeSaoPaulo, saldoDiasFerias, type DiasGozados } from "@/lib/calc/diasFerias";
 import type { consultarReservas } from "@/lib/repo/reservasFaturadas";
@@ -21,6 +21,7 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
   const [diasInformados, setDiasInformados] = useState("");
+  const chaveLancamento = useRef<string | null>(null);
   const [periodoEscolhido, setPeriodoEscolhido] = useState("");
   const [hoje, setHoje] = useState(hojeSaoPaulo);
   useEffect(() => {
@@ -48,8 +49,10 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
       const resultado = await resposta.json();
       if (!resposta.ok) throw new Error(resultado.error ?? "Não foi possível consultar o histórico.");
       setDados(resultado);
-      const diasDoMes = resultado.diasGozados.find((d: DiasGozados) => d.mes === (competencia ? mesReserva(competencia) : null));
-      setDiasInformados(String(diasDoMes?.dias ?? 0));
+      if (body?.tipo === "dias-gozados") {
+        setDiasInformados("");
+        chaveLancamento.current = null;
+      }
       if (body) router.refresh();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao consultar as reservas.");
@@ -82,16 +85,19 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
           {competencia?.endsWith(" (Folha)") && (
             <form className="space-y-2 rounded border border-neutral-200 p-3" onSubmit={(event) => {
               event.preventDefault();
-              if (diasInformados.trim()) void atualizar({ tipo: "dias-gozados", dias: Number(diasInformados) });
+              if (diasInformados.trim()) {
+                chaveLancamento.current ??= crypto.randomUUID();
+                void atualizar({ tipo: "dias-gozados", dias: Number(diasInformados), chave: chaveLancamento.current });
+              }
             }}>
               <label className="flex flex-col gap-1 text-sm font-medium">
-                Gozados na Folha de {exibirMes(mes)} (dias)
-                <input type="number" className={campo} min="0" max="31" step="0.5" required value={diasInformados} disabled={ocupado} onChange={(event) => setDiasInformados(event.target.value)} />
+                Adicionar dias gozados em {exibirMes(mes)}
+                <input type="number" className={campo} min="0.5" max="31" step="0.5" required value={diasInformados} disabled={ocupado} onChange={(event) => { setDiasInformados(event.target.value); chaveLancamento.current = null; }} />
               </label>
-              <p className="text-xs text-neutral-600">O valor informado atualiza o saldo em dias e o crédito automático no cálculo ao vivo.</p>
+              <p className="text-xs text-neutral-600">Cada lançamento soma dias ao total da competência e fica registrado no histórico. O crédito automático é recalculado no cálculo ao vivo.</p>
               <div className="flex flex-wrap gap-2">
-                <button type="submit" className={botao} disabled={ocupado}>Salvar dias gozados</button>
-                {dados.diasGozados.some((d) => d.mes === mes && d.manual) && <button type="button" className={botao} disabled={ocupado} onClick={() => atualizar({ tipo: "dias-gozados", dias: null })}>Usar dias importados da Folha</button>}
+                <button type="submit" className={botao} disabled={ocupado}>Lançar dias gozados</button>
+
               </div>
             </form>
           )}
@@ -149,6 +155,12 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
         <details open={mes === null ? true : undefined}>
           <summary className="cursor-pointer py-2 font-medium">Histórico de cobranças e créditos</summary>
           <HistoricoReservas dados={dados} />
+          {dados.lancamentosDias.length > 0 && <div className="space-y-2 border-t border-neutral-200 pt-3">
+            <h5 className="font-medium">Lançamentos adicionais de dias gozados</h5>
+            <ul>{dados.lancamentosDias.map((lancamento) => <li key={lancamento.id}>
+              {exibirMes(lancamento.mes)} · +{lancamento.dias.toLocaleString("pt-BR")} dias · {lancamento.usuario} · {new Date(lancamento.registradoEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+            </li>)}</ul>
+          </div>}
         </details>
       </>}
       {ocupado && <p role="status">Atualizando reservas…</p>}

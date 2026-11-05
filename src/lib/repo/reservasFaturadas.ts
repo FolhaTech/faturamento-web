@@ -13,7 +13,7 @@ type Acao = { tipo: "cobranca"; cobranca: Omit<CobrancaReserva, "mes">; referenc
 
 export class ErroReserva extends Error {}
 
-export async function definirDiasGozados(matricula: number, competencia: string, dias: number | null, usuario: string) {
+export async function lancarDiasGozados(matricula: number, competencia: string, dias: number, usuario: string, chave: string) {
   const mes = mesReserva(competencia);
   if (mes === null || !competencia.endsWith(" (Folha)")) throw new ErroReserva("Selecione uma competência de Folha.");
   await ensureSchema();
@@ -22,9 +22,14 @@ export async function definirDiasGozados(matricula: number, competencia: string,
     if (!colaborador) throw new ErroReserva("Colaborador não encontrado.");
     const [posterior] = await sql`SELECT 1 FROM reservas_creditos WHERE matricula = ${matricula} AND tipo = 'ferias' AND mes > ${mes} AND retirado_em IS NULL LIMIT 1`;
     if (posterior) throw new ErroReserva("Revise os créditos de férias posteriores antes de alterar estes dias.");
-    const [atual] = await sql<{ dias: number | null }[]>`SELECT dias FROM dias_ferias_informados WHERE matricula = ${matricula} AND mes = ${mes} ORDER BY id DESC LIMIT 1`;
-    if ((atual?.dias ?? null) === dias) return;
-    await sql`INSERT INTO dias_ferias_informados (matricula, mes, dias, usuario) VALUES (${matricula}, ${mes}, ${dias}, ${usuario})`;
+    const [existente] = await sql<{ matricula: number; mes: number; dias: number }[]>`SELECT matricula, mes, dias FROM dias_ferias_informados WHERE chave = ${chave}`;
+    if (existente) {
+      if (existente.matricula !== matricula || existente.mes !== mes || existente.dias !== dias) throw new ErroReserva("Este lançamento já foi usado com outros valores.");
+      return;
+    }
+    const acumulado = (await listarDiasGozados([matricula], sql)).get(matricula)?.find((d) => d.mes === mes)?.dias ?? 0;
+    if (acumulado + dias > 31) throw new ErroReserva("O total de dias gozados nesta competência não pode ultrapassar 31.");
+    await sql`INSERT INTO dias_ferias_informados (matricula, mes, dias, usuario, modo, chave) VALUES (${matricula}, ${mes}, ${dias}, ${usuario}, 'adicionar', ${chave})`;
   });
   await sincronizarCreditosFeriasDaFolha(competencia, [matricula]);
 }
@@ -32,13 +37,17 @@ export async function definirDiasGozados(matricula: number, competencia: string,
 export async function consultarReservas(matricula: number) {
   await ensureSchema();
   const sql = getDb();
-  const [cobrancas, usos, manuais, diasGozados] = await Promise.all([
+  const [cobrancas, usos, manuais, diasGozados, lancamentosDias] = await Promise.all([
     listarBaseReservas(sql, matricula),
     sql<Uso[]>`SELECT mes, competencia, tipo, periodo, valor, dias, retirado_em IS NOT NULL AS retirado, usuario = ${ORIGEM_FERIAS_AUTOMATICAS} AS automatico FROM reservas_creditos WHERE matricula = ${matricula} AND tomador = (SELECT cod_servico FROM colaboradores WHERE matricula = ${matricula}) ORDER BY mes DESC, id DESC`,
     listarAbatimentosAnteriores(sql, matricula),
     listarDiasGozados([matricula], sql),
+    sql<{ id: string; mes: number; dias: number; usuario: string; registradoEm: string }[]>`
+      SELECT id::text, mes, dias, usuario, registrado_em::text AS "registradoEm" FROM dias_ferias_informados
+      WHERE matricula = ${matricula} AND modo = 'adicionar' ORDER BY mes DESC, id DESC
+    `,
   ]);
-  return { cobrancas, usos, manuais: usosManuais(manuais), diasGozados: diasGozados.get(matricula) ?? [] };
+  return { cobrancas, usos, manuais: usosManuais(manuais), diasGozados: diasGozados.get(matricula) ?? [], lancamentosDias };
 }
 
 export async function alterarReserva(matricula: number, competencia: string, acao: Acao, usuario: string) {
