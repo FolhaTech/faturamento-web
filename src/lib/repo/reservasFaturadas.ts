@@ -29,18 +29,23 @@ export async function lancarDiasGozados(matricula: number, competencia: string, 
       return sincronizar;
     }
     let diasAnteriores = 0;
+    let modo = "adicionar";
     if (substituirId !== null) {
-      const [anterior] = await sql<{ dias: number }[]>`
-        SELECT d.dias FROM dias_ferias_informados d
-        WHERE d.id = ${substituirId} AND d.matricula = ${matricula} AND d.mes = ${mes} AND d.modo = 'adicionar'
+      const [anterior] = await sql<{ dias: number; modo: string }[]>`
+        SELECT d.dias, d.modo FROM dias_ferias_informados d
+        WHERE d.id = ${substituirId} AND d.matricula = ${matricula} AND d.mes = ${mes} AND d.modo IN ('adicionar', 'substituir') AND d.dias IS NOT NULL
           AND NOT EXISTS (SELECT 1 FROM dias_ferias_informados r WHERE r.substitui_id = d.id)
+          AND (d.modo <> 'substituir' OR NOT EXISTS (
+            SELECT 1 FROM dias_ferias_informados r WHERE r.matricula = d.matricula AND r.mes = d.mes AND r.modo = 'substituir' AND r.id > d.id
+          ))
       `;
       if (!anterior) throw new ErroReserva("O lançamento já foi corrigido ou não pertence a este colaborador. Atualize a consulta.");
       diasAnteriores = anterior.dias;
+      modo = anterior.modo;
     }
     const acumulado = (await listarDiasGozados([matricula], sql)).get(matricula)?.find((d) => d.mes === mes)?.dias ?? 0;
     if (acumulado - diasAnteriores + dias > 31) throw new ErroReserva("O total de dias gozados nesta competência não pode ultrapassar 31.");
-    await sql`INSERT INTO dias_ferias_informados (matricula, mes, dias, usuario, modo, chave, substitui_id) VALUES (${matricula}, ${mes}, ${dias}, ${usuario}, 'adicionar', ${chave}, ${substituirId})`;
+    await sql`INSERT INTO dias_ferias_informados (matricula, mes, dias, usuario, modo, chave, substitui_id) VALUES (${matricula}, ${mes}, ${dias}, ${usuario}, ${modo}, ${chave}, ${substituirId})`;
     return sincronizar;
   });
   if (deveSincronizar) await sincronizarCreditosFeriasDaFolha(competencia, [matricula]);
@@ -56,8 +61,11 @@ export async function consultarReservas(matricula: number) {
     listarDiasGozados([matricula], sql),
     sql<{ id: string; mes: number; dias: number; usuario: string; registradoEm: string; corrigido: boolean }[]>`
       SELECT d.id::text, d.mes, d.dias, d.usuario, d.registrado_em::text AS "registradoEm",
-        EXISTS (SELECT 1 FROM dias_ferias_informados r WHERE r.substitui_id = d.id) AS corrigido
-      FROM dias_ferias_informados d WHERE d.matricula = ${matricula} AND d.modo = 'adicionar' ORDER BY d.mes DESC, d.id DESC
+        (EXISTS (SELECT 1 FROM dias_ferias_informados r WHERE r.substitui_id = d.id)
+          OR (d.modo = 'substituir' AND EXISTS (
+            SELECT 1 FROM dias_ferias_informados r WHERE r.matricula = d.matricula AND r.mes = d.mes AND r.modo = 'substituir' AND r.id > d.id
+          ))) AS corrigido
+      FROM dias_ferias_informados d WHERE d.matricula = ${matricula} AND d.modo IN ('adicionar', 'substituir') AND d.dias IS NOT NULL ORDER BY d.mes DESC, d.id DESC
     `,
   ]);
   return { cobrancas, usos, manuais: usosManuais(manuais), diasGozados: diasGozados.get(matricula) ?? [], lancamentosDias };

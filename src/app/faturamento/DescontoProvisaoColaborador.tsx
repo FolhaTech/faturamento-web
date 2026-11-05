@@ -81,7 +81,13 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
         <p className="text-neutral-600">2,5 dias no mês da admissão e a cada mês completo de vínculo, até o desligamento.</p>
         {saldoDias.historico.length > 0 ? <>
           <p className="font-medium">Dias gozados por competência</p>
-          <ul>{saldoDias.historico.map((d) => <li key={d.mes}>{exibirMes(d.mes)} · {d.dias.toLocaleString("pt-BR")} dias{d.manual ? " · informado manualmente" : ""}</li>)}</ul>
+          <ul>{saldoDias.historico.map((d) => {
+            const manual = dados?.lancamentosDias.find((l) => l.mes === d.mes && !l.corrigido);
+            return <li key={d.mes} className="flex flex-wrap items-center gap-2">
+              <span>{exibirMes(d.mes)} · {d.dias.toLocaleString("pt-BR")} dias{d.manual ? " · informado manualmente" : ""}</span>
+              {manual && <a className="text-emerald-700 underline" href={"#dias-gozados-" + manual.id} onClick={() => setEdicaoDias({ id: manual.id, mes: manual.mes, dias: String(manual.dias), chave: crypto.randomUUID() })}>Editar lançamento</a>}
+            </li>;
+          })}</ul>
         </> : <p className="text-neutral-600">Nenhum dia de férias registrado na Folha.</p>}
       </div>}
       {dados && <>
@@ -160,12 +166,12 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
             })}
           </div>
         </>}
-        <details open={mes === null ? true : undefined}>
+        <details open={mes === null || edicaoDias !== null ? true : undefined}>
           <summary className="cursor-pointer py-2 font-medium">Histórico de cobranças e créditos</summary>
           <HistoricoReservas dados={dados} />
           {dados.lancamentosDias.length > 0 && <div className="space-y-2 border-t border-neutral-200 pt-3">
-            <h5 className="font-medium">Lançamentos adicionais de dias gozados</h5>
-            <ul className="space-y-2">{dados.lancamentosDias.map((lancamento) => <li key={lancamento.id} className="rounded border border-neutral-200 p-2">
+            <h5 className="font-medium">Lançamentos manuais de dias gozados</h5>
+            <ul className="space-y-2">{dados.lancamentosDias.map((lancamento) => <li id={"dias-gozados-" + lancamento.id} key={lancamento.id} className="rounded border border-neutral-200 p-2">
               <p>{exibirMes(lancamento.mes)} · +{lancamento.dias.toLocaleString("pt-BR")} dias · {lancamento.usuario} · {new Date(lancamento.registradoEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</p>
               {lancamento.corrigido ? <p className="text-neutral-500">Valor anterior corrigido</p> : edicaoDias?.id === lancamento.id ? (
                 <form className="mt-2 flex flex-wrap items-end gap-2" onSubmit={(event) => {
