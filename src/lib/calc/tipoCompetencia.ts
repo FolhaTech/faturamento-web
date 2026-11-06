@@ -27,3 +27,8 @@ export function trocarTipoCompetencia(competencia: string, de: TipoCompetencia, 
   const base = competencia.slice(0, -SUFIXOS[de].length);
   return `${base}${SUFIXOS[para]}`;
 }
+
+/** true quando a competência é uma Prévia (termina com o sufixo "(Prévia)") — só nela o "% a deduzir do Total fatura" aparece na tela. */
+export function ehPrevia(competencia: string): boolean {
+  return competencia.endsWith(SUFIXOS.previa);
+}

@@ -1,18 +1,26 @@
 import { sincronizarCreditosFeriasDaFolha } from "../repo/reservasFaturadas";
 import type { CamposCompartilhados } from "../camposCompartilhados";
+import { listCampos } from "../repo/camposFaturamento";
 import { getFaturaSalvaDoUsuario, getFaturaSalvaPorId } from "../repo/faturasSalvas";
 import { listEventosExcluidosKeys } from "../repo/eventosExcluidos";
 import { listMovimentosByCompetencia } from "../repo/movimentos";
 import { aggregateByCcusto } from "./aggregate";
+import { deducoesDoCcusto, valorCobrarDoCcusto } from "./cobrancaPrevia";
 import type { CalculatedLine } from "./engine";
 import { runEngine } from "./engine";
 import { filtrarEventosExcluidos } from "./eventosExcluidos";
 import { trocarTipoCompetencia } from "./tipoCompetencia";
 
-/** Total fatura (NF) de um Centro de Custo — usado pra comparar Prévia x Folha (ver calcularPreviaTotalFaturaPorCcusto). */
+/** Total fatura (NF) e Valor a cobrar de um Centro de Custo na Prévia — usados pra comparar Prévia x Folha (ver calcularPreviaTotalFaturaPorCcusto). */
 export interface PreviaTotalPorCcusto {
   ccustoCodigo: string;
   totalFatura: number;
+  /**
+   * "Valor a cobrar (soma por colaborador)" da Prévia: o Total fatura menos o % a deduzir (do Centro de Custo e por colaborador) e os
+   * adiantamentos digitados na Prévia. É ele que a Folha desconta no complementar. Ausente em fotos salvas antes de existir — ver
+   * resolverPreviaPorCcusto.
+   */
+  valorCobrar?: number;
 }
 
 export interface EngineLinesCarregadas {
@@ -78,12 +86,15 @@ export async function carregarEngineLines(competencia: string, usuarioEmail: str
 }
 
 /**
- * Total fatura (NF) já cobrado na Prévia correspondente, por Centro de Custo, pra comparar com a
- * Folha (ver TotalsCard em FaturamentoViewer.tsx e SummarySection em FaturamentoPdf.tsx).
+ * Total fatura (NF) e Valor a cobrar (soma por colaborador) já cobrados na Prévia correspondente, por Centro de Custo, pra comparar
+ * com a Folha (ver TotalsCard em FaturamentoViewer.tsx e ComparativoPdf.tsx).
  * Sempre ao vivo e SEM filtro de colaborador/cargo/etc — o complementar a cobrar é um valor de
  * fatura inteira, não de um recorte; quem quiser congelar esse valor (pra não mudar se a Prévia
  * for reenviada depois) precisa salvar a fatura da Folha (ver /api/faturamento/salvar), que grava
  * o resultado desta função junto da foto.
+ *
+ * O Valor a cobrar sai dos valores digitados na própria Prévia (% a deduzir do Centro de Custo, % e adiantamento por colaborador) —
+ * os da versão salva dela quando o usuário salvou, senão os atuais.
  *
  * `competencia` pode ser Folha ou Prévia — só calcula algo quando é uma Folha com Prévia
  * correspondente já enviada; nos demais casos retorna [].
@@ -92,9 +103,27 @@ export async function calcularPreviaTotalFaturaPorCcusto(competencia: string, us
   const competenciaPrevia = trocarTipoCompetencia(competencia, "folha", "previa");
   if (!competenciaPrevia) return [];
 
-  const { lines } = await carregarEngineLines(competenciaPrevia, usuarioEmail);
+  const { lines, campos } = await carregarEngineLines(competenciaPrevia, usuarioEmail);
   if (lines.length === 0) return [];
 
+  const camposPrevia = campos ?? (await listCampos(competenciaPrevia));
   const resumosPrevia = aggregateByCcusto(lines, competenciaPrevia);
-  return resumosPrevia.map((r) => ({ ccustoCodigo: r.ccustoCodigo, totalFatura: r.totalFatura }));
+  return resumosPrevia.map((r) => ({
+    ccustoCodigo: r.ccustoCodigo,
+    totalFatura: r.totalFatura,
+    valorCobrar: valorCobrarDoCcusto(r, deducoesDoCcusto(r, camposPrevia, true)),
+  }));
+}
+
+/**
+ * Prévia a comparar com a Folha: a foto congelada quando a Folha foi salva, senão o cálculo ao vivo. Foto salva antes de o Valor a
+ * cobrar existir não o tem: o Total fatura continua o congelado e só o Valor a cobrar vem do cálculo ao vivo (sem ele o complementar
+ * ficaria no cálculo antigo).
+ */
+export async function resolverPreviaPorCcusto(competencia: string, usuarioEmail: string | null, congelada: PreviaTotalPorCcusto[] | null): Promise<PreviaTotalPorCcusto[]> {
+  if (congelada && congelada.every((p) => p.valorCobrar !== undefined)) return congelada;
+  const aoVivo = await calcularPreviaTotalFaturaPorCcusto(competencia, usuarioEmail);
+  if (!congelada) return aoVivo;
+  const aoVivoPorCcusto = new Map(aoVivo.map((p) => [p.ccustoCodigo, p]));
+  return congelada.map((p) => (p.valorCobrar !== undefined ? p : { ...p, valorCobrar: aoVivoPorCcusto.get(p.ccustoCodigo)?.valorCobrar ?? p.totalFatura }));
 }

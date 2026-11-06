@@ -18,32 +18,34 @@ describe("lerCamposSalvos", () => {
       adiantamento: { "90103375": "1.500,00" },
       base: { "0001": "9.274,42" },
       iss: { "0001": "1.821,73" },
+      percentualFatura: { "0001": "20" },
     });
     expect(lerCamposSalvos(guardado)).toEqual({
       percentual: { "90103375": "20,5" },
       adiantamento: { "90103375": "1.500,00" },
       base: { "0001": "9.274,42" },
       iss: { "0001": "1.821,73" },
+      percentualFatura: { "0001": "20" },
     });
   });
 
   it("versão salva antes do campo ISS existir (JSON sem a chave iss) volta com o ISS vazio", () => {
     const antigo = JSON.stringify({ percentual: { "1": "10" }, adiantamento: {}, base: { "0001": "9.274,42" } });
-    expect(lerCamposSalvos(antigo)).toEqual({ percentual: { "1": "10" }, adiantamento: {}, base: { "0001": "9.274,42" }, iss: {} });
+    expect(lerCamposSalvos(antigo)).toEqual({ percentual: { "1": "10" }, adiantamento: {}, base: { "0001": "9.274,42" }, iss: {}, percentualFatura: {} });
   });
 
   it("chave inss de uma versão que gravou o campo errado antes é ignorada", () => {
     const guardado = JSON.stringify({ percentual: { "1": "10" }, inss: { "0001": "7.234,83" } });
-    expect(lerCamposSalvos(guardado)).toEqual({ percentual: { "1": "10" }, adiantamento: {}, base: {}, iss: {} });
+    expect(lerCamposSalvos(guardado)).toEqual({ percentual: { "1": "10" }, adiantamento: {}, base: {}, iss: {}, percentualFatura: {} });
   });
 
   it("um JSON vazio é uma foto válida de 'nada digitado' (diferente de não ter foto)", () => {
-    expect(lerCamposSalvos("{}")).toEqual({ percentual: {}, adiantamento: {}, base: {}, iss: {} });
+    expect(lerCamposSalvos("{}")).toEqual({ percentual: {}, adiantamento: {}, base: {}, iss: {}, percentualFatura: {} });
   });
 
   it("ignora campos desconhecidos, valores vazios e o que não é texto", () => {
     const guardado = JSON.stringify({ percentual: { "1": "10", "2": "", "3": "  ", "4": 5, "5": null }, adiantamento: "lixo", outro: { "1": "x" } });
-    expect(lerCamposSalvos(guardado)).toEqual({ percentual: { "1": "10" }, adiantamento: {}, base: {}, iss: {} });
+    expect(lerCamposSalvos(guardado)).toEqual({ percentual: { "1": "10" }, adiantamento: {}, base: {}, iss: {}, percentualFatura: {} });
   });
 });
 

@@ -121,6 +121,36 @@ export function juntarDeducoes(percentuais: Map<number, number>, adiantamentos: 
 }
 
 /**
+ * Percentual que vale de verdade para UM colaborador: o digitado na linha dele (0% = sem dedução, mesmo havendo um percentual do
+ * centro de custo) ou, com a linha vazia ou inválida, o `padrao` do centro de custo (o "% a deduzir do Total fatura" da Prévia).
+ * null = sem percentual.
+ */
+export function percentualEfetivo(textoProprio: string, padrao: number | null): number | null {
+  const proprio = lerPercentual(textoProprio);
+  if (proprio !== null) return proprio > 0 ? proprio : null;
+  return padrao !== null && padrao > 0 ? padrao : null;
+}
+
+/**
+ * Dedução de cada colaborador de um centro de custo a partir do que foi digitado (matrícula -> texto) e do percentual padrão do centro
+ * de custo (Prévia). Só entra quem tem percentual efetivo > 0 e/ou adiantamento > 0 — os demais ficam com a Nota Fiscal inteira.
+ */
+export function deducoesDoCentroDeCusto(
+  matriculas: number[],
+  percentuaisTexto: Record<string, string>,
+  adiantamentosTexto: Record<string, string>,
+  percentualPadrao: number | null = null,
+): Map<number, DeducaoColaborador> {
+  const resultado = new Map<number, DeducaoColaborador>();
+  for (const matricula of matriculas) {
+    const percentual = percentualEfetivo(percentuaisTexto[String(matricula)] ?? "", percentualPadrao);
+    const adiantamento = adiantamentoAtivo(adiantamentosTexto[String(matricula)] ?? "") ?? 0;
+    if (percentual !== null || adiantamento > 0) resultado.set(matricula, { percentual, adiantamento });
+  }
+  return resultado;
+}
+
+/**
  * Soma, sobre os colaboradores de um centro de custo, do que será cobrado, do que foi deduzido (percentual +
  * adiantamento) e de quanto disso é adiantamento. Quem não tem dedução entra com a Nota Fiscal inteira.
  * O `deduzido` também é o que reduz o "Valor líquido a receber" do centro de custo (tela e PDF).

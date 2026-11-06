@@ -10,16 +10,19 @@ import { GrossUpConfigForm } from "./GrossUpConfigForm";
 import {
   adiantamentoAtivo,
   calcularCobranca,
+  deducoesDoCentroDeCusto,
   formatarPercentualBr,
   lerPercentual,
   lerValorReais,
-  percentualAtivo,
+  percentualEfetivo,
   serializarAdiantamentos,
   serializarPercentuais,
   somarCobranca,
   type DeducaoColaborador,
 } from "@/lib/percentualCobranca";
 import { calcularRetencoesSobreCobrado } from "@/lib/calc/retencoesCobranca";
+import { complementarDaPrevia, valorCobrarDoCcusto, type PreviaParaComparar } from "@/lib/calc/cobrancaPrevia";
+import { ehPrevia } from "@/lib/calc/tipoCompetencia";
 import type { CamposCompartilhados } from "@/lib/camposCompartilhados";
 import { useCamposCompartilhados } from "./useCamposCompartilhados";
 import { RegimeColaborador, type TomadorOpcao } from "./RegimeColaborador";
@@ -79,8 +82,8 @@ export function FaturamentoViewer({
   /** Valores compartilhados (% a deduzir, adiantamento, base das retenções) da competência, como estavam no banco ao abrir a página. */
   camposIniciais: { competencia: string; valores: CamposCompartilhados; somenteLocal: boolean };
   tomadoresOpcoes: TomadorOpcao[];
-  /** Total fatura (NF) já cobrado na Prévia do mesmo mês, por Centro de Custo — vazio quando a competência atual não é uma Folha ou não tem Prévia correspondente. Ver page.tsx. */
-  previaTotalFaturaPorCcusto: { ccustoCodigo: string; totalFatura: number }[];
+  /** Total fatura (NF) e Valor a cobrar (soma por colaborador) já cobrados na Prévia do mesmo mês, por Centro de Custo — vazio quando a competência atual não é uma Folha ou não tem Prévia correspondente. Ver page.tsx. */
+  previaTotalFaturaPorCcusto: { ccustoCodigo: string; totalFatura: number; valorCobrar?: number }[];
   /** Eventos excluídos manualmente da fatura, por colaborador (ver eventosExcluidos.ts) — usado só pro painel de restaurar, o cálculo já vem sem eles. */
   eventosExcluidos: { matricula: number; evento: string }[];
 }) {
@@ -114,38 +117,34 @@ export function FaturamentoViewer({
   const setIssPercentual = (ccustoCodigoChave: string, novo: string) => compartilhados.alterar("iss", ccustoCodigoChave, novo);
   const issPercentualTexto = resumo ? (issTexto[resumo.ccustoCodigo] ?? "") : "";
   const issPercentual = lerPercentual(issPercentualTexto);
-  const percentuaisDoCcusto = useMemo(() => {
-    const doCcusto = new Set((resumo?.colaboradores ?? []).map((c) => c.matricula));
-    const mapa = new Map<number, number>();
-    for (const [matricula, texto] of Object.entries(percentuaisTexto)) {
-      const percentual = percentualAtivo(texto);
-      if (percentual !== null && doCcusto.has(Number(matricula))) mapa.set(Number(matricula), percentual);
-    }
-    return mapa;
-  }, [percentuaisTexto, resumo]);
-  const adiantamentosDoCcusto = useMemo(() => {
-    const doCcusto = new Set((resumo?.colaboradores ?? []).map((c) => c.matricula));
-    const mapa = new Map<number, number>();
-    for (const [matricula, texto] of Object.entries(adiantamentosTexto)) {
-      const valor = adiantamentoAtivo(texto);
-      if (valor !== null && doCcusto.has(Number(matricula))) mapa.set(Number(matricula), valor);
-    }
-    return mapa;
-  }, [adiantamentosTexto, resumo]);
-  /** Quem tem alguma dedução (percentual > 0 e/ou adiantamento > 0) — base do card de totais. */
-  const deducoesDoCcusto = useMemo(() => {
-    const mapa = new Map<number, DeducaoColaborador>();
-    for (const matricula of new Set([...percentuaisDoCcusto.keys(), ...adiantamentosDoCcusto.keys()])) {
-      mapa.set(matricula, { percentual: percentuaisDoCcusto.get(matricula) ?? null, adiantamento: adiantamentosDoCcusto.get(matricula) ?? 0 });
-    }
-    return mapa;
-  }, [percentuaisDoCcusto, adiantamentosDoCcusto]);
+  // % a deduzir do Total fatura (só na Prévia), por centro de custo (chave = código do centro de custo): vale como o "% a deduzir" de todo
+  // colaborador dele que não tem percentual próprio — o Valor a cobrar (soma por colaborador) da Prévia já sai com ele, e é esse valor que a
+  // Folha desconta no complementar (ver TotalsCard).
+  const previa = ehPrevia(camposIniciais.competencia);
+  const percentualFaturaTexto = previa && resumo ? (compartilhados.valores.percentualFatura[resumo.ccustoCodigo] ?? "") : "";
+  const percentualFatura = lerPercentual(percentualFaturaTexto);
+  const setPercentualFatura = (ccustoCodigoChave: string, novo: string) => compartilhados.alterar("percentualFatura", ccustoCodigoChave, novo);
+  /** Quem tem alguma dedução (percentual > 0 — próprio ou o do centro de custo — e/ou adiantamento > 0) — base do card de totais. */
+  const deducoesDoCcusto = useMemo(
+    () =>
+      deducoesDoCentroDeCusto(
+        (resumo?.colaboradores ?? []).map((c) => c.matricula),
+        percentuaisTexto,
+        adiantamentosTexto,
+        percentualFatura,
+      ),
+    [resumo, percentuaisTexto, adiantamentosTexto, percentualFatura],
+  );
   /** Parâmetros do link de PDF com as deduções (só as dos colaboradores pedidos; todos quando `somente` é omitido). */
   function paramsDeducoes(somente?: number): string {
-    const filtra = <T,>(mapa: Map<number, T>) => new Map([...mapa].filter(([m]) => somente === undefined || m === somente));
     const partes: string[] = [];
-    const percentuais = filtra(percentuaisDoCcusto);
-    const adiantamentos = filtra(adiantamentosDoCcusto);
+    const percentuais = new Map<number, number>();
+    const adiantamentos = new Map<number, number>();
+    for (const [matricula, d] of deducoesDoCcusto) {
+      if (somente !== undefined && matricula !== somente) continue;
+      if (d.percentual !== null) percentuais.set(matricula, d.percentual);
+      if (d.adiantamento > 0) adiantamentos.set(matricula, d.adiantamento);
+    }
     if (percentuais.size > 0) partes.push(`percentuais=${encodeURIComponent(serializarPercentuais(percentuais))}`);
     if (adiantamentos.size > 0) partes.push(`adiantamentos=${encodeURIComponent(serializarAdiantamentos(adiantamentos))}`);
     return partes.join("&");
@@ -177,7 +176,7 @@ export function FaturamentoViewer({
   const ccPorMatricula = useMemo(() => new Map(colaboradoresCc.map((c) => [c.matricula, c.cc])), [colaboradoresCc]);
   const vinculoPorMatricula = useMemo(() => new Map(colaboradoresVinculo.map((v) => [v.matricula, v])), [colaboradoresVinculo]);
   const codServicoPorMatricula = useMemo(() => new Map(colaboradoresTomador.map((c) => [c.matricula, c.codServico])), [colaboradoresTomador]);
-  const previaPorCcusto = useMemo(() => new Map(previaTotalFaturaPorCcusto.map((p) => [p.ccustoCodigo, p.totalFatura])), [previaTotalFaturaPorCcusto]);
+  const previaPorCcusto = useMemo(() => new Map<string, PreviaParaComparar>(previaTotalFaturaPorCcusto.map((p) => [p.ccustoCodigo, p])), [previaTotalFaturaPorCcusto]);
   const eventosExcluidosPorMatricula = useMemo(() => {
     const map = new Map<number, { matricula: number; evento: string }[]>();
     for (const e of eventosExcluidos) {
@@ -313,11 +312,17 @@ export function FaturamentoViewer({
           <TotalsCard
             resumo={resumo}
             regimeLabel={regimeLabel}
-            previaTotalFatura={previaPorCcusto.get(resumo.ccustoCodigo) ?? null}
+            previaParaComparar={previaPorCcusto.get(resumo.ccustoCodigo) ?? null}
+            ehPrevia={previa}
+            percentualFatura={percentualFatura}
+            percentualFaturaTexto={percentualFaturaTexto}
+            onPercentualFaturaChange={(novo) => setPercentualFatura(resumo.ccustoCodigo, novo)}
             deducoes={deducoesDoCcusto}
             onLimparDeducoes={() => {
-              limparPercentuais([...percentuaisDoCcusto.keys()]);
-              limparAdiantamentos([...adiantamentosDoCcusto.keys()]);
+              const matriculas = resumo.colaboradores.map((c) => c.matricula);
+              limparPercentuais(matriculas.filter((m) => String(m) in percentuaisTexto));
+              limparAdiantamentos(matriculas.filter((m) => String(m) in adiantamentosTexto));
+              if (percentualFaturaTexto !== "") setPercentualFatura(resumo.ccustoCodigo, "");
             }}
             baseInformada={baseInformada}
             baseInformadaTexto={baseInformadaTexto}
@@ -342,6 +347,7 @@ export function FaturamentoViewer({
             encargosPorCodigo={encargosPorCodigo}
             ccPorMatricula={ccPorMatricula}
             percentuaisTexto={percentuaisTexto}
+            percentualPadrao={percentualFatura}
             onPercentualChange={setPercentualColaborador}
             adiantamentosTexto={adiantamentosTexto}
             onAdiantamentoChange={setAdiantamentoColaborador}
@@ -385,7 +391,11 @@ function WarningsPanel({ warnings }: { warnings: string[] }) {
 function TotalsCard({
   resumo,
   regimeLabel,
-  previaTotalFatura,
+  previaParaComparar,
+  ehPrevia: competenciaEPrevia,
+  percentualFatura,
+  percentualFaturaTexto,
+  onPercentualFaturaChange,
   deducoes,
   onLimparDeducoes,
   baseInformada,
@@ -397,8 +407,14 @@ function TotalsCard({
 }: {
   resumo: CcustoResumo;
   regimeLabel: string | null;
-  /** Total fatura (NF) já cobrado na Prévia do mesmo mês — null quando não há Prévia correspondente pra comparar (ver FaturamentoViewer). */
-  previaTotalFatura: number | null;
+  /** Total fatura (NF) e Valor a cobrar (soma por colaborador) já cobrados na Prévia do mesmo mês — null quando não há Prévia correspondente pra comparar (ver FaturamentoViewer). */
+  previaParaComparar: PreviaParaComparar | null;
+  /** A competência mostrada é uma Prévia: mostra o campo "% a deduzir do Total fatura". */
+  ehPrevia: boolean;
+  /** % a deduzir do Total fatura (Prévia) digitado neste centro de custo — null = vazio/inválido. */
+  percentualFatura: number | null;
+  percentualFaturaTexto: string;
+  onPercentualFaturaChange: (novo: string) => void;
   /** Dedução (percentual > 0 e/ou adiantamento > 0) de cada colaborador desse centro de custo (matrícula -> dedução) — vazio quando nenhum foi digitado. */
   deducoes: Map<number, DeducaoColaborador>;
   /** Apaga os percentuais e adiantamentos desse centro de custo (volta tudo ao valor normal). */
@@ -452,7 +468,10 @@ function TotalsCard({
           ["Valor líquido a receber", resumo.valorLiquido, true],
         ] as [string, number, boolean?][])),
   ];
-  const complementar = previaTotalFatura == null ? null : resumo.totalFatura - previaTotalFatura;
+  // Valor a cobrar (soma por colaborador) desta competência: sem deduções é o próprio Total fatura. Na Folha, é dele que sai o que já
+  // foi cobrado na Prévia — o "Valor a cobrar (soma por colaborador)" dela, e não o Total fatura dela.
+  const valorCobrar = valorCobrarDoCcusto(resumo, deducoes);
+  const comparacao = previaParaComparar ? complementarDaPrevia(valorCobrar, previaParaComparar) : null;
   return (
     <div className="rounded-lg border border-neutral-200 bg-white p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -481,6 +500,16 @@ function TotalsCard({
           </div>
         ))}
       </dl>
+      {competenciaEPrevia && (
+        <PercentualFaturaInput
+          texto={percentualFaturaTexto}
+          invalido={percentualFaturaTexto.trim() !== "" && percentualFatura === null}
+          totalFatura={resumo.totalFatura}
+          valorCobrar={valorCobrar}
+          temDeducoes={deducoes.size > 0}
+          onChange={onPercentualFaturaChange}
+        />
+      )}
       <BaseRetencoesInput
         texto={baseInformadaTexto}
         invalido={baseInformadaTexto.trim() !== "" && baseInformada === null}
@@ -491,17 +520,29 @@ function TotalsCard({
         onIssChange={onIssPercentualChange}
       />
       <CobrancaResumo resumo={resumo} deducoes={deducoes} onLimpar={onLimparDeducoes} />
-      {complementar != null && (
+      {comparacao != null && previaParaComparar != null && (
         <div className="mt-4 rounded-md border border-sky-200 bg-sky-50 p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">Comparação com a Prévia</p>
           <dl className="mt-2 grid grid-cols-1 gap-x-8 gap-y-1 sm:grid-cols-2">
             <div className="flex items-baseline justify-between py-0.5">
-              <dt className="text-sky-800">Total fatura já cobrado na Prévia</dt>
-              <dd className="font-mono tabular-nums text-sky-900">{fmt(previaTotalFatura!)}</dd>
+              <dt className="text-sky-800">Total fatura na Prévia</dt>
+              <dd className="font-mono tabular-nums text-sky-900">{fmt(previaParaComparar.totalFatura)}</dd>
             </div>
             <div className="flex items-baseline justify-between py-0.5">
-              <dt className="font-medium text-sky-900">{complementar >= 0 ? "Complementar a cobrar" : "Complementar a creditar"} (Folha − Prévia)</dt>
-              <dd className={`font-mono font-semibold tabular-nums ${complementar >= 0 ? "text-sky-900" : "text-amber-700"}`}>{fmt(complementar)}</dd>
+              <dt className="text-sky-800">Valor a cobrar (soma por colaborador) na Prévia</dt>
+              <dd className="font-mono tabular-nums text-sky-900">{fmt(comparacao.previaCobrar)}</dd>
+            </div>
+            <div className="flex items-baseline justify-between py-0.5">
+              <dt className="text-sky-800">{deducoes.size > 0 ? "Valor a cobrar (soma por colaborador) na Folha" : "Total fatura na Folha (sem deduções por colaborador)"}</dt>
+              <dd className="font-mono tabular-nums text-sky-900">{fmt(valorCobrar)}</dd>
+            </div>
+            <div className="flex items-baseline justify-between py-0.5">
+              <dt className="font-medium text-sky-900">
+                {comparacao.complementar >= 0 ? "Complementar a cobrar" : "Complementar a creditar"} (Folha − Valor a cobrar da Prévia)
+              </dt>
+              <dd className={`font-mono font-semibold tabular-nums ${comparacao.complementar >= 0 ? "text-sky-900" : "text-amber-700"}`}>
+                {fmt(comparacao.complementar)}
+              </dd>
             </div>
           </dl>
         </div>
@@ -779,6 +820,7 @@ function ColaboradoresTable({
   encargosPorCodigo,
   ccPorMatricula,
   percentuaisTexto,
+  percentualPadrao,
   onPercentualChange,
   adiantamentosTexto,
   onAdiantamentoChange,
@@ -798,6 +840,8 @@ function ColaboradoresTable({
   ccPorMatricula: Map<number, string | null>;
   /** Percentual a deduzir digitado de cada colaborador (matrícula -> texto) e o setter — ver PercentualInput. */
   percentuaisTexto: Record<string, string>;
+  /** "% a deduzir do Total fatura" do centro de custo (Prévia) — vale pra quem não tem percentual próprio; null = não há. */
+  percentualPadrao: number | null;
   onPercentualChange: (matricula: number, novo: string) => void;
   /** Adiantamento em reais digitado de cada colaborador (matrícula -> texto) e o setter — ver AdiantamentoInput. */
   adiantamentosTexto: Record<string, string>;
@@ -847,7 +891,7 @@ function ColaboradoresTable({
             {colaboradores.map((c) => {
               const aberta = expandida === c.matricula;
               const percentualTexto = percentuaisTexto[String(c.matricula)] ?? "";
-              const percentual = percentualAtivo(percentualTexto);
+              const percentual = percentualEfetivo(percentualTexto, percentualPadrao);
               const adiantamentoTexto = adiantamentosTexto[String(c.matricula)] ?? "";
               const adiantamento = adiantamentoAtivo(adiantamentoTexto);
               const cobranca = calcularCobranca(c.nf, percentual, adiantamento ?? 0);
@@ -898,6 +942,7 @@ function ColaboradoresTable({
                       <PercentualInput
                         texto={percentualTexto}
                         invalido={percentualTexto.trim() !== "" && lerPercentual(percentualTexto) === null}
+                        placeholder={percentualPadrao !== null && percentualPadrao > 0 ? String(percentualPadrao).replace(".", ",") : undefined}
                         onChange={(novo) => onPercentualChange(c.matricula, novo)}
                       />
                     </Td>
@@ -975,14 +1020,15 @@ function ColaboradoresTable({
 }
 
 /** Percentual da Nota Fiscal do colaborador a DEDUZIR (ex.: 20) — 0 ou vazio deixa o valor normal; o valor a cobrar e o deduzido saem ao lado e vão no PDF; lembrado neste navegador. */
-function PercentualInput({ texto, invalido, onChange }: { texto: string; invalido: boolean; onChange: (novo: string) => void }) {
+function PercentualInput({ texto, invalido, placeholder, onChange }: { texto: string; invalido: boolean; placeholder?: string; onChange: (novo: string) => void }) {
   return (
     <span className="inline-flex items-center gap-1">
       <input
         value={texto}
         onChange={(e) => onChange(e.target.value)}
         inputMode="decimal"
-        placeholder="—"
+        placeholder={placeholder ?? "—"}
+        title={placeholder ? `Vazio usa o ${placeholder}% do Total fatura (Prévia) — digite 0 pra este colaborador não ter dedução` : undefined}
         aria-label="Percentual a deduzir"
         className={`w-16 rounded-md border px-2 py-1 text-right text-xs text-neutral-900 ${invalido ? "border-red-400 bg-red-50" : "border-neutral-300"}`}
       />
@@ -1075,6 +1121,57 @@ function BaseRetencoesInput({
           resultante é somado nas retenções e no valor líquido a receber. Vazio usa {formatarPercentualBr(PERCENTUAL_ISS_PADRAO)}.
         </span>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Só nas competências de Prévia: % a DEDUZIR do Total fatura deste centro de custo. Vale como o "% a deduzir" de todo colaborador sem percentual
+ * próprio, então o "Valor a cobrar (soma por colaborador)" da Prévia sai igual ao Total fatura menos esse percentual (mais adiantamentos e
+ * percentuais próprios, se houver). Esse Valor a cobrar é o que a Folha desconta no complementar. Gravado no banco, igual pra todos os usuários.
+ */
+function PercentualFaturaInput({
+  texto,
+  invalido,
+  totalFatura,
+  valorCobrar,
+  temDeducoes,
+  onChange,
+}: {
+  texto: string;
+  invalido: boolean;
+  totalFatura: number;
+  valorCobrar: number;
+  temDeducoes: boolean;
+  onChange: (novo: string) => void;
+}) {
+  return (
+    <div className="mt-3 flex flex-col gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-2 text-xs font-medium text-emerald-900">
+          % a deduzir do Total fatura (Prévia)
+          <span className="flex items-center gap-1">
+            <input
+              value={texto}
+              onChange={(e) => onChange(e.target.value)}
+              inputMode="decimal"
+              placeholder="ex.: 20"
+              aria-label="Percentual a deduzir do Total fatura da Prévia"
+              className={`w-20 rounded-md border px-2 py-1 text-right text-sm font-normal text-neutral-900 ${invalido ? "border-red-400 bg-red-50" : "border-neutral-300 bg-white"}`}
+            />
+            <span className="text-neutral-500">%</span>
+          </span>
+        </label>
+        {temDeducoes && (
+          <span className="text-xs text-emerald-900">
+            Total fatura {fmt(totalFatura)} → Valor a cobrar (soma por colaborador) <strong>{fmt(valorCobrar)}</strong>
+          </span>
+        )}
+      </div>
+      <span className="text-xs text-neutral-600">
+        Opcional. Esse percentual sai do Total fatura (de cada colaborador do centro de custo; quem tem &quot;% a deduzir&quot; próprio na tabela usa o dele) e o resultado
+        é o &quot;Valor a cobrar (soma por colaborador)&quot; desta Prévia — é esse valor que a Folha desconta no complementar. Vazio ou 0 não deduz nada.
+      </span>
     </div>
   );
 }

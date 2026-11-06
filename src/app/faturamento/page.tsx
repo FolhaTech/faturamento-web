@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getUsuarioAtual } from "@/lib/auth/sessao";
 import { aggregateByCcusto } from "@/lib/calc/aggregate";
-import { calcularPreviaTotalFaturaPorCcusto, carregarEngineLines, type PreviaTotalPorCcusto } from "@/lib/calc/faturaCompetencia";
+import { carregarEngineLines, resolverPreviaPorCcusto, type PreviaTotalPorCcusto } from "@/lib/calc/faturaCompetencia";
 import { filtrarLinesPorColaborador, type FiltrosColaborador } from "@/lib/calc/filtroColaboradores";
 import { camposVazios, type CamposCompartilhados } from "@/lib/camposCompartilhados";
 import { listCampos } from "@/lib/repo/camposFaturamento";
@@ -78,7 +78,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   // aplicar esse mesmo filtro (senão escolher um colaborador faria os demais desaparecerem da
   // lista). Não muda com os outros filtros ativos, igual aos selects de Cargo/Dpto abaixo.
   let colaboradoresParaFiltro: { matricula: number; nome: string }[] = [];
-  // Total fatura (NF) já cobrado na Prévia correspondente, por Centro de Custo — só quando a
+  // Total fatura (NF) e Valor a cobrar (soma por colaborador) já cobrados na Prévia correspondente, por Centro de Custo — só quando a
   // competência atual é uma Folha (fechamento) E existe a Prévia do mesmo mês (ver
   // faturaCompetencia.ts). Mostrado na tela como "complementar a cobrar" (Folha − Prévia): a
   // Prévia já foi cobrada do cliente antes, só a diferença falta faturar agora que a Folha
@@ -114,7 +114,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
     const lines = await filtrarLinesPorColaborador(engineLines, filtros);
     resumos = aggregateByCcusto(lines, competenciaAtual);
 
-    previaTotalFaturaPorCcusto = previaCongelada ?? (await calcularPreviaTotalFaturaPorCcusto(competenciaAtual, usuarioEmail));
+    previaTotalFaturaPorCcusto = await resolverPreviaPorCcusto(competenciaAtual, usuarioEmail, previaCongelada);
     eventosExcluidos = await listEventosExcluidos(competenciaAtual);
     // % a deduzir, adiantamento e base das retenções digitados por qualquer usuário (compartilhados — ver useCamposCompartilhados).
     // Numa versão salva por outra pessoa (?versao=), os valores são os que foram guardados junto com ela (as versões de antes disso

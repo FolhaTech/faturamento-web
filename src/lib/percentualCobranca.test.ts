@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   adiantamentoAtivo,
   calcularCobranca,
+  deducoesDoCentroDeCusto,
   formatarPercentualBr,
   juntarDeducoes,
   lerAdiantamentosSerializados,
@@ -9,6 +10,7 @@ import {
   lerPercentuaisSerializados,
   lerValorReais,
   percentualAtivo,
+  percentualEfetivo,
   serializarAdiantamentos,
   serializarPercentuais,
   somarCobranca,
@@ -171,5 +173,58 @@ describe("somarCobranca", () => {
 
   it("sem deduções o valor fica normal", () => {
     expect(somarCobranca(colaboradores, new Map())).toEqual({ cobrar: 27897.69, deduzido: 0, adiantamentos: 0 });
+  });
+});
+
+describe("percentualEfetivo", () => {
+  it("o percentual digitado na linha do colaborador vale por cima do padrão do centro de custo", () => {
+    expect(percentualEfetivo("30", 20)).toBe(30);
+    expect(percentualEfetivo("12,5", 20)).toBe(12.5);
+  });
+
+  it("linha vazia ou inválida usa o padrão do centro de custo", () => {
+    expect(percentualEfetivo("", 20)).toBe(20);
+    expect(percentualEfetivo("abc", 20)).toBe(20);
+    expect(percentualEfetivo("101", 20)).toBe(20);
+  });
+
+  it("0% na linha tira a dedução só desse colaborador, mesmo havendo padrão", () => {
+    expect(percentualEfetivo("0", 20)).toBeNull();
+  });
+
+  it("sem padrão (ou padrão 0) e sem valor próprio não há percentual", () => {
+    expect(percentualEfetivo("", null)).toBeNull();
+    expect(percentualEfetivo("", 0)).toBeNull();
+    expect(percentualEfetivo("0", null)).toBeNull();
+  });
+});
+
+describe("deducoesDoCentroDeCusto", () => {
+  it("o padrão do centro de custo vale pra todo colaborador sem percentual próprio", () => {
+    const d = deducoesDoCentroDeCusto([1, 2, 3], { "2": "50" }, {}, 20);
+    expect([...d]).toEqual([
+      [1, { percentual: 20, adiantamento: 0 }],
+      [2, { percentual: 50, adiantamento: 0 }],
+      [3, { percentual: 20, adiantamento: 0 }],
+    ]);
+  });
+
+  it("sem padrão só entra quem tem percentual > 0 e/ou adiantamento > 0 — igual ao comportamento de antes", () => {
+    const d = deducoesDoCentroDeCusto([1, 2, 3, 4], { "1": "10", "2": "0" }, { "3": "1.500,00", "2": "100" });
+    expect([...d]).toEqual([
+      [1, { percentual: 10, adiantamento: 0 }],
+      [2, { percentual: null, adiantamento: 100 }],
+      [3, { percentual: null, adiantamento: 1500 }],
+    ]);
+  });
+
+  it("ignora valores de colaboradores que não são do centro de custo", () => {
+    expect(deducoesDoCentroDeCusto([1], { "99": "10" }, { "98": "5" }).size).toBe(0);
+  });
+
+  it("o adiantamento soma ao percentual do padrão", () => {
+    const d = deducoesDoCentroDeCusto([1], {}, { "1": "250" }, 10);
+    expect(d.get(1)).toEqual({ percentual: 10, adiantamento: 250 });
+    expect(somarCobranca([{ matricula: 1, nf: 1000 }], d).cobrar).toBe(650);
   });
 });

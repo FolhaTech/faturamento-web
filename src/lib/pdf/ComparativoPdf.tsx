@@ -52,11 +52,26 @@ export interface ComparativoPdfProps {
   competenciaPrevia: string;
   totalFaturaFolha: number;
   totalFaturaPrevia: number;
+  /** Valor a cobrar (soma por colaborador) da Folha — igual ao total fatura quando a Folha não tem deduções por colaborador. */
+  valorCobrarFolha: number;
+  /** Valor a cobrar (soma por colaborador) da Prévia: o total fatura dela menos o % a deduzir e os adiantamentos digitados na Prévia. */
+  valorCobrarPrevia: number;
+  folhaTemDeducoes: boolean;
 }
 
 /** PDF separado do relatório de faturamento — só o comparativo Prévia × Folha (ver /api/faturamento/export-comparativo). */
-export function ComparativoPdf({ ccustoNome, tomadorNome, competenciaFolha, competenciaPrevia, totalFaturaFolha, totalFaturaPrevia }: ComparativoPdfProps) {
-  const complementar = totalFaturaFolha - totalFaturaPrevia;
+export function ComparativoPdf({
+  ccustoNome,
+  tomadorNome,
+  competenciaFolha,
+  competenciaPrevia,
+  totalFaturaFolha,
+  totalFaturaPrevia,
+  valorCobrarFolha,
+  valorCobrarPrevia,
+  folhaTemDeducoes,
+}: ComparativoPdfProps) {
+  const complementar = Math.round((valorCobrarFolha - valorCobrarPrevia) * 100) / 100;
   const geradoEm = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date());
 
   return (
@@ -73,16 +88,27 @@ export function ComparativoPdf({ ccustoNome, tomadorNome, competenciaFolha, comp
           <Text style={styles.value}>{fmt(totalFaturaPrevia)}</Text>
         </View>
         <View style={styles.row}>
+          <Text style={styles.label}>Valor a cobrar (soma por colaborador) na Prévia</Text>
+          <Text style={styles.value}>{fmt(valorCobrarPrevia)}</Text>
+        </View>
+        <View style={styles.row}>
           <Text style={styles.label}>Total fatura na Folha ({competenciaFolha})</Text>
           <Text style={styles.value}>{fmt(totalFaturaFolha)}</Text>
         </View>
+        {folhaTemDeducoes && (
+          <View style={styles.row}>
+            <Text style={styles.label}>Valor a cobrar (soma por colaborador) na Folha</Text>
+            <Text style={styles.value}>{fmt(valorCobrarFolha)}</Text>
+          </View>
+        )}
 
         <View style={styles.resultBox}>
           <Text style={styles.resultLabel}>{complementar >= 0 ? "Complementar a cobrar" : "Complementar a creditar"}</Text>
           <Text style={[styles.resultValue, { color: complementar >= 0 ? COMPARE_TEXT : CREDIT_TEXT }]}>{fmt(complementar)}</Text>
           <Text style={styles.resultNote}>
-            Diferença entre o total fatura da Folha e o total já cobrado na Prévia do mesmo mês — a Prévia já foi cobrada do cliente antes, só essa
-            diferença falta {complementar >= 0 ? "faturar" : "creditar"} agora que a Folha fechou.
+            Diferença entre o valor a cobrar da Folha ({folhaTemDeducoes ? "soma por colaborador" : "total fatura"}) e o valor a cobrar (soma por
+            colaborador) da Prévia do mesmo mês — a Prévia já foi cobrada do cliente antes, só essa diferença falta{" "}
+            {complementar >= 0 ? "faturar" : "creditar"} agora que a Folha fechou.
           </Text>
         </View>
 
