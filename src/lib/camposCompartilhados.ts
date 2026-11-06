@@ -1,11 +1,14 @@
+import { ordemCompetencia } from "./calc/tipoCompetencia";
+
 /**
  * Valores digitados na tela de Faturamento e COMPARTILHADOS entre usuários (gravados em faturamento_campos):
  * - percentual: % a deduzir da Nota Fiscal de cada colaborador (chave = matrícula);
  * - adiantamento: adiantamento em R$ de cada colaborador (chave = matrícula);
  * - base: base das retenções em R$ de cada centro de custo (chave = código do centro de custo);
  * - iss: percentual do ISS (em %) de cada centro de custo, digitado no lugar dos 2% padrão (chave = código do centro de custo);
- * - percentualFatura: só nas competências de Prévia — % a deduzir do Total fatura do centro de custo (chave = código do centro de custo);
- *   vale como o "% a deduzir" de todo colaborador dele que não tem um percentual próprio (ver deducoesDoCentroDeCusto).
+ * - percentualFatura: só nas competências de Prévia — % a deduzir do Total fatura (com encargos) do centro de custo (chave = código do
+ *   centro de custo); vale como o "% a deduzir" de todo colaborador dele que não tem um percentual próprio (ver deducoesDoCentroDeCusto)
+ *   e é herdado pelas Prévias seguintes (ver herdarPercentuaisFatura).
  * Cada valor é o texto como foi digitado ("20,5", "1.500,00"); quem usa converte (lerPercentual, lerValorReais).
  */
 export const CAMPOS = ["percentual", "adiantamento", "base", "iss", "percentualFatura"] as const;
@@ -43,6 +46,27 @@ export function lerCamposSalvos(json: string | null | undefined): CamposComparti
       if (typeof valor === "string" && valor.trim() !== "") resultado[campo][chave] = valor;
     }
   }
+  return resultado;
+}
+
+/**
+ * O "% a deduzir do Total fatura" da Prévia vale também nas Prévias seguintes: pra cada centro de custo que ainda não tem valor próprio
+ * na competência, herda o da Prévia MAIS RECENTE ANTERIOR a ela (`anteriores` = os valores de outras competências). Só olha pra trás no
+ * tempo — mudar o % num mês nunca altera meses já passados. Um "0" herdado continua sendo "sem dedução". `proprios` não é alterado.
+ */
+export function herdarPercentuaisFatura(proprios: Valores, anteriores: { competencia: string; chave: string; valor: string }[], competenciaAtual: string): Valores {
+  const ordemAtual = ordemCompetencia(competenciaAtual);
+  if (ordemAtual === null) return proprios;
+  const maisRecente = new Map<string, { ordem: number; valor: string }>();
+  for (const a of anteriores) {
+    if (a.chave in proprios || a.valor.trim() === "") continue;
+    const ordem = ordemCompetencia(a.competencia);
+    if (ordem === null || ordem >= ordemAtual) continue;
+    const atual = maisRecente.get(a.chave);
+    if (!atual || ordem > atual.ordem) maisRecente.set(a.chave, { ordem, valor: a.valor });
+  }
+  const resultado: Valores = { ...proprios };
+  for (const [chave, { valor }] of maisRecente) resultado[chave] = valor;
   return resultado;
 }
 

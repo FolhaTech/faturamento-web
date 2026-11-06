@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aplicarAlteracao, camposVazios, ehCampo, lerCamposSalvos, mesclarComPendentes, valoresFaltandoNoServidor } from "./camposCompartilhados";
+import { aplicarAlteracao, camposVazios, ehCampo, herdarPercentuaisFatura, lerCamposSalvos, mesclarComPendentes, valoresFaltandoNoServidor } from "./camposCompartilhados";
 
 describe("lerCamposSalvos", () => {
   it("devolve null quando a versão salva não tem os valores guardados (versão antiga) ou o JSON é inválido", () => {
@@ -145,5 +145,55 @@ describe("valoresFaltandoNoServidor", () => {
 
   it("sem nada guardado no navegador, não há o que enviar", () => {
     expect(valoresFaltandoNoServidor({}, { "1": "10" })).toEqual({});
+  });
+});
+
+describe("herdarPercentuaisFatura", () => {
+  const a = (competencia: string, chave: string, valor: string) => ({ competencia, chave, valor });
+
+  it("a Prévia nova herda o % da Prévia anterior do mesmo centro de custo", () => {
+    expect(herdarPercentuaisFatura({}, [a("09/2026 (Prévia)", "25", "20")], "10/2026 (Prévia)")).toEqual({ "25": "20" });
+  });
+
+  it("herda da Prévia mais recente anterior, não da mais antiga", () => {
+    const anteriores = [a("07/2026 (Prévia)", "25", "10"), a("09/2026 (Prévia)", "25", "20"), a("08/2026 (Prévia)", "25", "15")];
+    expect(herdarPercentuaisFatura({}, anteriores, "10/2026 (Prévia)")).toEqual({ "25": "20" });
+  });
+
+  it("ordena por ano e mês, não pelo texto (12/2025 vem antes de 01/2026)", () => {
+    const anteriores = [a("12/2025 (Prévia)", "25", "5"), a("01/2026 (Prévia)", "25", "8")];
+    expect(herdarPercentuaisFatura({}, anteriores, "02/2026 (Prévia)")).toEqual({ "25": "8" });
+  });
+
+  it("nunca olha pra frente: mudar o % num mês não altera meses já passados", () => {
+    expect(herdarPercentuaisFatura({}, [a("10/2026 (Prévia)", "25", "30")], "09/2026 (Prévia)")).toEqual({});
+    expect(herdarPercentuaisFatura({}, [a("09/2026 (Prévia)", "25", "30")], "09/2026 (Prévia)")).toEqual({});
+  });
+
+  it("o valor próprio da competência vence o herdado (inclusive 0 = sem dedução)", () => {
+    const anteriores = [a("09/2026 (Prévia)", "25", "20")];
+    expect(herdarPercentuaisFatura({ "25": "0" }, anteriores, "10/2026 (Prévia)")).toEqual({ "25": "0" });
+    expect(herdarPercentuaisFatura({ "25": "35" }, anteriores, "10/2026 (Prévia)")).toEqual({ "25": "35" });
+  });
+
+  it("um 0 herdado continua sendo 'sem dedução' nos meses seguintes", () => {
+    expect(herdarPercentuaisFatura({}, [a("09/2026 (Prévia)", "25", "0")], "10/2026 (Prévia)")).toEqual({ "25": "0" });
+  });
+
+  it("cada centro de custo herda o seu, de meses diferentes se for o caso", () => {
+    const anteriores = [a("08/2026 (Prévia)", "25", "20"), a("09/2026 (Prévia)", "30", "12,5")];
+    expect(herdarPercentuaisFatura({}, anteriores, "10/2026 (Prévia)")).toEqual({ "25": "20", "30": "12,5" });
+  });
+
+  it("ignora valor vazio e competência que não é MM/AAAA, e não altera o objeto original", () => {
+    const proprios = { "99": "1" };
+    const r = herdarPercentuaisFatura(proprios, [a("08/2026 (Prévia)", "25", "  "), a("sem data", "26", "9")], "10/2026 (Prévia)");
+    expect(r).toEqual({ "99": "1" });
+    expect(herdarPercentuaisFatura(proprios, [a("08/2026 (Prévia)", "25", "20")], "10/2026 (Prévia)")).not.toBe(proprios);
+    expect(proprios).toEqual({ "99": "1" });
+  });
+
+  it("competência atual sem data devolve os próprios, sem herdar", () => {
+    expect(herdarPercentuaisFatura({}, [a("09/2026 (Prévia)", "25", "20")], "sem data")).toEqual({});
   });
 });

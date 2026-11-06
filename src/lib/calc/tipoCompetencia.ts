@@ -28,6 +28,14 @@ export function trocarTipoCompetencia(competencia: string, de: TipoCompetencia, 
   return `${base}${SUFIXOS[para]}`;
 }
 
+/** "09/2026 (Prévia)" -> 202609 (ano × 100 + mês), pra ordenar competências no tempo; null se não começar com MM/AAAA. */
+export function ordemCompetencia(competencia: string): number | null {
+  const m = /^\s*(\d{1,2})\/(\d{4})/.exec(competencia);
+  if (!m) return null;
+  const mes = Number(m[1]);
+  return mes >= 1 && mes <= 12 ? Number(m[2]) * 100 + mes : null;
+}
+
 /** true quando a competência é uma Prévia (termina com o sufixo "(Prévia)") — só nela o "% a deduzir do Total fatura" aparece na tela. */
 export function ehPrevia(competencia: string): boolean {
   return competencia.endsWith(SUFIXOS.previa);

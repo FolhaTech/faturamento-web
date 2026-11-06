@@ -93,8 +93,7 @@ export async function carregarEngineLines(competencia: string, usuarioEmail: str
  * for reenviada depois) precisa salvar a fatura da Folha (ver /api/faturamento/salvar), que grava
  * o resultado desta função junto da foto.
  *
- * O Valor a cobrar sai dos valores digitados na própria Prévia (% a deduzir do Centro de Custo, % e adiantamento por colaborador) —
- * os da versão salva dela quando o usuário salvou, senão os atuais.
+ * O Valor a cobrar sai dos valores atuais da própria Prévia (% a deduzir do Centro de Custo, % e adiantamento por colaborador).
  *
  * `competencia` pode ser Folha ou Prévia — só calcula algo quando é uma Folha com Prévia
  * correspondente já enviada; nos demais casos retorna [].
@@ -103,10 +102,12 @@ export async function calcularPreviaTotalFaturaPorCcusto(competencia: string, us
   const competenciaPrevia = trocarTipoCompetencia(competencia, "folha", "previa");
   if (!competenciaPrevia) return [];
 
-  const { lines, campos } = await carregarEngineLines(competenciaPrevia, usuarioEmail);
+  const { lines } = await carregarEngineLines(competenciaPrevia, usuarioEmail);
   if (lines.length === 0) return [];
 
-  const camposPrevia = campos ?? (await listCampos(competenciaPrevia));
+  // Os valores ATUAIS da Prévia (inclusive o % herdado de Prévias anteriores) — os mesmos que a tela da Prévia mostra, mesmo que ela tenha
+  // uma versão salva de antes de o % existir.
+  const camposPrevia = await listCampos(competenciaPrevia);
   const resumosPrevia = aggregateByCcusto(lines, competenciaPrevia);
   return resumosPrevia.map((r) => ({
     ccustoCodigo: r.ccustoCodigo,

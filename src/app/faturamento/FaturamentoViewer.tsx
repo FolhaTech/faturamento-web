@@ -1126,9 +1126,10 @@ function BaseRetencoesInput({
 }
 
 /**
- * Só nas competências de Prévia: % a DEDUZIR do Total fatura deste centro de custo. Vale como o "% a deduzir" de todo colaborador sem percentual
+ * Só nas competências de Prévia: % a DEDUZIR do Total fatura (com encargos) deste centro de custo. Vale como o "% a deduzir" de todo colaborador sem percentual
  * próprio, então o "Valor a cobrar (soma por colaborador)" da Prévia sai igual ao Total fatura menos esse percentual (mais adiantamentos e
- * percentuais próprios, se houver). Esse Valor a cobrar é o que a Folha desconta no complementar. Gravado no banco, igual pra todos os usuários.
+ * percentuais próprios, se houver). Esse Valor a cobrar é o que a Folha desconta no complementar. Gravado no banco, igual pra todos os usuários, e
+ * herdado pelas Prévias seguintes do centro de custo (ver listCampos).
  */
 function PercentualFaturaInput({
   texto,
@@ -1149,7 +1150,7 @@ function PercentualFaturaInput({
     <div className="mt-3 flex flex-col gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2">
       <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-xs font-medium text-emerald-900">
-          % a deduzir do Total fatura (Prévia)
+          % a deduzir do Total fatura (com encargos)
           <span className="flex items-center gap-1">
             <input
               value={texto}
@@ -1169,8 +1170,10 @@ function PercentualFaturaInput({
         )}
       </div>
       <span className="text-xs text-neutral-600">
-        Opcional. Esse percentual sai do Total fatura (de cada colaborador do centro de custo; quem tem &quot;% a deduzir&quot; próprio na tabela usa o dele) e o resultado
-        é o &quot;Valor a cobrar (soma por colaborador)&quot; desta Prévia — é esse valor que a Folha desconta no complementar. Vazio ou 0 não deduz nada.
+        Opcional. Esse percentual sai do Total fatura (com encargos) — de cada colaborador do centro de custo; quem tem &quot;% a deduzir&quot; próprio na tabela usa o
+        dele — e o resultado é o &quot;Valor a cobrar (soma por colaborador)&quot; desta Prévia, que a Folha desconta no complementar. Fica salvo e vale também nas
+        Prévias dos meses seguintes deste centro de custo, até você mudar (meses anteriores não são alterados). Digite 0 pra não deduzir; apagar o campo volta ao
+        % da Prévia anterior.
       </span>
     </div>
   );

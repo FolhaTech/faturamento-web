@@ -1,15 +1,33 @@
-import { CAMPOS, camposVazios, type Campo, type CamposCompartilhados, LIMITES, valoresFaltandoNoServidor } from "../camposCompartilhados";
+import { CAMPOS, camposVazios, herdarPercentuaisFatura, type Campo, type CamposCompartilhados, LIMITES, valoresFaltandoNoServidor } from "../camposCompartilhados";
+import { ehPrevia } from "../calc/tipoCompetencia";
 import { ensureSchema, getDb } from "../db";
 
-/** Todos os valores compartilhados de uma competência (percentuais, adiantamentos e bases das retenções). */
-export async function listCampos(competencia: string): Promise<CamposCompartilhados> {
+/**
+ * Todos os valores compartilhados de uma competência (percentuais, adiantamentos e bases das retenções).
+ * Numa Prévia, o "% a deduzir do Total fatura" que o centro de custo ainda não tem nela vem da Prévia anterior mais recente
+ * (`herdar`, padrão ligado) — assim o % digitado uma vez vale nos meses seguintes até alguém mudar. Quem precisa só do que está
+ * gravado nesta competência (ver completarCampos) passa `herdar = false`.
+ */
+export async function listCampos(competencia: string, herdar = true): Promise<CamposCompartilhados> {
   const resultado = camposVazios();
   if (competencia === "") return resultado;
   await ensureSchema();
-  const rows = await getDb()<{ campo: string; chave: string; valor: string }[]>`
+  const sql = getDb();
+  const rows = await sql<{ campo: string; chave: string; valor: string }[]>`
     SELECT campo, chave, valor FROM faturamento_campos WHERE competencia = ${competencia}
   `;
   for (const r of rows) if (r.campo in resultado) resultado[r.campo as Campo][r.chave] = r.valor;
+
+  if (herdar && ehPrevia(competencia)) {
+    const anteriores = await sql<{ competencia: string; chave: string; valor: string }[]>`
+      SELECT competencia, chave, valor FROM faturamento_campos WHERE campo = 'percentualFatura' AND competencia <> ${competencia}
+    `;
+    resultado.percentualFatura = herdarPercentuaisFatura(
+      resultado.percentualFatura,
+      anteriores.filter((a) => ehPrevia(a.competencia)),
+      competencia,
+    );
+  }
   return resultado;
 }
 
@@ -18,7 +36,7 @@ export async function listCampos(competencia: string): Promise<CamposCompartilha
  * AINDA NÃO existem lá — nunca sobrescreve o que alguém já digitou. Devolve quantos valores entraram.
  */
 export async function completarCampos(competencia: string, campos: CamposCompartilhados, usuarioEmail: string | null): Promise<number> {
-  const atuais = await listCampos(competencia);
+  const atuais = await listCampos(competencia, false);
   let entraram = 0;
   for (const campo of CAMPOS) {
     const faltando = valoresFaltandoNoServidor(campos[campo], atuais[campo]);
