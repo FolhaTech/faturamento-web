@@ -506,7 +506,6 @@ function TotalsCard({
           invalido={percentualFaturaTexto.trim() !== "" && percentualFatura === null}
           totalFatura={resumo.totalFatura}
           valorCobrar={valorCobrar}
-          temDeducoes={deducoes.size > 0}
           onChange={onPercentualFaturaChange}
         />
       )}
@@ -1136,16 +1135,16 @@ function PercentualFaturaInput({
   invalido,
   totalFatura,
   valorCobrar,
-  temDeducoes,
   onChange,
 }: {
   texto: string;
   invalido: boolean;
   totalFatura: number;
+  /** Valor a cobrar (soma por colaborador) desta Prévia depois das deduções — o "valor atual da Prévia". */
   valorCobrar: number;
-  temDeducoes: boolean;
   onChange: (novo: string) => void;
 }) {
+  const deduzido = Math.round((totalFatura - valorCobrar) * 100) / 100;
   return (
     <div className="mt-3 flex flex-col gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2">
       <div className="flex flex-wrap items-center gap-3">
@@ -1163,12 +1162,21 @@ function PercentualFaturaInput({
             <span className="text-neutral-500">%</span>
           </span>
         </label>
-        {temDeducoes && (
-          <span className="text-xs text-emerald-900">
-            Total fatura {fmt(totalFatura)} → Valor a cobrar (soma por colaborador) <strong>{fmt(valorCobrar)}</strong>
-          </span>
-        )}
       </div>
+      <dl className="grid grid-cols-1 gap-x-8 gap-y-1 sm:grid-cols-3">
+        <div className="flex items-baseline justify-between py-0.5">
+          <dt className="text-emerald-900">Total fatura (com encargos)</dt>
+          <dd className="font-mono tabular-nums text-emerald-900">{fmt(totalFatura)}</dd>
+        </div>
+        <div className="flex items-baseline justify-between py-0.5">
+          <dt className="text-neutral-600">Deduzido (% e adiantamentos)</dt>
+          <dd className="font-mono tabular-nums text-neutral-700">{fmt(-deduzido)}</dd>
+        </div>
+        <div className="flex items-baseline justify-between py-0.5">
+          <dt className="font-medium text-emerald-900">Valor atual da Prévia (a cobrar)</dt>
+          <dd className="font-mono font-semibold tabular-nums text-emerald-900">{fmt(valorCobrar)}</dd>
+        </div>
+      </dl>
       <span className="text-xs text-neutral-600">
         Opcional. Esse percentual sai do Total fatura (com encargos) — de cada colaborador do centro de custo; quem tem &quot;% a deduzir&quot; próprio na tabela usa o
         dele — e o resultado é o &quot;Valor a cobrar (soma por colaborador)&quot; desta Prévia, que a Folha desconta no complementar. Fica salvo e vale também nas
