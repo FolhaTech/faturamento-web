@@ -1027,7 +1027,7 @@ function PercentualInput({ texto, invalido, placeholder, onChange }: { texto: st
         onChange={(e) => onChange(e.target.value)}
         inputMode="decimal"
         placeholder={placeholder ?? "—"}
-        title={placeholder ? `Vazio usa o ${placeholder}% do Total fatura (Prévia) — digite 0 pra este colaborador não ter dedução` : undefined}
+        title={placeholder ? `Vazio ou 0 usa o ${placeholder}% do Total fatura (Prévia) — digite outro % pra este colaborador ter um próprio` : undefined}
         aria-label="Percentual a deduzir"
         className={`w-16 rounded-md border px-2 py-1 text-right text-xs text-neutral-900 ${invalido ? "border-red-400 bg-red-50" : "border-neutral-300"}`}
       />

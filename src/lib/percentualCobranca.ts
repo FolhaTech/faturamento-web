@@ -121,13 +121,13 @@ export function juntarDeducoes(percentuais: Map<number, number>, adiantamentos: 
 }
 
 /**
- * Percentual que vale de verdade para UM colaborador: o digitado na linha dele (0% = sem dedução, mesmo havendo um percentual do
- * centro de custo) ou, com a linha vazia ou inválida, o `padrao` do centro de custo (o "% a deduzir do Total fatura" da Prévia).
- * null = sem percentual.
+ * Percentual que vale de verdade para UM colaborador: o digitado na linha dele quando é maior que 0 ou, com a linha vazia, 0 ou
+ * inválida, o `padrao` do centro de custo (o "% a deduzir do Total fatura" da Prévia). Um 0 na linha NÃO tira a dedução do
+ * centro de custo — senão um "0" esquecido na coluna anularia o % do Total fatura sem ninguém ver. null = sem percentual.
  */
 export function percentualEfetivo(textoProprio: string, padrao: number | null): number | null {
   const proprio = lerPercentual(textoProprio);
-  if (proprio !== null) return proprio > 0 ? proprio : null;
+  if (proprio !== null && proprio > 0) return proprio;
   return padrao !== null && padrao > 0 ? padrao : null;
 }
 

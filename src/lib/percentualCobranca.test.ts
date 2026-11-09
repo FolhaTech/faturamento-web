@@ -188,11 +188,12 @@ describe("percentualEfetivo", () => {
     expect(percentualEfetivo("101", 20)).toBe(20);
   });
 
-  it("0% na linha tira a dedução só desse colaborador, mesmo havendo padrão", () => {
-    expect(percentualEfetivo("0", 20)).toBeNull();
+  it("0% na linha NÃO anula o padrão do centro de custo: usa o padrão", () => {
+    expect(percentualEfetivo("0", 20)).toBe(20);
+    expect(percentualEfetivo("0,0%", 20)).toBe(20);
   });
 
-  it("sem padrão (ou padrão 0) e sem valor próprio não há percentual", () => {
+  it("sem padrão (ou padrão 0) e sem valor próprio (ou 0) não há percentual", () => {
     expect(percentualEfetivo("", null)).toBeNull();
     expect(percentualEfetivo("", 0)).toBeNull();
     expect(percentualEfetivo("0", null)).toBeNull();
@@ -216,6 +217,12 @@ describe("deducoesDoCentroDeCusto", () => {
       [2, { percentual: null, adiantamento: 100 }],
       [3, { percentual: null, adiantamento: 1500 }],
     ]);
+  });
+
+  it("0 digitado na coluna de todos os colaboradores não anula o % do centro de custo", () => {
+    const d = deducoesDoCentroDeCusto([1, 2], { "1": "0", "2": "0" }, {}, 50);
+    expect(d.get(1)).toEqual({ percentual: 50, adiantamento: 0 });
+    expect(somarCobranca([{ matricula: 1, nf: 1000 }, { matricula: 2, nf: 2000 }], d).cobrar).toBe(1500);
   });
 
   it("ignora valores de colaboradores que não são do centro de custo", () => {
