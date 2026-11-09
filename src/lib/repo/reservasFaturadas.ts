@@ -136,6 +136,60 @@ export async function alterarReserva(matricula: number, competencia: string, aca
   });
 }
 
+const ROTULO_CREDITO = { ferias: "Férias", terco: "13º" } as const;
+
+/**
+ * Edita os créditos de reserva (linha "Reserva da Folha" da Rescisão — ver RescisaoCard.tsx) lançados numa competência: `valores` traz o
+ * novo valor em reais (positivo) de Férias e/ou 13º. Valor igual ao atual não muda nada; 0 exclui o crédito (ver excluirCreditosReserva);
+ * valor positivo onde não há crédito é erro (aqui só se corrige o que já existe). É uma correção manual, sem as travas do fluxo de
+ * "Aplicar": vale o que a pessoa digitou. Um crédito automático editado segue com o valor digitado enquanto os dias gozados da Folha
+ * não mudarem — se mudarem, o sincronismo recalcula o crédito a partir deles.
+ */
+export async function editarCreditosReserva(matricula: number, competencia: string, valores: Partial<Record<"ferias" | "terco", number>>, usuario: string): Promise<void> {
+  await ensureSchema();
+  await getDb().begin(async (sql) => {
+    const [colaborador] = await sql<{ cod_servico: number | null }[]>`SELECT cod_servico FROM colaboradores WHERE matricula = ${matricula} FOR UPDATE`;
+    if (!colaborador) throw new ErroReserva("Colaborador não encontrado.");
+    const tomador = colaborador.cod_servico;
+    if (tomador === null) throw new ErroReserva("Vincule o colaborador a um tomador antes de editar a reserva.");
+    for (const tipo of ["ferias", "terco"] as const) {
+      const novo = valores[tipo];
+      if (novo === undefined) continue;
+      const centavos = Math.round(novo * 100);
+      const [atual] = await sql<{ id: string; valor: number }[]>`
+        SELECT id, valor FROM reservas_creditos
+        WHERE matricula = ${matricula} AND competencia = ${competencia} AND tipo = ${tipo} AND tomador = ${tomador} AND retirado_em IS NULL
+      `;
+      if (!atual) {
+        if (centavos > 0) throw new ErroReserva(`Não há crédito de ${ROTULO_CREDITO[tipo]} em ${competencia} para editar.`);
+        continue;
+      }
+      if (centavos === atual.valor) continue;
+      if (centavos <= 0) {
+        await sql`UPDATE reservas_creditos SET retirado_em = now(), retirado_por = ${usuario} WHERE id = ${atual.id}`;
+      } else {
+        await sql`UPDATE reservas_creditos SET valor = ${centavos} WHERE id = ${atual.id}`;
+      }
+    }
+  });
+}
+
+/**
+ * Exclui (retira) os créditos de reserva de Férias e 13º lançados numa competência — a linha "Reserva da Folha" da Rescisão. O crédito
+ * automático excluído por uma pessoa não volta sozinho a cada Folha carregada (ver o sincronismo abaixo); dá pra lançar de novo pelo
+ * "Aplicar" da consulta de reservas. Os descontos manuais da mesma competência não são tocados. Erro quando não há crédito ativo.
+ */
+export async function excluirCreditosReserva(matricula: number, competencia: string, usuario: string): Promise<void> {
+  await ensureSchema();
+  const retirados = await getDb()`
+    UPDATE reservas_creditos SET retirado_em = now(), retirado_por = ${usuario}
+    WHERE matricula = ${matricula} AND competencia = ${competencia} AND tipo IN ('ferias', 'terco') AND retirado_em IS NULL
+      AND tomador = (SELECT cod_servico FROM colaboradores WHERE matricula = ${matricula})
+    RETURNING id
+  `;
+  if (retirados.length === 0) throw new ErroReserva(`Não há reserva da Folha ativa em ${competencia} para excluir.`);
+}
+
 export async function sincronizarCreditosFeriasDaFolha(competencia: string, matriculas: number[]) {
   const mes = mesReserva(competencia);
   if (mes === null || !competencia.endsWith(" (Folha)")) return;
@@ -164,6 +218,15 @@ export async function sincronizarCreditosFeriasDaFolha(competencia: string, matr
         WHERE matricula = ${matricula} AND mes = ${mes} AND tipo = 'ferias' AND retirado_em IS NULL
       `;
       if (atual && atual.usuario !== ORIGEM_FERIAS_AUTOMATICAS) return;
+      // Crédito automático que uma pessoa excluiu (ver excluirCreditosReserva) não é recriado a cada Folha carregada: quem retira
+      // por conta própria grava o próprio nome em retirado_por; as retiradas do sincronismo gravam ORIGEM_FERIAS_AUTOMATICAS.
+      const [excluidoPorPessoa] = await tx`
+        SELECT 1 FROM reservas_creditos
+        WHERE matricula = ${matricula} AND mes = ${mes} AND tipo = 'ferias' AND usuario = ${ORIGEM_FERIAS_AUTOMATICAS}
+          AND retirado_em IS NOT NULL AND retirado_por <> ${ORIGEM_FERIAS_AUTOMATICAS}
+        LIMIT 1
+      `;
+      if (excluidoPorPessoa) return;
       const dias = (await listarDiasGozados([matricula], tx)).get(matricula)?.find((d) => d.mes === mes)?.dias ?? 0;
       // O abatimento aplicado dentro do próprio evento da Folha já reduz a fatura.
       const [abatimentoNaLinha] = await tx`

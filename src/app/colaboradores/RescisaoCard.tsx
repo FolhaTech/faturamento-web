@@ -42,6 +42,11 @@ function agruparDescontosPorCompetencia(descontos: DescontoSaldoView[]): Descont
   return [...porCompetencia.values()].sort((a, b) => a.competencia.localeCompare(b.competencia));
 }
 
+/** Identifica uma linha da tabela de descontos: a mesma competência pode ter um desconto manual e uma reserva da Folha. */
+function chaveLinha(d: DescontoPorCompetencia): string {
+  return d.competencia + (d.gerenciado ? ":reserva" : ":manual");
+}
+
 function parseInputCurrency(value: string): number {
   const cleaned = value.replace(/\./g, "").replace(",", ".");
   const n = Number(cleaned);
@@ -90,7 +95,7 @@ export function RescisaoCard({
   const [erro, setErro] = useState<string | null>(null);
 
   function iniciarEdicao(d: DescontoPorCompetencia) {
-    setEditando(d.competencia);
+    setEditando(chaveLinha(d));
     setValoresEdicao({ ferias: inputValue(d.ferias), terco: inputValue(d.terco) });
     setErro(null);
   }
@@ -101,7 +106,8 @@ export function RescisaoCard({
     setErro(null);
   }
 
-  async function salvarEdicao(competencia: string) {
+  async function salvarEdicao(d: DescontoPorCompetencia) {
+    const { competencia, gerenciado } = d;
     const ferias = parseInputCurrency(valoresEdicao.ferias);
     const terco = parseInputCurrency(valoresEdicao.terco);
     if (Number.isNaN(ferias) || Number.isNaN(terco)) {
@@ -115,7 +121,7 @@ export function RescisaoCard({
       const res = await fetch(`/api/colaboradores/${matricula}/desconto-saldo`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ competencia, ferias, terco }),
+        body: JSON.stringify({ competencia, ferias, terco, gerenciado }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -131,8 +137,12 @@ export function RescisaoCard({
     }
   }
 
-  async function excluir(competencia: string) {
-    if (!confirm(`Excluir o desconto lançado em ${competencia}?`)) return;
+  async function excluir(d: DescontoPorCompetencia) {
+    const { competencia, gerenciado } = d;
+    const aviso = gerenciado
+      ? `Excluir a reserva da Folha lançada em ${competencia}?\n\nO crédito sai do cálculo e deixa de abater a fatura dessa competência (dá pra lançar de novo em "Aplicar", na consulta de reservas).`
+      : `Excluir o desconto lançado em ${competencia}?`;
+    if (!confirm(aviso)) return;
 
     setBusy(true);
     setErro(null);
@@ -140,7 +150,7 @@ export function RescisaoCard({
       const res = await fetch(`/api/colaboradores/${matricula}/desconto-saldo`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ competencia }),
+        body: JSON.stringify({ competencia, gerenciado }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -208,12 +218,12 @@ export function RescisaoCard({
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {descontosPorCompetencia.map((d) => {
-                const emEdicao = !d.gerenciado && editando === d.competencia;
+                const emEdicao = editando === chaveLinha(d);
                 return (
-                  <tr key={d.competencia + ":" + d.gerenciado} className="hover:bg-neutral-50">
+                  <tr key={chaveLinha(d)} className="hover:bg-neutral-50">
                     <td className="px-3 py-2">{d.competencia}</td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums">
-                      {emEdicao ? (
+                      {emEdicao && (!d.gerenciado || d.ferias > 0) ? (
                         <input
                           value={valoresEdicao.ferias}
                           onChange={(e) => setValoresEdicao((v) => ({ ...v, ferias: e.target.value }))}
@@ -227,7 +237,7 @@ export function RescisaoCard({
                       )}
                     </td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums">
-                      {emEdicao ? (
+                      {emEdicao && (!d.gerenciado || d.terco > 0) ? (
                         <input
                           value={valoresEdicao.terco}
                           onChange={(e) => setValoresEdicao((v) => ({ ...v, terco: e.target.value }))}
@@ -241,11 +251,11 @@ export function RescisaoCard({
                       )}
                     </td>
                     <td className="px-3 py-2 text-center">
-                      {d.gerenciado ? "Reserva da Folha" : emEdicao ? (
+                      {emEdicao ? (
                         <div className="flex items-center justify-center gap-2">
                           <button
                             type="button"
-                            onClick={() => salvarEdicao(d.competencia)}
+                            onClick={() => salvarEdicao(d)}
                             disabled={busy}
                             className="text-xs font-medium text-emerald-700 hover:text-emerald-800 disabled:opacity-50"
                           >
@@ -262,6 +272,7 @@ export function RescisaoCard({
                         </div>
                       ) : (
                         <div className="flex items-center justify-center gap-2">
+                          {d.gerenciado && <span className="text-xs text-neutral-500">Reserva da Folha</span>}
                           <button
                             type="button"
                             onClick={() => iniciarEdicao(d)}
@@ -272,7 +283,7 @@ export function RescisaoCard({
                           </button>
                           <button
                             type="button"
-                            onClick={() => excluir(d.competencia)}
+                            onClick={() => excluir(d)}
                             disabled={busy}
                             className="text-xs font-medium text-red-700 hover:text-red-800 disabled:opacity-50"
                           >
