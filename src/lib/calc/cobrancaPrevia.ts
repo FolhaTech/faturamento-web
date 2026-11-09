@@ -45,3 +45,23 @@ export function complementarDaPrevia(valorCobrarFolha: number, previa: PreviaPar
   const previaCobrar = previa.valorCobrar ?? previa.totalFatura;
   return { previaCobrar, complementar: Math.round((valorCobrarFolha - previaCobrar) * 100) / 100 };
 }
+
+/**
+ * Linhas da comparação com a Prévia no relatório exportado da Folha (PDF, Word e Excel — mesmos rótulos e mesma conta):
+ * "Valor a cobrar (soma por colaborador) na Prévia" e o complementar. A Folha entra com o Total fatura (com encargos) — ou com o
+ * Valor a cobrar dela (`valorCobrarFolha`) quando tem deduções por colaborador.
+ */
+export function linhasComplementarDaPrevia(
+  totalFatura: number,
+  valorCobrarFolha: number | null,
+  previa: PreviaParaComparar,
+): { previaCobrar: number; rotuloPrevia: string; complementar: number; rotuloComplementar: string } {
+  const { previaCobrar, complementar } = complementarDaPrevia(valorCobrarFolha ?? totalFatura, previa);
+  const baseFolha = valorCobrarFolha === null ? "Total fatura (com encargos)" : "Valor a cobrar da Folha";
+  return {
+    previaCobrar,
+    rotuloPrevia: "Valor a cobrar (soma por colaborador) na Prévia",
+    complementar,
+    rotuloComplementar: `${complementar >= 0 ? "Complementar a cobrar" : "Complementar a creditar"} (${baseFolha} − Valor a cobrar da Prévia)`,
+  };
+}

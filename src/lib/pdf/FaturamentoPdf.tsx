@@ -3,6 +3,7 @@ import { PERCENTUAL_ISS_PADRAO, type RubricaSomada, type CcustoResumo } from "..
 import { formatarDataBr } from "../dataBr";
 import { tipoLabel } from "../export/relatorio";
 import { calcularRetencoesSobreCobrado } from "../calc/retencoesCobranca";
+import { linhasComplementarDaPrevia, type PreviaParaComparar } from "../calc/cobrancaPrevia";
 import { calcularCobranca, formatarPercentualBr, somarCobranca, type DeducaoColaborador } from "../percentualCobranca";
 
 /** Admissão e rescisão de um colaborador (datas AAAA-MM-DD) pro PDF. */
@@ -131,13 +132,17 @@ function SummarySection({
   deducoesCobranca,
   baseRetencoesInformada,
   issPercentual,
+  previa,
 }: {
   resumo: CcustoResumo;
   deducoesCobranca: Map<number, DeducaoColaborador>;
   baseRetencoesInformada: number | null;
   issPercentual: number | null;
+  previa: PreviaParaComparar | null;
 }) {
   const cobranca = somaCobranca(resumo, deducoesCobranca);
+  // Comparação com a Prévia (só no relatório da Folha inteira): Total fatura (com encargos) da Folha − Valor a cobrar da Prévia.
+  const comparacao = previa ? linhasComplementarDaPrevia(resumo.totalFatura, cobranca ? cobranca.cobrar : null, previa) : null;
   // Com deduções por colaborador as retenções incidem sobre o valor a cobrar, e com base informada à mão sobre ela (não sobre o Total fatura); o líquido sai delas.
   // Um percentual de ISS digitado à mão troca os 2% padrão e o ISS resultante entra no total das retenções.
   const sobre = calcularRetencoesSobreCobrado(resumo, deducoesCobranca, baseRetencoesInformada, issPercentual);
@@ -183,6 +188,18 @@ function SummarySection({
                   <Text style={styles.summaryValue}>{fmt(cobranca.adiantamentos)}</Text>
                 </View>
               )}
+            </>
+          )}
+          {comparacao && (
+            <>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>{comparacao.rotuloPrevia}</Text>
+                <Text style={styles.summaryValue}>{fmt(comparacao.previaCobrar)}</Text>
+              </View>
+              <View style={styles.summaryRowStrong}>
+                <Text style={styles.summaryLabelStrong}>{comparacao.rotuloComplementar}</Text>
+                <Text style={styles.summaryValueStrong}>{fmt(comparacao.complementar)}</Text>
+              </View>
             </>
           )}
         </View>
@@ -444,6 +461,7 @@ export function FaturamentoPdf({
   baseRetencoesInformada = null,
   issPercentual = null,
   vinculoPorMatricula = new Map<number, VinculoPdf>(),
+  previa = null,
 }: {
   resumo: CcustoResumo;
   /** "Terceiro (CLT)" ou "Temporário" quando o export foi filtrado por regime (ver /api/faturamento/export) — null pra fatura sem esse filtro (mistura os dois regimes). */
@@ -460,6 +478,8 @@ export function FaturamentoPdf({
   issPercentual?: number | null;
   /** Admissão e rescisão de cada colaborador (planilha mensal Empregados em Excel) — colunas da tabela e, no PDF individual, o cabeçalho. */
   vinculoPorMatricula?: Map<number, VinculoPdf>;
+  /** Prévia do mesmo mês desse centro de custo (só no relatório da Folha inteira, sem filtros) — null = sem a comparação. */
+  previa?: PreviaParaComparar | null;
 }) {
   // PDF individual: um colaborador só no resumo — mostra a admissão e a rescisão dele no cabeçalho.
   const vinculoIndividual = colaboradorLabel && resumo.colaboradores.length === 1 ? (vinculoPorMatricula.get(resumo.colaboradores[0].matricula) ?? null) : null;
@@ -493,7 +513,7 @@ export function FaturamentoPdf({
           </View>
         </View>
 
-        <SummarySection resumo={resumo} deducoesCobranca={deducoesCobranca} baseRetencoesInformada={baseRetencoesInformada} issPercentual={issPercentual} />
+        <SummarySection resumo={resumo} deducoesCobranca={deducoesCobranca} baseRetencoesInformada={baseRetencoesInformada} issPercentual={issPercentual} previa={previa} />
 
         <RubricasSection resumo={resumo} />
         <DescontosSection resumo={resumo} />

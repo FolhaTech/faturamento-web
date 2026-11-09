@@ -109,6 +109,37 @@ describe("montarRelatorio", () => {
     expect(r.resumo.totais.map((l) => l.rotulo)).not.toContain("Valor a cobrar (soma por colaborador)");
   });
 
+  it("Folha com Prévia: traz o Valor a cobrar da Prévia e o complementar = Total fatura (com encargos) − Valor a cobrar da Prévia", () => {
+    const r = montarRelatorio(entrada({ previa: { totalFatura: 1250, valorCobrar: 1000 } }));
+    const total = r.resumo.totais.find((l) => l.rotulo === "Total fatura (com encargos)")!;
+    expect(total.valor).toBe(1250);
+    expect(r.resumo.totais.find((l) => l.rotulo === "Valor a cobrar (soma por colaborador) na Prévia")).toMatchObject({ valor: 1000 });
+    expect(r.resumo.totais.at(-1)).toMatchObject({
+      rotulo: "Complementar a cobrar (Total fatura (com encargos) − Valor a cobrar da Prévia)",
+      valor: 250,
+      destaque: true,
+    });
+  });
+
+  it("sem Prévia (competência que não é Folha, ou relatório filtrado) não há linhas de comparação", () => {
+    const r = montarRelatorio(entrada());
+    expect(r.resumo.totais.map((l) => l.rotulo).join("|")).not.toMatch(/Prévia|Complementar/);
+    expect(montarRelatorio(entrada({ previa: null })).resumo.totais.map((l) => l.rotulo).join("|")).not.toMatch(/Prévia|Complementar/);
+  });
+
+  it("Folha com deduções por colaborador: o complementar parte do Valor a cobrar dela", () => {
+    // Valor a cobrar da Folha = 400 + 625 = 1.025; Prévia cobrou 1.000.
+    const r = montarRelatorio(entrada({ deducoes: new Map([[1, { percentual: 20, adiantamento: 100 }]]), previa: { totalFatura: 1250, valorCobrar: 1000 } }));
+    expect(r.resumo.totais.at(-1)).toMatchObject({ rotulo: "Complementar a cobrar (Valor a cobrar da Folha − Valor a cobrar da Prévia)", valor: 25 });
+  });
+
+  it("Prévia salva antes do Valor a cobrar existir usa o Total fatura dela; Folha menor que a Prévia dá a creditar", () => {
+    expect(montarRelatorio(entrada({ previa: { totalFatura: 1250 } })).resumo.totais.at(-1)).toMatchObject({ valor: 0 });
+    const credito = montarRelatorio(entrada({ previa: { totalFatura: 1500, valorCobrar: 1400 } })).resumo.totais.at(-1)!;
+    expect(credito.rotulo).toBe("Complementar a creditar (Total fatura (com encargos) − Valor a cobrar da Prévia)");
+    expect(credito.valor).toBe(-150);
+  });
+
   it("relatório individual leva o nome no título e a admissão/rescisão (com motivo) no cabeçalho", () => {
     const r = montarRelatorio(
       entrada({

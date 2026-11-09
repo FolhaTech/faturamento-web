@@ -3,7 +3,8 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { NextResponse } from "next/server";
 import { getUsuarioAtual } from "@/lib/auth/sessao";
 import { aggregateByCcusto } from "@/lib/calc/aggregate";
-import { carregarEngineLines } from "@/lib/calc/faturaCompetencia";
+import { carregarEngineLines, resolverPreviaPorCcusto } from "@/lib/calc/faturaCompetencia";
+import { trocarTipoCompetencia } from "@/lib/calc/tipoCompetencia";
 import { filtrarLinesPorColaborador } from "@/lib/calc/filtroColaboradores";
 import { gerarExcel } from "@/lib/export/excel";
 import { montarRelatorio } from "@/lib/export/relatorio";
@@ -50,7 +51,11 @@ export async function GET(request: Request) {
   const usuario = await getUsuarioAtual();
   // Os avisos do cálculo ficam só na tela (painel "aviso(s) durante o cálculo") — não saem no PDF.
   // ?versao=: fatura salva por outra pessoa aberta na tela (ver VersaoDeOutroBanner) — o arquivo sai exatamente dela.
-  const { lines: allLines } = await carregarEngineLines(competencia, usuario?.email ?? null, url.searchParams.get("versao")?.trim() || null);
+  const { lines: allLines, previaTotalFaturaPorCcusto: previaCongelada } = await carregarEngineLines(
+    competencia,
+    usuario?.email ?? null,
+    url.searchParams.get("versao")?.trim() || null,
+  );
   if (allLines.length === 0) {
     return NextResponse.json({ error: `Nenhum lançamento encontrado para a competência ${competencia}.` }, { status: 404 });
   }
@@ -62,6 +67,15 @@ export async function GET(request: Request) {
   if (!resumo) {
     return NextResponse.json({ error: "Centro de custo não encontrado nessa competência." }, { status: 404 });
   }
+
+  // Folha: a Prévia do mesmo mês já foi cobrada — o relatório traz o "Valor a cobrar (soma por colaborador)" dela e o complementar
+  // (Total fatura (com encargos) da Folha − Valor a cobrar da Prévia). É um valor do centro de custo inteiro: com algum filtro de
+  // colaborador (ou no PDF individual) o resumo é só um recorte e a comparação não faz sentido, então não entra.
+  const semFiltros = !codEmp && !descricaoCargo && !descricaoDpto && !fpas && !colaborador;
+  const previa =
+    semFiltros && trocarTipoCompetencia(competencia, "folha", "previa")
+      ? ((await resolverPreviaPorCcusto(competencia, usuario?.email ?? null, previaCongelada)).find((p) => p.ccustoCodigo === resumo.ccustoCodigo) ?? null)
+      : null;
 
   // Rótulo do regime quando o filtro está ativo — aparece no PDF e no nome do arquivo pra não
   // sair um "Faturamento-X.pdf" idêntico ao da folha inteira, só com números diferentes.
@@ -98,10 +112,11 @@ export async function GET(request: Request) {
       vinculoPorMatricula,
       baseRetencoesInformada,
       issPercentual,
+      previa,
     }) as Parameters<typeof renderToBuffer>[0];
     buffer = await renderToBuffer(pdfElement);
   } else {
-    const dados = montarRelatorio({ resumo, regimeLabel, ccPorMatricula, deducoes: deducoesCobranca, vinculoPorMatricula, colaboradorLabel, baseRetencoesInformada, issPercentual });
+    const dados = montarRelatorio({ resumo, regimeLabel, ccPorMatricula, deducoes: deducoesCobranca, vinculoPorMatricula, colaboradorLabel, baseRetencoesInformada, issPercentual, previa });
     buffer = formato.extensao === "docx" ? await gerarWord(dados) : await gerarExcel(dados);
   }
 

@@ -1,6 +1,7 @@
 import { PERCENTUAL_ISS_PADRAO, type CcustoResumo, type RubricaSomada } from "../calc/aggregate";
 import { formatarDataBr } from "../dataBr";
 import { calcularRetencoesSobreCobrado } from "../calc/retencoesCobranca";
+import { linhasComplementarDaPrevia, type PreviaParaComparar } from "../calc/cobrancaPrevia";
 import { calcularCobranca, formatarPercentualBr, somarCobranca, type DeducaoColaborador } from "../percentualCobranca";
 import { normalizaTexto } from "../text";
 
@@ -78,6 +79,11 @@ export interface EntradaRelatorio {
   baseRetencoesInformada?: number | null;
   /** Percentual do ISS (em %) digitado à mão no card do centro de custo — null/ausente = o padrão (2%). Entra no total das retenções e no líquido. */
   issPercentual?: number | null;
+  /**
+   * Prévia do mesmo mês desse centro de custo (só no relatório da Folha inteira, sem filtros): entra o "Valor a cobrar (soma por
+   * colaborador)" dela e o complementar (Total fatura (com encargos) da Folha − Valor a cobrar da Prévia). null/ausente = sem a comparação.
+   */
+  previa?: PreviaParaComparar | null;
   geradoEm?: Date;
 }
 
@@ -274,6 +280,10 @@ export function montarRelatorio(entrada: EntradaRelatorio): RelatorioDados {
       { rotulo: "Deduzido (soma das deduções por colaborador)", valor: cobranca.deduzido },
     );
     if (cobranca.adiantamentos > 0) totais.push({ rotulo: "do qual adiantamentos", valor: cobranca.adiantamentos });
+  }
+  if (entrada.previa) {
+    const c = linhasComplementarDaPrevia(resumo.totalFatura, cobranca ? cobranca.cobrar : null, entrada.previa);
+    totais.push({ rotulo: c.rotuloPrevia, valor: c.previaCobrar }, { rotulo: c.rotuloComplementar, valor: c.complementar, destaque: true });
   }
 
   const r = sobre?.retencoes ?? resumo.retencoes;
