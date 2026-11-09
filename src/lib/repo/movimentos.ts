@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { ORIGEM_FERIAS_AUTOMATICAS } from "../calc/reservasFaturadas";
 import { ensureSchema, getDb } from "../db";
 import type { Movimento, TipoSaldoFerias } from "../types";
 
@@ -200,7 +201,55 @@ export async function replaceMovimentosPorCompetencia(linhas: MovimentoInput[]):
   return linhas.length;
 }
 
-export async function deleteCompetencia(competencia: string): Promise<void> {
+export interface ResultadoExclusaoCompetencia {
+  /** Lançamentos (linhas de Movimentos) apagados. */
+  lancamentos: number;
+  /** Colaboradores distintos que tinham lançamento. */
+  colaboradores: number;
+  /** Provisões mensais de férias/13º gravadas por essa Folha, apagadas. */
+  provisoes: number;
+  /** Faturas salvas ativas da competência, descartadas (ficam na timeline). */
+  faturasDescartadas: number;
+  /** Créditos automáticos de férias da Folha retirados. */
+  creditosRetirados: number;
+}
+
+/**
+ * Exclui TODOS os lançamentos de uma competência (a Folha — ou a Prévia — inteira, de todos os centros de custo), numa transação só:
+ * - devolve ao saldo de férias/13º de cada colaborador o que o upload dessa competência tinha abatido (ver abatimentoFerias.ts) — senão
+ *   os saldos ficariam gastos por uma Folha que não existe mais;
+ * - apaga as provisões de férias/13º que essa Folha gravou (ver provisoesMensais.ts), pra Rescisão não contar um mês que saiu;
+ * - descarta as faturas salvas ativas da competência, como o reenvio do arquivo faz (as entradas ficam na timeline, só marcadas);
+ * - retira os créditos AUTOMÁTICOS de férias dela (retirado_por do próprio sincronismo, então enviar a Folha de novo recria o crédito).
+ * Não apaga o que foi digitado à mão: descontos lançados, créditos aplicados, % a deduzir, adiantamentos, eventos excluídos — voltam a valer
+ * se a Folha for enviada de novo. Sem lançamento na competência não muda nada e devolve lancamentos = 0.
+ */
+export async function excluirCompetencia(competencia: string): Promise<ResultadoExclusaoCompetencia> {
   await ensureSchema();
-  await getDb()`DELETE FROM movimentos WHERE competencia = ${competencia}`;
+  return getDb().begin(async (tx) => {
+    const abatidos = await tx<{ matricula: number; tipo: string; total: number }[]>`
+      SELECT matricula, abatimento_saldo_tipo AS tipo, SUM(abatimento_ferias)::float AS total FROM movimentos
+      WHERE competencia = ${competencia} AND abatimento_ferias != 0 AND abatimento_saldo_tipo IN ('ferias', 'terco')
+      GROUP BY matricula, abatimento_saldo_tipo
+    `;
+    for (const a of abatidos) {
+      if (a.tipo === "ferias") await tx`UPDATE colaboradores SET saldo_ferias = saldo_ferias + ${a.total} WHERE matricula = ${a.matricula}`;
+      else await tx`UPDATE colaboradores SET saldo_um_terco = saldo_um_terco + ${a.total} WHERE matricula = ${a.matricula}`;
+    }
+    const apagados = await tx<{ matricula: number }[]>`DELETE FROM movimentos WHERE competencia = ${competencia} RETURNING matricula`;
+    const provisoes = await tx`DELETE FROM provisoes_mensais WHERE competencia = ${competencia} RETURNING matricula`;
+    const faturas = await tx`UPDATE faturas_salvas SET descartada = true WHERE competencia = ${competencia} AND descartada = false RETURNING id`;
+    const creditos = await tx`
+      UPDATE reservas_creditos SET retirado_em = now(), retirado_por = ${ORIGEM_FERIAS_AUTOMATICAS}
+      WHERE competencia = ${competencia} AND tipo = 'ferias' AND usuario = ${ORIGEM_FERIAS_AUTOMATICAS} AND retirado_em IS NULL
+      RETURNING id
+    `;
+    return {
+      lancamentos: apagados.length,
+      colaboradores: new Set(apagados.map((a) => a.matricula)).size,
+      provisoes: provisoes.length,
+      faturasDescartadas: faturas.length,
+      creditosRetirados: creditos.length,
+    };
+  });
 }

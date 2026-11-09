@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getUsuarioAtual } from "@/lib/auth/sessao";
 import { aplicarAbatimentoFerias } from "@/lib/calc/abatimentoFerias";
 import { calcularLinesAoVivo } from "@/lib/calc/faturaCompetencia";
 import { aplicarTipoNaCompetencia } from "@/lib/calc/tipoCompetencia";
@@ -15,6 +16,7 @@ import { listCompetenciasComFaturaSalva } from "@/lib/repo/faturasSalvas";
 import {
   countMovimentos,
   countMovimentosPorCompetenciaEMatriculas,
+  excluirCompetencia,
   listCompetencias,
   replaceMovimentosPorCompetencia,
 } from "@/lib/repo/movimentos";
@@ -27,6 +29,30 @@ export const runtime = "nodejs";
 // O upload grava os lançamentos e, na Folha, recalcula a competência inteira pra guardar as provisões —
 // leva bem mais que o limite padrão de uma função em arquivos grandes.
 export const maxDuration = 60;
+
+/**
+ * Exclui a Folha (ou a Prévia) de uma competência inteira — { competencia, confirmar: true }. O `confirmar` é a trava do servidor: o
+ * botão da tela só o envia depois do "Confirmar exclusão". Ver excluirCompetencia em repo/movimentos.ts pro que é apagado.
+ */
+export async function DELETE(request: Request) {
+  const usuario = await getUsuarioAtual();
+  if (!usuario) return NextResponse.json({ error: "Sessão expirada — faça login de novo." }, { status: 401 });
+
+  const body = await request.json().catch(() => null);
+  const competencia = typeof body?.competencia === "string" ? body.competencia.trim() : "";
+  if (competencia === "") return NextResponse.json({ error: "Informe a competência." }, { status: 400 });
+  if (body?.confirmar !== true) return NextResponse.json({ error: "Exclusão não confirmada." }, { status: 400 });
+
+  try {
+    const resultado = await excluirCompetencia(competencia);
+    if (resultado.lancamentos === 0) return NextResponse.json({ error: `Não há lançamentos em ${competencia}.` }, { status: 404 });
+    console.info(`[movimentos] ${usuario.email} excluiu ${competencia}: ${JSON.stringify(resultado)}`);
+    return NextResponse.json(resultado);
+  } catch (err) {
+    console.error("[movimentos] erro ao excluir competência:", err);
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Falha ao excluir." }, { status: 500 });
+  }
+}
 
 export async function GET() {
   const [competencias, total] = await Promise.all([listCompetencias(), countMovimentos()]);

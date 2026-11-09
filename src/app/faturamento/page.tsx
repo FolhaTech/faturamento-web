@@ -7,11 +7,12 @@ import { camposVazios, type CamposCompartilhados } from "@/lib/camposCompartilha
 import { listCampos } from "@/lib/repo/camposFaturamento";
 import { listEventosExcluidos } from "@/lib/repo/eventosExcluidos";
 import { listMinhasCompetenciasComFaturaSalva } from "@/lib/repo/faturasSalvas";
-import { listCompetencias } from "@/lib/repo/movimentos";
+import { countMovimentosPorCompetencia, listCompetencias } from "@/lib/repo/movimentos";
 import { getColaboradoresPorMatriculas, listValoresDistintosDados } from "@/lib/repo/colaboradores";
 import { CHAVE_PLR_CELETISTA, getConfigNumero } from "@/lib/repo/configuracoes";
 import { listEncargos } from "@/lib/repo/encargos";
 import { listTomadores } from "@/lib/repo/tomadores";
+import { ExcluirCompetencia } from "./ExcluirCompetencia";
 import { FaturaTimeline } from "./FaturaTimeline";
 import { FaturamentoViewer } from "./FaturamentoViewer";
 import type { TomadorOpcao } from "./RegimeColaborador";
@@ -68,6 +69,9 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
     // Centros de custo já cadastrados — sugestões do campo "Centro de custo deste arquivo" no upload.
     listValoresDistintosDados("descricao_ccusto"),
   ]);
+
+  // Quantos lançamentos a competência mostrada tem — aparece no aviso do "Excluir esta Folha".
+  const qtdLancamentosAtual = competenciaAtual ? ((await countMovimentosPorCompetencia([competenciaAtual])).get(competenciaAtual) ?? 0) : 0;
 
   let resumos: ReturnType<typeof aggregateByCcusto> = [];
   let warnings: string[] = [];
@@ -235,6 +239,8 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
               </Link>
             ))}
           </div>
+
+          {competenciaAtual && qtdLancamentosAtual > 0 && <ExcluirCompetencia key={competenciaAtual} competencia={competenciaAtual} qtdLancamentos={qtdLancamentosAtual} />}
 
           {competenciaAtual && versaoDe && faturaSalvaEm ? (
             <VersaoDeOutroBanner
