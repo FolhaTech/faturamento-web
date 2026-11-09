@@ -27,6 +27,7 @@ import type { CamposCompartilhados } from "@/lib/camposCompartilhados";
 import { useCamposCompartilhados } from "./useCamposCompartilhados";
 import { RegimeColaborador, type TomadorOpcao } from "./RegimeColaborador";
 import { TomadorCentroCusto } from "./TomadorCentroCusto";
+import { UnificarCentrosDeCusto } from "./UnificarCentrosDeCusto";
 import { formatarDataBr } from "@/lib/dataBr";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -290,6 +291,11 @@ export function FaturamentoViewer({
           </a>
         )}
       </div>
+
+      <UnificarCentrosDeCusto
+        centros={resumos.map((r) => ({ codigo: r.ccustoCodigo, nome: r.ccustoNome, qtdColaboradores: r.qtdColaboradores }))}
+        onUnificado={setCcustoCodigo}
+      />
 
       {warnings.length > 0 && <WarningsPanel warnings={warnings} />}
 
