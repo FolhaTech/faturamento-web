@@ -21,7 +21,7 @@ import {
   type DeducaoColaborador,
 } from "@/lib/percentualCobranca";
 import { calcularRetencoesSobreCobrado } from "@/lib/calc/retencoesCobranca";
-import { complementarDaPrevia, valorCobrarDoCcusto, type PreviaParaComparar } from "@/lib/calc/cobrancaPrevia";
+import { acharPreviaDoCcusto, complementarDaPrevia, valorCobrarDoCcusto, type PreviaDoCcusto, type PreviaParaComparar } from "@/lib/calc/cobrancaPrevia";
 import { ehPrevia } from "@/lib/calc/tipoCompetencia";
 import type { CamposCompartilhados } from "@/lib/camposCompartilhados";
 import { useCamposCompartilhados } from "./useCamposCompartilhados";
@@ -84,7 +84,7 @@ export function FaturamentoViewer({
   camposIniciais: { competencia: string; valores: CamposCompartilhados; somenteLocal: boolean };
   tomadoresOpcoes: TomadorOpcao[];
   /** Total fatura (NF) e Valor a cobrar (soma por colaborador) já cobrados na Prévia do mesmo mês, por Centro de Custo — vazio quando a competência atual não é uma Folha ou não tem Prévia correspondente. Ver page.tsx. */
-  previaTotalFaturaPorCcusto: { ccustoCodigo: string; totalFatura: number; valorCobrar?: number }[];
+  previaTotalFaturaPorCcusto: PreviaDoCcusto[];
   /** Eventos excluídos manualmente da fatura, por colaborador (ver eventosExcluidos.ts) — usado só pro painel de restaurar, o cálculo já vem sem eles. */
   eventosExcluidos: { matricula: number; evento: string }[];
 }) {
@@ -177,7 +177,12 @@ export function FaturamentoViewer({
   const ccPorMatricula = useMemo(() => new Map(colaboradoresCc.map((c) => [c.matricula, c.cc])), [colaboradoresCc]);
   const vinculoPorMatricula = useMemo(() => new Map(colaboradoresVinculo.map((v) => [v.matricula, v])), [colaboradoresVinculo]);
   const codServicoPorMatricula = useMemo(() => new Map(colaboradoresTomador.map((c) => [c.matricula, c.codServico])), [colaboradoresTomador]);
-  const previaPorCcusto = useMemo(() => new Map<string, PreviaParaComparar>(previaTotalFaturaPorCcusto.map((p) => [p.ccustoCodigo, p])), [previaTotalFaturaPorCcusto]);
+  // A Prévia do centro de custo mostrado: a do mesmo código ou, quando o centro de custo da Folha tem outro nome (foi unificado ou salvo antes),
+  // a soma do que a Prévia cobrou dos colaboradores dele — ver acharPreviaDoCcusto.
+  const previaDoCcusto = useMemo(
+    () => (resumo ? acharPreviaDoCcusto(resumo.ccustoCodigo, resumo.colaboradores.map((c) => c.matricula), previaTotalFaturaPorCcusto) : null),
+    [resumo, previaTotalFaturaPorCcusto],
+  );
   const eventosExcluidosPorMatricula = useMemo(() => {
     const map = new Map<number, { matricula: number; evento: string }[]>();
     for (const e of eventosExcluidos) {
@@ -282,7 +287,7 @@ export function FaturamentoViewer({
             {compartilhados.estado === "erro" && <span className="text-xs font-medium text-red-700">Não consegui salvar — tentando de novo…</span>}
           </div>
         )}
-        {resumo && previaPorCcusto.has(resumo.ccustoCodigo) && (
+        {resumo && previaDoCcusto !== null && (
           <a
             href={`/api/faturamento/export-comparativo?competencia=${encodeURIComponent(resumo.competencia)}&ccusto=${encodeURIComponent(resumo.ccustoCodigo)}`}
             className="flex items-center gap-2 rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-800"
@@ -318,7 +323,7 @@ export function FaturamentoViewer({
           <TotalsCard
             resumo={resumo}
             regimeLabel={regimeLabel}
-            previaParaComparar={previaPorCcusto.get(resumo.ccustoCodigo) ?? null}
+            previaParaComparar={previaDoCcusto}
             ehPrevia={previa}
             percentualFatura={percentualFatura}
             percentualFaturaTexto={percentualFaturaTexto}

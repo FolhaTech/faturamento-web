@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { camposVazios } from "../camposCompartilhados";
 import { calcularRetencoes, type CcustoResumo, type ColaboradorResumo } from "./aggregate";
-import { complementarDaPrevia, deducoesDoCcusto, percentualFaturaDoCcusto, valorCobrarDoCcusto } from "./cobrancaPrevia";
+import { acharPreviaDoCcusto, complementarDaPrevia, deducoesDoCcusto, percentualFaturaDoCcusto, valorCobrarDoCcusto, type PreviaDoCcusto } from "./cobrancaPrevia";
 
 const colaborador = (matricula: number, nf: number): ColaboradorResumo => ({
   matricula,
@@ -105,5 +105,41 @@ describe("complementarDaPrevia", () => {
 
   it("Folha menor que o cobrado na Prévia dá complementar negativo (a creditar)", () => {
     expect(complementarDaPrevia(4000, { totalFatura: 6000, valorCobrar: 4800 }).complementar).toBe(-800);
+  });
+});
+
+describe("acharPreviaDoCcusto", () => {
+  const previas: PreviaDoCcusto[] = [
+    {
+      ccustoCodigo: "CHAMA LOGISTICO - PREVIA 1026",
+      totalFatura: 6000,
+      valorCobrar: 3000,
+      colaboradores: [
+        { matricula: 1, totalFatura: 1000, valorCobrar: 500 },
+        { matricula: 2, totalFatura: 2000, valorCobrar: 1000 },
+        { matricula: 3, totalFatura: 3000, valorCobrar: 1500 },
+      ],
+    },
+    { ccustoCodigo: "OUTRO", totalFatura: 900, valorCobrar: 900, colaboradores: [{ matricula: 9, totalFatura: 900, valorCobrar: 900 }] },
+  ];
+
+  it("usa a Prévia do mesmo código de centro de custo quando existe", () => {
+    expect(acharPreviaDoCcusto("OUTRO", [1, 2], previas)).toBe(previas[1]);
+  });
+
+  it("centro de custo da Folha com outro nome: soma o que a Prévia cobrou dos colaboradores dele", () => {
+    // Folha unificada em "CHAMA LOGISTICO" (colaboradores 1 e 2 e um novo, 4); a Prévia salva ainda tem o nome antigo.
+    expect(acharPreviaDoCcusto("CHAMA LOGISTICO", [1, 2, 4], previas)).toEqual({ totalFatura: 3000, valorCobrar: 1500 });
+  });
+
+  it("nenhum colaborador do centro de custo está na Prévia: não há o que comparar", () => {
+    expect(acharPreviaDoCcusto("CHAMA LOGISTICO", [7, 8], previas)).toBeNull();
+    expect(acharPreviaDoCcusto("CHAMA LOGISTICO", [1], [{ ccustoCodigo: "X", totalFatura: 10 }])).toBeNull(); // foto antiga, sem detalhe por colaborador
+    expect(acharPreviaDoCcusto("CHAMA LOGISTICO", [1], [])).toBeNull();
+  });
+
+  it("arredonda a soma em centavos", () => {
+    const p: PreviaDoCcusto[] = [{ ccustoCodigo: "A", totalFatura: 0.3, colaboradores: [{ matricula: 1, totalFatura: 0.1, valorCobrar: 0.1 }, { matricula: 2, totalFatura: 0.2, valorCobrar: 0.2 }] }];
+    expect(acharPreviaDoCcusto("B", [1, 2], p)).toEqual({ totalFatura: 0.3, valorCobrar: 0.3 });
   });
 });

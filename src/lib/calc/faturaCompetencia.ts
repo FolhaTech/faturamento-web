@@ -5,23 +5,21 @@ import { getFaturaSalvaDoUsuario, getFaturaSalvaPorId } from "../repo/faturasSal
 import { listEventosExcluidosKeys } from "../repo/eventosExcluidos";
 import { listMovimentosByCompetencia } from "../repo/movimentos";
 import { aggregateByCcusto } from "./aggregate";
-import { deducoesDoCcusto, valorCobrarDoCcusto } from "./cobrancaPrevia";
+import { deducoesDoCcusto, valorCobrarDoCcusto, type PreviaDoCcusto } from "./cobrancaPrevia";
+import { calcularCobranca } from "../percentualCobranca";
 import type { CalculatedLine } from "./engine";
 import { runEngine } from "./engine";
 import { filtrarEventosExcluidos } from "./eventosExcluidos";
 import { trocarTipoCompetencia } from "./tipoCompetencia";
 
 /** Total fatura (NF) e Valor a cobrar de um Centro de Custo na Prévia — usados pra comparar Prévia x Folha (ver calcularPreviaTotalFaturaPorCcusto). */
-export interface PreviaTotalPorCcusto {
-  ccustoCodigo: string;
-  totalFatura: number;
-  /**
-   * "Valor a cobrar (soma por colaborador)" da Prévia: o Total fatura menos o % a deduzir (do Centro de Custo e por colaborador) e os
-   * adiantamentos digitados na Prévia. É ele que a Folha desconta no complementar. Ausente em fotos salvas antes de existir — ver
-   * resolverPreviaPorCcusto.
-   */
-  valorCobrar?: number;
-}
+/**
+ * `valorCobrar` = "Valor a cobrar (soma por colaborador)" da Prévia: o Total fatura menos o % a deduzir (do Centro de Custo e por
+ * colaborador) e os adiantamentos digitados na Prévia. É ele que a Folha desconta no complementar. `colaboradores` = o mesmo por
+ * colaborador, pra casar com a Folha quando o centro de custo mudou de nome (ver acharPreviaDoCcusto). Ausentes em fotos salvas
+ * antes de existirem — ver resolverPreviaPorCcusto.
+ */
+export type PreviaTotalPorCcusto = PreviaDoCcusto;
 
 export interface EngineLinesCarregadas {
   lines: CalculatedLine[];
@@ -109,22 +107,28 @@ export async function calcularPreviaTotalFaturaPorCcusto(competencia: string, us
   // uma versão salva de antes de o % existir.
   const camposPrevia = await listCampos(competenciaPrevia);
   const resumosPrevia = aggregateByCcusto(lines, competenciaPrevia);
-  return resumosPrevia.map((r) => ({
-    ccustoCodigo: r.ccustoCodigo,
-    totalFatura: r.totalFatura,
-    valorCobrar: valorCobrarDoCcusto(r, deducoesDoCcusto(r, camposPrevia, true)),
-  }));
+  return resumosPrevia.map((r) => {
+    const deducoes = deducoesDoCcusto(r, camposPrevia, true);
+    return {
+      ccustoCodigo: r.ccustoCodigo,
+      totalFatura: r.totalFatura,
+      valorCobrar: valorCobrarDoCcusto(r, deducoes),
+      colaboradores: r.colaboradores.map((c) => {
+        const d = deducoes.get(c.matricula);
+        return { matricula: c.matricula, totalFatura: c.nf, valorCobrar: calcularCobranca(c.nf, d?.percentual ?? null, d?.adiantamento ?? 0).cobrar };
+      }),
+    };
+  });
 }
 
 /**
  * Prévia a comparar com a Folha: a foto congelada quando a Folha foi salva, senão o cálculo ao vivo. Foto salva antes de o Valor a
- * cobrar existir não o tem: o Total fatura continua o congelado e só o Valor a cobrar vem do cálculo ao vivo (sem ele o complementar
- * ficaria no cálculo antigo).
+ * cobrar e o detalhe por colaborador existirem não os tem: nesse caso a Prévia inteira vem do cálculo ao vivo (os dois números e o casamento
+ * por colaborador saem do mesmo estado da Prévia); sem Prévia ao vivo (foi apagada), fica a foto como está.
  */
 export async function resolverPreviaPorCcusto(competencia: string, usuarioEmail: string | null, congelada: PreviaTotalPorCcusto[] | null): Promise<PreviaTotalPorCcusto[]> {
-  if (congelada && congelada.every((p) => p.valorCobrar !== undefined)) return congelada;
+  if (congelada && congelada.every((p) => p.valorCobrar !== undefined && p.colaboradores !== undefined)) return congelada;
   const aoVivo = await calcularPreviaTotalFaturaPorCcusto(competencia, usuarioEmail);
-  if (!congelada) return aoVivo;
-  const aoVivoPorCcusto = new Map(aoVivo.map((p) => [p.ccustoCodigo, p]));
-  return congelada.map((p) => (p.valorCobrar !== undefined ? p : { ...p, valorCobrar: aoVivoPorCcusto.get(p.ccustoCodigo)?.valorCobrar ?? p.totalFatura }));
+  if (aoVivo.length > 0 || !congelada) return aoVivo;
+  return congelada;
 }

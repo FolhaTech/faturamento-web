@@ -9,6 +9,46 @@ export interface PreviaParaComparar {
   valorCobrar?: number;
 }
 
+/** O que a Prévia cobrou de UM colaborador: a Nota Fiscal dele e o valor a cobrar depois das deduções (% e adiantamento). */
+export interface PreviaColaborador {
+  matricula: number;
+  totalFatura: number;
+  valorCobrar: number;
+}
+
+/** A Prévia de um Centro de Custo, com o detalhe por colaborador (usado quando o centro de custo da Folha não é o mesmo da Prévia). */
+export interface PreviaDoCcusto extends PreviaParaComparar {
+  ccustoCodigo: string;
+  colaboradores?: PreviaColaborador[];
+}
+
+function centavos(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * A Prévia que a Folha de um centro de custo deve comparar: a do MESMO código de centro de custo ou, quando não há (a Folha foi salva
+ * ou unificada com outro nome de centro de custo, ex.: "CHAMA LOGISTICO - FOLHA 1026" na Folha e "CHAMA LOGISTICO - PREVIA 1026" na
+ * Prévia), a soma do que a Prévia cobrou dos colaboradores desse centro de custo da Folha. null quando nenhum deles está na Prévia.
+ */
+export function acharPreviaDoCcusto(ccustoCodigo: string, matriculas: number[], previas: PreviaDoCcusto[]): PreviaParaComparar | null {
+  const mesmoCodigo = previas.find((p) => p.ccustoCodigo === ccustoCodigo);
+  if (mesmoCodigo) return mesmoCodigo;
+  const doCcusto = new Set(matriculas);
+  let achou = false;
+  let totalFatura = 0;
+  let valorCobrar = 0;
+  for (const p of previas) {
+    for (const c of p.colaboradores ?? []) {
+      if (!doCcusto.has(c.matricula)) continue;
+      achou = true;
+      totalFatura += c.totalFatura;
+      valorCobrar += c.valorCobrar;
+    }
+  }
+  return achou ? { totalFatura: centavos(totalFatura), valorCobrar: centavos(valorCobrar) } : null;
+}
+
 /** "% a deduzir do Total fatura" digitado na Prévia para esse centro de custo — null = vazio ou inválido (0 também deduz nada). */
 export function percentualFaturaDoCcusto(campos: CamposCompartilhados, ccustoCodigo: string): number | null {
   return lerPercentual(campos.percentualFatura[ccustoCodigo] ?? "");

@@ -256,18 +256,33 @@ export async function updateTomadorEmLote(matriculas: number[], tomador: { codig
  * passa a ter o código e o nome de `destino`. É o jeito de unificar centros que nasceram separados por nome digitado no upload
  * (ex.: "CHAMA LOGISTICO - FOLHA 1026" e "CHAMA LOGISTICO - ADIANTAMENTO 102026" -> "CHAMA LOGISTICO"). Vale pra qualquer competência —
  * o centro de custo mora no cadastro do colaborador. Não mexe no Tomador. Retorna quantos colaboradores mudaram.
+ *
+ * Os percentuais digitados por centro de custo (o "% a deduzir do Total fatura" da Prévia e o percentual do ISS) vão junto: em cada
+ * competência, o centro final herda o valor dos centros de origem quando ainda não tem o seu e todos os que tinham digitaram o MESMO valor
+ * (valores diferentes são ambíguos e ficam pra pessoa digitar). A base das retenções é em reais do centro inteiro e não é somada nem copiada.
  */
 export async function unificarCentrosDeCusto(codigosOrigem: string[], destino: { codigo: string; nome: string }): Promise<number> {
   const origens = [...new Set(codigosOrigem.map((c) => c.trim()).filter((c) => c !== ""))];
   if (origens.length === 0) return 0;
   await ensureSchema();
-  const linhas = await getDb()<{ matricula: number }[]>`
-    UPDATE colaboradores
-    SET dados = (dados::jsonb || jsonb_build_object('cod_ccusto', ${destino.codigo}::text, 'descricao_ccusto', ${destino.nome}::text))::text
-    WHERE dados::jsonb ->> 'cod_ccusto' = ANY(${origens}::text[])
-    RETURNING matricula
-  `;
-  return linhas.length;
+  return getDb().begin(async (sql) => {
+    await sql`
+      INSERT INTO faturamento_campos (competencia, campo, chave, valor, atualizado_por, atualizado_em)
+      SELECT competencia, campo, ${destino.codigo}::text, MIN(valor), 'unificar-centros-de-custo', now()
+      FROM faturamento_campos
+      WHERE campo IN ('percentualFatura', 'iss') AND chave = ANY(${origens}::text[])
+      GROUP BY competencia, campo
+      HAVING COUNT(DISTINCT valor) = 1
+      ON CONFLICT (competencia, campo, chave) DO NOTHING
+    `;
+    const linhas = await sql<{ matricula: number }[]>`
+      UPDATE colaboradores
+      SET dados = (dados::jsonb || jsonb_build_object('cod_ccusto', ${destino.codigo}::text, 'descricao_ccusto', ${destino.nome}::text))::text
+      WHERE dados::jsonb ->> 'cod_ccusto' = ANY(${origens}::text[])
+      RETURNING matricula
+    `;
+    return linhas.length;
+  });
 }
 
 export interface VinculoParaAtualizar {
