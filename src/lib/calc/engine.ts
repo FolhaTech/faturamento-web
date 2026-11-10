@@ -724,8 +724,9 @@ function generatePlrCharges(movimentos: Movimento[], ctx: EngineContext): Calcul
 }
 
 /**
- * Para cada competência presente em Movimentos, gera a linha de desconto de saldo de férias/1/3
- * (e de aviso prévio) lançado manualmente na tela do colaborador (ver descontoSaldoFerias.ts), lendo de
+ * Para cada competência presente em Movimentos, gera a linha de PROVISÃO lançada de férias, 13º
+ * e aviso prévio (valor positivo, cobrada do tomador) digitada manualmente na tela do colaborador
+ * (ver descontoSaldoFerias.ts) e as linhas de crédito (desconto, valor negativo) da reserva da Folha, lendo de
  * descontos_saldo em vez de esperar uma linha física em Movimentos — por isso o desconto
  * continua sendo cobrado mesmo depois de reenviar o arquivo daquela competência (que substitui
  * as linhas de Movimentos, mas não mexe em descontos_saldo). Mesma cadeia de cálculo do desconto
@@ -755,7 +756,8 @@ async function generateDescontoSaldoFeriasCharges(movimentos: Movimento[], ctx: 
     if (!tomador || tomador.pendente) continue;
     const ccusto = getCcusto(colaborador);
 
-    const { codigo, evento } = eventoDoDescontoSaldo(d.tipo);
+    // Lançamento da ficha do colaborador (não gerenciado) = PROVISÃO lançada, valor positivo, cobrada; crédito da reserva (gerenciado) = desconto.
+    const { codigo, evento } = eventoDoDescontoSaldo(d.tipo, !d.gerenciado);
 
     const base = d.valor;
     const taxaAdmValor = d.automatico ? 0 : base * tomador.taxaAdm;

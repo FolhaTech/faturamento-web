@@ -131,6 +131,10 @@ CREATE TABLE IF NOT EXISTS descontos_saldo (
 -- aplicado = false guarda o valor mas NÃO o cobra na fatura (botão "Não" do aviso prévio no Faturamento): o "Sim" volta a aplicá-lo sem
 -- precisar digitar de novo. Férias e 13º nunca ficam com false (o "Não" deles apaga a linha — o valor é recalculado das provisões).
 ALTER TABLE descontos_saldo ADD COLUMN IF NOT EXISTS aplicado BOOLEAN NOT NULL DEFAULT true;
+-- Os valores lançados na ficha do colaborador (férias, 13º e aviso prévio) deixaram de ser DESCONTO (crédito, valor negativo) e viraram
+-- PROVISÃO lançada: cobrada na fatura e somada na Rescisão (ver generateDescontoSaldoFeriasCharges em engine.ts) — valor sempre positivo.
+-- Os que já existiam negativos viram positivos (idempotente: depois disso não sobra nenhum negativo).
+UPDATE descontos_saldo SET valor = ABS(valor) WHERE valor < 0;
 
 CREATE TABLE IF NOT EXISTS dias_ferias_informados (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

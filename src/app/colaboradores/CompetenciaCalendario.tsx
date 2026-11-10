@@ -41,7 +41,7 @@ function formatarBase(base: string): string {
  * Calendário nativo do navegador (input type="month") pra navegar entre competências — em vez de
  * uma fileira de botões, um por mês. Meses com Movimentos/Folha salvos (ver `meses`) abrem a
  * competência real (com sufixo Prévia/Folha se houver); meses sem nada navegam mesmo assim pra
- * "MM/YYYY" puro — não trava, porque o Desconto de saldo (ver SaldoFeriasCard.tsx) pode ser
+ * "MM/YYYY" puro — não trava, porque a Provisão de saldo (ver SaldoFeriasCard.tsx) pode ser
  * lançado em qualquer mês, sem depender de Movimentos existirem naquela competência.
  *
  * Um mesmo mês pode ter Prévia e Folha salvas separadas (ver tipoCompetencia.ts) — quando o mês
@@ -109,7 +109,7 @@ export function CompetenciaCalendario({
 
       {competenciaAtual && <span className="text-sm text-neutral-600">Mostrando: {competenciaAtual}</span>}
       {semDadoEm && (
-        <span className="text-sm text-amber-700">Nenhum Movimento/Folha enviado em {formatarBase(semDadoEm)} — dá pra lançar Desconto de saldo aqui mesmo assim.</span>
+        <span className="text-sm text-amber-700">Nenhum Movimento/Folha enviado em {formatarBase(semDadoEm)} — dá pra lançar Provisão de saldo aqui mesmo assim.</span>
       )}
     </div>
   );

@@ -13,6 +13,10 @@ export interface DescontoSaldo {
   matricula: number;
   competencia: string;
   tipo: TipoDescontoSaldo;
+  /**
+   * Lançamento da ficha do colaborador (gerenciado = false): valor POSITIVO = provisão lançada (cobrada na fatura, soma na Rescisão).
+   * Crédito da reserva da Folha (gerenciado = true): valor NEGATIVO = desconto.
+   */
   valor: number;
   /**
    * false = o valor está guardado mas NÃO é cobrado na fatura (botão "Não" do aviso prévio no Faturamento) — o motor de cálculo
@@ -41,17 +45,16 @@ function toDescontoSaldo(row: Row): DescontoSaldo {
 }
 
 /**
- * Soma `valor` (negativo — crédito) ao desconto já lançado pra essa matrícula+competência+tipo
- * — salvar de novo pra mesma competência acumula em vez de substituir, igual ao comportamento
- * antigo de inserir uma linha avulsa nova a cada "Salvar" (ver descontoSaldoFerias.ts).
- * Salvar sempre deixa o lançamento aplicado (cobrado na fatura).
+ * Soma `valor` (positivo — provisão lançada) ao que já foi lançado pra essa matrícula+competencia+tipo — salvar de novo pra mesma
+ * competência acumula em vez de substituir (ver descontoSaldoFerias.ts). Salvar sempre deixa o lançamento aplicado (cobrado na fatura).
+ * O valor é sempre guardado positivo.
  */
 export async function upsertDescontoSaldo(matricula: number, competencia: string, tipo: TipoDescontoSaldo, valor: number): Promise<void> {
   await ensureSchema();
   await getDb()`
     INSERT INTO descontos_saldo (matricula, competencia, tipo, valor)
-    VALUES (${matricula}, ${competencia}, ${tipo}, ${valor})
-    ON CONFLICT (matricula, competencia, tipo) DO UPDATE SET valor = descontos_saldo.valor + excluded.valor, aplicado = true
+    VALUES (${matricula}, ${competencia}, ${tipo}, ${Math.abs(valor)})
+    ON CONFLICT (matricula, competencia, tipo) DO UPDATE SET valor = ABS(descontos_saldo.valor) + excluded.valor, aplicado = true
   `;
 }
 
@@ -71,7 +74,7 @@ export async function definirAvisoPrevioAplicado(matricula: number, competencia:
 }
 
 /**
- * Substitui (não soma) o desconto dessa matrícula+competência+tipo pelo `valorAbsoluto` exato —
+ * Substitui (não soma) a provisão lançada dessa matrícula+competência+tipo pelo `valorAbsoluto` exato —
  * usado pra EDITAR um lançamento já existente (ver RescisaoCard.tsx/DescontoLancadoTable.tsx),
  * ao contrário de upsertDescontoSaldo (que acumula, pro fluxo normal de "Salvar" em
  * SaldoFeriasCard). `valorAbsoluto` <= 0 apaga a linha em vez de gravar 0.
@@ -85,7 +88,7 @@ export async function setDescontoSaldo(matricula: number, competencia: string, t
   }
   await sql`
     INSERT INTO descontos_saldo (matricula, competencia, tipo, valor)
-    VALUES (${matricula}, ${competencia}, ${tipo}, ${-valorAbsoluto})
+    VALUES (${matricula}, ${competencia}, ${tipo}, ${valorAbsoluto})
     ON CONFLICT (matricula, competencia, tipo) DO UPDATE SET valor = excluded.valor, aplicado = true
   `;
 }
@@ -109,10 +112,11 @@ export function listarDescontosEfetivosDoColaborador(matricula: number) {
 async function listarDescontosEfetivos(competencias: string[] | null, matricula: number | null) {
   await ensureSchema();
   const sql = getDb();
-  const rows = await sql<Row[]>`SELECT d.matricula, d.competencia, d.tipo, d.valor, d.aplicado, false AS automatico, false AS gerenciado
+  // Primeiro bloco: provisões lançadas na ficha do colaborador (positivas). Segundo: créditos da reserva da Folha (negativos, descontos).
+  // Os dois são independentes — uma provisão lançada não some quando há um crédito da reserva no mesmo mês e tipo.
+  const rows = await sql<Row[]>`SELECT d.matricula, d.competencia, d.tipo, ABS(d.valor) AS valor, d.aplicado, false AS automatico, false AS gerenciado
     FROM descontos_saldo d WHERE (${competencias}::text[] IS NULL OR d.competencia = ANY(${competencias}::text[]))
       AND (${matricula}::integer IS NULL OR d.matricula = ${matricula}::integer)
-      AND NOT EXISTS (SELECT 1 FROM reservas_creditos r WHERE r.matricula = d.matricula AND left(r.competencia, 7) = left(d.competencia, 7) AND r.tipo = d.tipo AND r.retirado_em IS NULL AND r.tomador = (SELECT c.cod_servico FROM colaboradores c WHERE c.matricula = d.matricula))
     UNION ALL
     SELECT matricula, competencia, tipo, -valor / 100.0::double precision, true, usuario = ${ORIGEM_FERIAS_AUTOMATICAS}, true
     FROM reservas_creditos r WHERE (${competencias}::text[] IS NULL OR competencia = ANY(${competencias}::text[]))

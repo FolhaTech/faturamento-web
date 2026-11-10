@@ -264,27 +264,18 @@ export async function sincronizarCreditosFeriasDaFolha(competencia: string, matr
   }
 }
 
-// O fluxo anterior também pode reduzir férias diretamente nas linhas importadas.
-// Soma os dois caminhos por competência antes de deduplicar Prévia e Folha.
+// O fluxo anterior também pode reduzir férias diretamente nas linhas importadas (abatimento gravado no upload da Folha). Os valores lançados à
+// mão na ficha do colaborador NÃO entram aqui: viraram provisão lançada (ver listarBaseReservas), que soma no cobrado em vez de abater.
 function listarAbatimentosAnteriores(sql: Sql | TransactionSql, matricula: number) {
   return sql<{ competencia: string; valor: number; tipo: ReservaTipo }[]>`
-    SELECT competencia, tipo, SUM(valor)::double precision AS valor FROM (
-      SELECT d.competencia, d.tipo, ABS(d.valor) AS valor FROM descontos_saldo d
-      WHERE d.matricula = ${matricula} AND d.aplicado AND d.valor <> 0
-        AND NOT EXISTS (
-          SELECT 1 FROM reservas_creditos r JOIN colaboradores c ON c.matricula = r.matricula AND c.cod_servico = r.tomador
-          WHERE r.matricula = d.matricula AND r.tipo = d.tipo AND r.retirado_em IS NULL
-            AND left(r.competencia, 7) = left(d.competencia, 7)
-        )
-      UNION ALL
-      SELECT competencia, 'ferias', ABS(abatimento_ferias) FROM movimentos
-      WHERE matricula = ${matricula} AND abatimento_ferias <> 0 AND abatimento_saldo_tipo IN ('ferias', 'terco')
-    ) AS abatimentos GROUP BY competencia, tipo
+    SELECT competencia, 'ferias' AS tipo, SUM(ABS(abatimento_ferias))::double precision AS valor FROM movimentos
+    WHERE matricula = ${matricula} AND abatimento_ferias <> 0 AND abatimento_saldo_tipo IN ('ferias', 'terco')
+    GROUP BY competencia
   `;
 }
 
 async function listarBaseReservas(sql: Sql | TransactionSql, matricula: number) {
-  const [confirmadas, provisoes, avisos] = await Promise.all([
+  const [confirmadas, provisoes, avisos, lancadas] = await Promise.all([
     sql<(CobrancaReserva & { referencia: string })[]>`
       SELECT mes, periodo, ferias, terco, aviso, referencia FROM reservas_faturadas
       WHERE matricula = ${matricula} AND tomador = (SELECT cod_servico FROM colaboradores WHERE matricula = ${matricula})
@@ -307,6 +298,12 @@ async function listarBaseReservas(sql: Sql | TransactionSql, matricula: number) 
         AND item->>'matricula' = ${String(matricula)}
         AND item->>'tomadorCodigo' = (SELECT cod_servico::text FROM colaboradores WHERE matricula = ${matricula})
       GROUP BY f.competencia
+    `,
+    // Provisões lançadas à mão na ficha do colaborador (férias, 13º, aviso prévio): somam no cobrado do mês, como as da Folha.
+    sql<{ competencia: string; tipo: ReservaTipo; valor: number }[]>`
+      SELECT competencia, tipo, SUM(ABS(valor))::double precision AS valor FROM descontos_saldo
+      WHERE matricula = ${matricula} AND aplicado AND valor <> 0
+      GROUP BY competencia, tipo
     `,
   ]);
   const porMes = new Map(confirmadas.map((c) => [c.mes, c]));
@@ -335,6 +332,23 @@ async function listarBaseReservas(sql: Sql | TransactionSql, matricula: number) 
       aviso: a.aviso * 100,
       referencia: base ? base.referencia + " · aviso da fatura salva" : "Aviso da fatura salva",
     });
+  }
+  // Provisão lançada à mão: soma no cobrado do mês e do tipo. Prévia e Folha do mesmo mês não se somam (vale o maior), como nos abatimentos.
+  const lancadoPorMesETipo = new Map<string, { mes: number; tipo: ReservaTipo; centavos: number }>();
+  for (const l of lancadas) {
+    const mes = mesReserva(l.competencia);
+    if (mes === null) continue;
+    const chave = mes + ":" + l.tipo;
+    const centavos = Math.round(l.valor * 100);
+    if ((lancadoPorMesETipo.get(chave)?.centavos ?? 0) < centavos) lancadoPorMesETipo.set(chave, { mes, tipo: l.tipo, centavos });
+  }
+  for (const { mes, tipo, centavos } of lancadoPorMesETipo.values()) {
+    const base = porMes.get(mes);
+    const novo = { ...(base ?? { mes, periodo: PERIODO_FOLHA, ferias: 0, terco: 0, aviso: 0, referencia: "" }) };
+    novo.periodo = novo.periodo || PERIODO_FOLHA;
+    novo[tipo] += centavos;
+    novo.referencia = novo.referencia ? novo.referencia + " · provisão lançada" : "Provisão lançada";
+    porMes.set(mes, novo);
   }
   return [...porMes.values()].sort((a, b) => b.mes - a.mes);
 }

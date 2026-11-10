@@ -57,15 +57,15 @@ export default async function EditarColaboradorPage({
   const competencias = (await listCompetencias()).filter((c) => c.trim() !== "");
   const meses = agruparPorMes(competencias);
   const competenciaAtual = sp.competencia ?? competencias[0] ?? null;
-  // Desconto de saldo (férias/13° salário) e de aviso prévio já lançado NESSA competência específica — cada mês
+  // Provisão (férias/13° salário e aviso prévio) já lançada NESSA competência específica — cada mês
   // mostra o próprio valor, sem se misturar com os outros (ver descontosSaldo.ts).
   const descontoNaCompetencia = competenciaAtual
     ? await getDescontoSaldoPorMatriculaECompetencia(colaborador.matricula, competenciaAtual)
     : { ferias: 0, terco: 0, aviso: 0, avisoAplicado: true };
   // Histórico completo (todos os meses, não só o selecionado) — base pra rescisão.
   const provisoesMensais = await listProvisoesMensaisPorMatricula(colaborador.matricula);
-  // Todo desconto de saldo já lançado (qualquer competência) — abate do acumulado da Rescisão,
-  // já que representa dinheiro já pago ao colaborador (ver RescisaoCard.tsx).
+  // Tudo o que já foi lançado (qualquer competência): as provisões lançadas à mão somam na provisão acumulada da Rescisão e os créditos
+  // da reserva da Folha abatem dela (ver RescisaoCard.tsx).
   const [descontosSaldoTodos, diasGozados] = await Promise.all([
     listarDescontosEfetivosDoColaborador(colaborador.matricula),
     listarDiasGozados([colaborador.matricula]),
@@ -101,7 +101,7 @@ export default async function EditarColaboradorPage({
         saldoFeriasInicial={colaborador.saldoFerias}
         saldoUmTercoInicial={colaborador.saldoUmTerco}
         competenciaAtual={competenciaAtual}
-        descontoFeriasNaCompetencia={Math.abs(descontosSaldoTodos.find((d) => d.competencia === competenciaAtual && d.tipo === "ferias" && d.aplicado)?.valor ?? 0)}
+        descontoFeriasNaCompetencia={Math.abs(descontosSaldoTodos.find((d) => !d.gerenciado && d.competencia === competenciaAtual && d.tipo === "ferias" && d.aplicado)?.valor ?? 0)}
         descontoUmTercoNaCompetencia={descontoNaCompetencia.terco}
         descontoAvisoPrevioNaCompetencia={descontoNaCompetencia.aviso}
         avisoPrevioAplicado={descontoNaCompetencia.avisoAplicado}
@@ -109,8 +109,8 @@ export default async function EditarColaboradorPage({
       <RescisaoCard
         matricula={colaborador.matricula}
         provisoes={provisoesMensais}
-        descontos={descontosSaldoTodos.filter((d): d is DescontoProvisao => d.aplicado && d.tipo !== "aviso")}
-        avisos={descontosSaldoTodos.filter((d) => d.tipo === "aviso").map((d) => ({ competencia: d.competencia, valor: Math.abs(d.valor), aplicado: d.aplicado }))}
+        lancadas={descontosSaldoTodos.filter((d) => !d.gerenciado).map((d) => ({ competencia: d.competencia, tipo: d.tipo, valor: Math.abs(d.valor), aplicado: d.aplicado }))}
+        descontos={descontosSaldoTodos.filter((d): d is DescontoProvisao => d.gerenciado === true && d.aplicado && d.tipo !== "aviso")}
         competenciaAtual={competenciaAtual}
       />
       <ColaboradorForm matricula={colaborador.matricula} initialDados={colaborador.dados} />

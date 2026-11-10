@@ -7,7 +7,7 @@ import { createInformativa } from "../repo/informativas";
 import { replaceMovimentosPorCompetencia } from "../repo/movimentos";
 import { upsertTomador, upsertTomadoresPendentes } from "../repo/tomadores";
 import type { Movimento } from "../types";
-import { lancarDescontoSaldoFerias } from "./descontoSaldoFerias";
+import { lancarProvisaoSaldo } from "./descontoSaldoFerias";
 import { buildContext, calculateLine, runEngine } from "./engine";
 
 const TOMADOR_TERCEIRO = { codigo: 1, nome: "GENTER SERVICOS EM RECURSOS HUMANOS LTDA", fpas: 515 as const, taxaAdm: 0.1 };
@@ -656,7 +656,7 @@ describe("runEngine — benefícios de Informativas com recorrência fixa", () =
   });
 });
 
-describe("runEngine — desconto de saldo de férias/1/3 sobrevive a reenvio de Movimentos", () => {
+describe("runEngine — provisão lançada de férias/13º/aviso prévio sobrevive a reenvio de Movimentos", () => {
   const movimentosCompetencia: Movimento[] = [
     {
       id: "1",
@@ -672,73 +672,73 @@ describe("runEngine — desconto de saldo de férias/1/3 sobrevive a reenvio de 
     },
   ];
 
-  it("continua descontando a fatura mesmo depois do arquivo daquela competência ser reenviado (substituído)", async () => {
+  it("continua cobrando a provisão lançada na fatura mesmo depois do arquivo daquela competência ser reenviado (substituído)", async () => {
     await replaceMovimentosPorCompetencia(movimentosCompetencia);
 
-    const lancou = await lancarDescontoSaldoFerias({ matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" }, "08/2026", 200, 0);
+    const lancou = await lancarProvisaoSaldo({ matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" }, "08/2026", 200, 0);
     expect(lancou).toBe(true);
 
     // Reenvio: replaceMovimentosPorCompetencia apaga e recria as linhas de Movimentos da competência,
-    // igual a subir o arquivo de novo — não deve apagar o desconto lançado acima.
+    // igual a subir o arquivo de novo — não deve apagar a provisão lançada acima.
     await replaceMovimentosPorCompetencia(movimentosCompetencia);
 
     const { lines } = await runEngine(movimentosCompetencia);
-    const desconto = lines.find((l) => l.evento === "DESCONTO SALDO DE FÉRIAS");
+    const desconto = lines.find((l) => l.evento === "PROVISÃO LANÇADA DE FÉRIAS");
     expect(desconto).toBeDefined();
     expect(desconto!.trilha).toBe("encargos");
-    expect(desconto!.base).toBe(-200);
-    expect(desconto!.fatura).toBeCloseTo(-200 * 1.1, 6); // taxaAdm 10% do Tomador Terceiro
-    expect(desconto!.nf).toBeLessThan(0);
+    expect(desconto!.base).toBe(200);
+    expect(desconto!.fatura).toBeCloseTo(200 * 1.1, 6); // taxaAdm 10% do Tomador Terceiro
+    expect(desconto!.nf).toBeGreaterThan(0); // provisão: cobra, não credita
   });
 
   it("salvar de novo pra mesma competência acumula (soma) em vez de substituir", async () => {
     await replaceMovimentosPorCompetencia(movimentosCompetencia);
-    await lancarDescontoSaldoFerias({ matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" }, "08/2026", 100, 0);
-    await lancarDescontoSaldoFerias({ matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" }, "08/2026", 50, 0);
+    await lancarProvisaoSaldo({ matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" }, "08/2026", 100, 0);
+    await lancarProvisaoSaldo({ matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" }, "08/2026", 50, 0);
 
     const { lines } = await runEngine(movimentosCompetencia);
-    const desconto = lines.find((l) => l.evento === "DESCONTO SALDO DE FÉRIAS");
-    expect(desconto!.base).toBe(-150);
+    const desconto = lines.find((l) => l.evento === "PROVISÃO LANÇADA DE FÉRIAS");
+    expect(desconto!.base).toBe(150);
   });
 
-  it("aviso prévio preenchido desconta a fatura do colaborador, em linha própria, e também sobrevive ao reenvio", async () => {
+  it("aviso prévio preenchido é cobrado na fatura do colaborador como provisão, em linha própria, e também sobrevive ao reenvio", async () => {
     await replaceMovimentosPorCompetencia(movimentosCompetencia);
 
-    const lancou = await lancarDescontoSaldoFerias({ matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" }, "08/2026", 0, 0, 300);
+    const lancou = await lancarProvisaoSaldo({ matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" }, "08/2026", 0, 0, 300);
     expect(lancou).toBe(true);
     await replaceMovimentosPorCompetencia(movimentosCompetencia);
 
     const { lines } = await runEngine(movimentosCompetencia);
-    const aviso = lines.find((l) => l.evento === "DESCONTO AVISO PRÉVIO");
+    const aviso = lines.find((l) => l.evento === "PROVISÃO LANÇADA DE AVISO PRÉVIO");
     expect(aviso).toBeDefined();
     expect(aviso!.codigo).toBe(900003);
     expect(aviso!.trilha).toBe("encargos");
-    expect(aviso!.base).toBe(-300);
-    expect(aviso!.fatura).toBeCloseTo(-300 * 1.1, 6); // mesma cadeia do desconto de saldo: taxa adm do Tomador e gross-up
-    expect(aviso!.nf).toBeLessThan(0);
-    // Reduz de verdade a NF do colaborador: o total dele fica menor que a linha do salário sozinha.
+    expect(aviso!.base).toBe(300);
+    expect(aviso!.fatura).toBeCloseTo(300 * 1.1, 6); // mesma cadeia da provisão de férias: taxa adm do Tomador e gross-up
+    expect(aviso!.nf).toBeGreaterThan(0);
+    // Soma de verdade na NF do colaborador: o total dele fica maior que a linha do salário sozinha.
     const doColaborador = lines.filter((l) => l.matricula === 90103392);
     const salario = doColaborador.find((l) => l.evento === "DIAS NORMAIS")!;
     expect(doColaborador.reduce((s, l) => s + l.nf, 0)).toBeCloseTo(salario.nf + aviso!.nf, 6);
-    expect(salario.nf + aviso!.nf).toBeLessThan(salario.nf);
-    // Não cria desconto de férias nem de 13º.
-    expect(lines.some((l) => l.evento === "DESCONTO SALDO DE FÉRIAS" || l.evento === "DESCONTO SALDO DE 13° SALÁRIO")).toBe(false);
+    expect(salario.nf + aviso!.nf).toBeGreaterThan(salario.nf);
+    // Não cria provisão lançada de férias nem de 13º.
+    expect(lines.some((l) => l.evento === "PROVISÃO LANÇADA DE FÉRIAS" || l.evento === "PROVISÃO LANÇADA DE 13° SALÁRIO")).toBe(false);
   });
 
   it("Sim/Não do aviso prévio no Faturamento: Não tira da fatura guardando o valor; Sim volta a cobrar", async () => {
     await replaceMovimentosPorCompetencia(movimentosCompetencia);
     const colaborador = { matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" };
-    await lancarDescontoSaldoFerias(colaborador, "08/2026", 0, 0, 300);
+    await lancarProvisaoSaldo(colaborador, "08/2026", 0, 0, 300);
 
     // Não: fora da fatura, mas o valor continua guardado (devolvido ao ligar de novo).
     expect(await definirAvisoPrevioAplicado(colaborador.matricula, "08/2026", false)).toBe(300);
     let { lines } = await runEngine(movimentosCompetencia);
-    expect(lines.some((l) => l.evento === "DESCONTO AVISO PRÉVIO")).toBe(false);
+    expect(lines.some((l) => l.evento === "PROVISÃO LANÇADA DE AVISO PRÉVIO")).toBe(false);
 
-    // Sim: volta a descontar o mesmo valor, sem digitar de novo.
+    // Sim: volta a cobrar o mesmo valor, sem digitar de novo.
     expect(await definirAvisoPrevioAplicado(colaborador.matricula, "08/2026", true)).toBe(300);
     ({ lines } = await runEngine(movimentosCompetencia));
-    expect(lines.find((l) => l.evento === "DESCONTO AVISO PRÉVIO")!.base).toBe(-300);
+    expect(lines.find((l) => l.evento === "PROVISÃO LANÇADA DE AVISO PRÉVIO")!.base).toBe(300);
 
     // Sem aviso prévio lançado na competência não há o que ligar: devolve 0.
     expect(await definirAvisoPrevioAplicado(colaborador.matricula, "09/2026", true)).toBe(0);
@@ -747,19 +747,19 @@ describe("runEngine — desconto de saldo de férias/1/3 sobrevive a reenvio de 
   it("lançar de novo o aviso prévio (que estava em Não) volta a aplicá-lo e acumula o valor", async () => {
     await replaceMovimentosPorCompetencia(movimentosCompetencia);
     const colaborador = { matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" };
-    await lancarDescontoSaldoFerias(colaborador, "08/2026", 0, 0, 100);
+    await lancarProvisaoSaldo(colaborador, "08/2026", 0, 0, 100);
     await definirAvisoPrevioAplicado(colaborador.matricula, "08/2026", false);
-    await lancarDescontoSaldoFerias(colaborador, "08/2026", 0, 0, 50);
+    await lancarProvisaoSaldo(colaborador, "08/2026", 0, 0, 50);
 
     const { lines } = await runEngine(movimentosCompetencia);
-    expect(lines.find((l) => l.evento === "DESCONTO AVISO PRÉVIO")!.base).toBe(-150);
+    expect(lines.find((l) => l.evento === "PROVISÃO LANÇADA DE AVISO PRÉVIO")!.base).toBe(150);
   });
 
   it("aviso prévio 0 ou vazio não lança nada", async () => {
     await replaceMovimentosPorCompetencia(movimentosCompetencia);
-    const lancou = await lancarDescontoSaldoFerias({ matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" }, "08/2026", 0, 0, 0);
+    const lancou = await lancarProvisaoSaldo({ matricula: 90103392, nome: "ADALBERTO ALVARES JUNIOR" }, "08/2026", 0, 0, 0);
     expect(lancou).toBe(false);
     const { lines } = await runEngine(movimentosCompetencia);
-    expect(lines.some((l) => l.evento === "DESCONTO AVISO PRÉVIO")).toBe(false);
+    expect(lines.some((l) => l.evento === "PROVISÃO LANÇADA DE AVISO PRÉVIO")).toBe(false);
   });
 });

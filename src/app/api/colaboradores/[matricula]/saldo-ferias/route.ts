@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { lancarDescontoSaldoFerias } from "@/lib/calc/descontoSaldoFerias";
+import { lancarProvisaoSaldo } from "@/lib/calc/descontoSaldoFerias";
 import { getColaborador, updateSaldosFerias } from "@/lib/repo/colaboradores";
 
 export const runtime = "nodejs";
@@ -9,7 +9,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ matr
   const body = await request.json();
   const saldoFerias = Number(body?.saldoFerias);
   const saldoUmTerco = Number(body?.saldoUmTerco);
-  // Aviso prévio a descontar da fatura NESTA competência (campo opcional: vazio/ausente = 0). Não tem saldo pendente: sem competência não dá pra lançar.
+  // Provisão de aviso prévio a cobrar na fatura NESTA competência (campo opcional: vazio/ausente = 0). Não tem saldo pendente: sem competência não dá pra lançar.
   const avisoPrevio = body?.avisoPrevio == null || body.avisoPrevio === "" ? 0 : Number(body.avisoPrevio);
   // Competência escolhida na tela (ver seletor em page.tsx) — pra qual o valor digitado vai ser
   // lançado. null quando ainda não há nenhuma competência com Movimentos enviados.
@@ -31,10 +31,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ matr
   try {
     const podeLancar = competencia !== null && (saldoFerias > 0 || saldoUmTerco > 0 || avisoPrevio > 0);
     if (podeLancar) {
-      await lancarDescontoSaldoFerias(colaboradorAtual, competencia, saldoFerias, saldoUmTerco, avisoPrevio);
+      await lancarProvisaoSaldo(colaboradorAtual, competencia, saldoFerias, saldoUmTerco, avisoPrevio);
     }
 
-    // Lançou como desconto: o campo zera sozinho. Sem competência escolhida (ou nada a lançar):
+    // Lançou como provisão: o campo zera sozinho. Sem competência escolhida (ou nada a lançar):
     // só guarda o valor digitado, fica pendente até escolher uma competência e salvar de novo.
     const colaborador = podeLancar
       ? await updateSaldosFerias(Number(matricula), 0, 0)

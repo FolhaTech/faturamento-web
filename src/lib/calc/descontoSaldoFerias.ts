@@ -5,21 +5,40 @@ import type { Colaborador } from "../types";
 /** Códigos reservados (fora da faixa usada pelo sistema de folha real) para os descontos sintéticos de saldo. */
 export const CODIGO_DESCONTO_SALDO_FERIAS = 900001;
 export const CODIGO_DESCONTO_SALDO_UM_TERCO = 900002;
-/** Desconto de aviso prévio do colaborador (ver tela do colaborador) — lançado na fatura igual aos de saldo, mas sem saldo nem provisão. */
+/** Aviso prévio lançado na ficha do colaborador (provisão lançada) — mesma cadeia dos de férias e 13º, sem saldo pendente. */
 export const CODIGO_DESCONTO_AVISO_PREVIO = 900003;
 export const EVENTO_DESCONTO_AVISO_PREVIO = "DESCONTO AVISO PRÉVIO";
 
-/** Código e nome do evento sintético de cada tipo de desconto lançado na tela do colaborador (férias, 13º ou aviso prévio) — ver generateDescontoSaldoFeriasCharges em engine.ts. */
-export function eventoDoDescontoSaldo(tipo: TipoDescontoSaldo): { codigo: number; evento: string } {
-  if (tipo === "ferias") return { codigo: CODIGO_DESCONTO_SALDO_FERIAS, evento: "DESCONTO SALDO DE FÉRIAS" };
-  if (tipo === "aviso") return { codigo: CODIGO_DESCONTO_AVISO_PREVIO, evento: EVENTO_DESCONTO_AVISO_PREVIO };
-  return { codigo: CODIGO_DESCONTO_SALDO_UM_TERCO, evento: "DESCONTO SALDO DE 13° SALÁRIO" };
+/** Nome do evento do que é lançado à mão na ficha do colaborador: PROVISÃO (cobrada na fatura e somada na Rescisão). */
+export const EVENTO_PROVISAO_LANCADA: Record<TipoDescontoSaldo, string> = {
+  ferias: "PROVISÃO LANÇADA DE FÉRIAS",
+  terco: "PROVISÃO LANÇADA DE 13° SALÁRIO",
+  aviso: "PROVISÃO LANÇADA DE AVISO PRÉVIO",
+};
+
+/** Nome do evento do crédito que a reserva da Folha lança (desconto, valor negativo) — "Aplicar" na consulta de reservas. */
+const EVENTO_DESCONTO: Record<TipoDescontoSaldo, string> = {
+  ferias: "DESCONTO SALDO DE FÉRIAS",
+  terco: "DESCONTO SALDO DE 13° SALÁRIO",
+  aviso: EVENTO_DESCONTO_AVISO_PREVIO,
+};
+
+/**
+ * Código e nome do evento sintético de cada tipo lançado na tela do colaborador (férias, 13º ou aviso prévio) — ver
+ * generateDescontoSaldoFeriasCharges em engine.ts. `provisao` = true é o que se digita na ficha (provisão lançada, positiva); false é o
+ * crédito da reserva da Folha (desconto).
+ */
+export function eventoDoDescontoSaldo(tipo: TipoDescontoSaldo, provisao = false): { codigo: number; evento: string } {
+  const evento = (provisao ? EVENTO_PROVISAO_LANCADA : EVENTO_DESCONTO)[tipo];
+  if (tipo === "ferias") return { codigo: CODIGO_DESCONTO_SALDO_FERIAS, evento };
+  if (tipo === "aviso") return { codigo: CODIGO_DESCONTO_AVISO_PREVIO, evento };
+  return { codigo: CODIGO_DESCONTO_SALDO_UM_TERCO, evento };
 }
 
-async function garantirEncargosDeDesconto(): Promise<void> {
+async function garantirEncargosDeProvisao(): Promise<void> {
   await upsertEncargo({
     codigo: CODIGO_DESCONTO_SALDO_FERIAS,
-    evento: "DESCONTO SALDO DE FÉRIAS",
+    evento: EVENTO_PROVISAO_LANCADA.ferias,
     tipo: "P",
     inss655: 0,
     inss515: 0,
@@ -30,7 +49,7 @@ async function garantirEncargosDeDesconto(): Promise<void> {
   });
   await upsertEncargo({
     codigo: CODIGO_DESCONTO_SALDO_UM_TERCO,
-    evento: "DESCONTO SALDO DE 13° SALÁRIO",
+    evento: EVENTO_PROVISAO_LANCADA.terco,
     tipo: "P",
     inss655: 0,
     inss515: 0,
@@ -41,7 +60,7 @@ async function garantirEncargosDeDesconto(): Promise<void> {
   });
   await upsertEncargo({
     codigo: CODIGO_DESCONTO_AVISO_PREVIO,
-    evento: EVENTO_DESCONTO_AVISO_PREVIO,
+    evento: EVENTO_PROVISAO_LANCADA.aviso,
     tipo: "P",
     inss655: 0,
     inss515: 0,
@@ -53,22 +72,18 @@ async function garantirEncargosDeDesconto(): Promise<void> {
 }
 
 /**
- * Lança saldoFerias/saldoUmTerco (quando > 0) como desconto NA COMPETÊNCIA ESCOLHIDA (não mais
- * "a mais recente do sistema" — quem chama decide, ver tela do colaborador) — valor NEGATIVO
- * gravado em descontos_saldo (matrícula + competência + tipo), reduzindo de verdade o total
- * cobrado do tomador daquele colaborador NAQUELE MÊS específico (ver
- * generateDescontoSaldoFeriasCharges em engine.ts: gerado a cada cálculo a partir dessa tabela,
- * não de uma linha em Movimentos — por isso sobrevive a reenvios do arquivo daquela competência).
- * Cada competência acumula seu próprio valor lançado, sem replicar pras outras (ver
- * upsertDescontoSaldo).
+ * Lança saldoFerias/saldoUmTerco (quando > 0) como PROVISÃO NA COMPETÊNCIA ESCOLHIDA (quem chama decide, ver tela do colaborador) — valor
+ * POSITIVO gravado em descontos_saldo (matrícula + competência + tipo): entra na fatura daquele colaborador NAQUELE MÊS como cobrança
+ * (ver generateDescontoSaldoFeriasCharges em engine.ts: gerado a cada cálculo a partir dessa tabela, não de uma linha em Movimentos —
+ * por isso sobrevive a reenvios do arquivo daquela competência) e soma na "Rescisão — provisão acumulada", mês a mês. Cada competência
+ * acumula seu próprio valor lançado, sem replicar pras outras (ver upsertDescontoSaldo).
  *
- * O aviso prévio (`avisoPrevio`, quando > 0) é lançado do mesmo jeito, como um terceiro desconto
- * ("aviso" em descontos_saldo): o valor digitado reduz a NF do colaborador naquela competência.
+ * O aviso prévio (`avisoPrevio`, quando > 0) é lançado do mesmo jeito, como uma terceira provisão ("aviso" em descontos_saldo).
  *
  * Não mexe nos saldos em si — quem chama decide se/como zera depois (ver route.ts). Retorna true
  * se algo foi lançado (false quando os valores são todos <= 0, nada a fazer).
  */
-export async function lancarDescontoSaldoFerias(
+export async function lancarProvisaoSaldo(
   colaborador: Pick<Colaborador, "matricula" | "nome">,
   competenciaAlvo: string,
   saldoFerias: number,
@@ -77,16 +92,16 @@ export async function lancarDescontoSaldoFerias(
 ): Promise<boolean> {
   if (saldoFerias <= 0 && saldoUmTerco <= 0 && avisoPrevio <= 0) return false;
 
-  await garantirEncargosDeDesconto();
+  await garantirEncargosDeProvisao();
 
   if (saldoFerias > 0) {
-    await upsertDescontoSaldo(colaborador.matricula, competenciaAlvo, "ferias", -saldoFerias);
+    await upsertDescontoSaldo(colaborador.matricula, competenciaAlvo, "ferias", saldoFerias);
   }
   if (saldoUmTerco > 0) {
-    await upsertDescontoSaldo(colaborador.matricula, competenciaAlvo, "terco", -saldoUmTerco);
+    await upsertDescontoSaldo(colaborador.matricula, competenciaAlvo, "terco", saldoUmTerco);
   }
   if (avisoPrevio > 0) {
-    await upsertDescontoSaldo(colaborador.matricula, competenciaAlvo, "aviso", -avisoPrevio);
+    await upsertDescontoSaldo(colaborador.matricula, competenciaAlvo, "aviso", avisoPrevio);
   }
 
   return true;

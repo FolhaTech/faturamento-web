@@ -24,7 +24,7 @@ export function SaldoFeriasCard({
   saldoUmTercoInicial: number;
   /** Competência escolhida no seletor da tela (ver page.tsx) — pra qual o valor digitado abaixo vai ser lançado. null quando ainda não há nenhuma competência com Movimentos enviados. */
   competenciaAtual: string | null;
-  /** Quanto já foi lançado como desconto NESSA competência específica (ver descontosSaldo.ts) — cada mês com o próprio valor, sem se misturar com os outros. */
+  /** Quanto já foi lançado como provisão NESSA competência específica (ver descontosSaldo.ts) — cada mês com o próprio valor, sem se misturar com os outros. */
   descontoFeriasNaCompetencia: number;
   descontoUmTercoNaCompetencia: number;
   descontoAvisoPrevioNaCompetencia: number;
@@ -64,12 +64,12 @@ export function SaldoFeriasCard({
       setValorUmTerco(String(data.colaborador.saldoUmTerco));
       setValorAviso("0");
       if (data.competenciaAplicada) {
-        setInfo(`Lançado como desconto na fatura da competência ${data.competenciaAplicada}. Os campos voltaram a 0.`);
+        setInfo(`Lançado como provisão na fatura da competência ${data.competenciaAplicada} e somado na Rescisão — provisão acumulada. Os campos voltaram a 0.`);
       } else if (saldoFerias > 0 || saldoUmTerco > 0) {
         setInfo(
           competenciaAtual
             ? "Valor salvo como saldo pendente (nada lançado ainda)."
-            : "Valor salvo, mas ainda não há nenhuma competência com Movimentos enviados — nada foi lançado como desconto ainda.",
+            : "Valor salvo, mas ainda não há nenhuma competência com Movimentos enviados — nada foi lançado como provisão ainda.",
         );
       } else {
         setInfo("Saldos atualizados.");
@@ -95,7 +95,7 @@ export function SaldoFeriasCard({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return setError(data.error ?? "Falha ao remover.");
-      setInfo(`Aviso prévio removido da fatura da competência ${competenciaAtual}.`);
+      setInfo(`Provisão de aviso prévio removida da fatura da competência ${competenciaAtual}.`);
       router.refresh();
     } catch {
       setError("Falha de rede ao remover.");
@@ -108,18 +108,19 @@ export function SaldoFeriasCard({
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 bg-white p-4">
-      <h2 className="text-sm font-semibold text-neutral-900">Desconto de saldo de férias, de 13° salário e de aviso prévio</h2>
+      <h2 className="text-sm font-semibold text-neutral-900">Provisão de saldo de férias, de 13° salário e de aviso prévio</h2>
       <p className="text-xs text-neutral-500">
-        Preencha um valor e salve para lançá-lo como desconto (crédito) na fatura da competência
-        {competenciaAtual ? ` ${competenciaAtual}` : " selecionada acima"} — reduz o total cobrado do tomador
-        exatamente pelo valor digitado (com taxa administrativa e gross-up de NF proporcionais). O campo volta a 0
-        sozinho depois de aplicado, mas o desconto fica salvo naquela competência pra sempre — mesmo reenviando o
-        arquivo de Movimentos dela depois, ele continua sendo cobrado. Cada competência guarda o próprio valor, sem
-        replicar pras outras — troque de competência no seletor acima pra lançar em outro mês.
+        Preencha um valor e salve para lançá-lo como provisão na fatura da competência
+        {competenciaAtual ? ` ${competenciaAtual}` : " selecionada acima"} — soma no total cobrado do tomador
+        pelo valor digitado (com taxa administrativa e gross-up de NF proporcionais) e entra na Rescisão — provisão
+        acumulada, somando mês a mês. O campo volta a 0 sozinho depois de lançado, mas a provisão fica salva naquela
+        competência pra sempre — mesmo reenviando o arquivo de Movimentos dela depois, ela continua sendo cobrada. Cada
+        competência guarda o próprio valor, sem replicar pras outras — troque de competência no seletor acima pra
+        lançar em outro mês.
       </p>
       {competenciaAtual && temDescontoNaCompetencia && (
         <p className="text-xs font-medium text-emerald-700">
-          Já lançado em {competenciaAtual}:{" "}
+          Provisão já lançada em {competenciaAtual}:{" "}
           {[
             descontoFeriasNaCompetencia > 0 ? `férias ${fmt(descontoFeriasNaCompetencia)}` : null,
             descontoUmTercoNaCompetencia > 0 ? `13° salário ${fmt(descontoUmTercoNaCompetencia)}` : null,
@@ -131,14 +132,14 @@ export function SaldoFeriasCard({
             .join(" · ")}
           {descontoAvisoPrevioNaCompetencia > 0 && (
             <button type="button" onClick={removerAviso} disabled={busy} className="ml-2 underline hover:text-emerald-900 disabled:opacity-50">
-              remover aviso prévio
+              remover provisão de aviso prévio
             </button>
           )}
         </p>
       )}
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-xs font-medium text-neutral-500">
-          Desconto de férias
+          Provisão de férias
           <input
             value={valorFerias}
             onChange={(e) => setValorFerias(e.target.value)}
@@ -146,7 +147,7 @@ export function SaldoFeriasCard({
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-neutral-500">
-          Desconto de 13° salário
+          Provisão de 13° salário
           <input
             value={valorUmTerco}
             onChange={(e) => setValorUmTerco(e.target.value)}
@@ -154,7 +155,7 @@ export function SaldoFeriasCard({
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-neutral-500">
-          Desconto de aviso prévio
+          Provisão de aviso prévio
           <input
             value={valorAviso}
             onChange={(e) => setValorAviso(e.target.value)}
