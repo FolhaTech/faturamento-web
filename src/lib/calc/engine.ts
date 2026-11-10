@@ -404,7 +404,11 @@ export interface RunResult {
   warnings: string[];
 }
 
-export async function runEngine(movimentos: Movimento[]): Promise<RunResult> {
+/**
+ * `competenciasAlvo`: competências que devem ser calculadas mesmo sem nenhum lançamento de movimento — um saldo/provisão de férias
+ * ou 13º lançado pra um mês ainda sem arquivo importado precisa aparecer na fatura desse mês (ver generateDescontoSaldoFeriasCharges).
+ */
+export async function runEngine(movimentos: Movimento[], competenciasAlvo: string[] = []): Promise<RunResult> {
   const ctx = await buildContext(movimentos);
   const lines: CalculatedLine[] = [];
   const warnings: string[] = [];
@@ -418,7 +422,7 @@ export async function runEngine(movimentos: Movimento[]): Promise<RunResult> {
   lines.push(...(await generateComplementaryCharges(movimentos, ctx, warnings)));
   lines.push(...generateProvisaoRescisaoCharges(movimentos, ctx));
   lines.push(...generatePlrCharges(movimentos, ctx));
-  lines.push(...(await generateDescontoSaldoFeriasCharges(movimentos, ctx)));
+  lines.push(...(await generateDescontoSaldoFeriasCharges(movimentos, ctx, competenciasAlvo)));
 
   return { lines, warnings };
 }
@@ -738,8 +742,8 @@ function generatePlrCharges(movimentos: Movimento[], ctx: EngineContext): Calcul
  * cobre quem tem lançamento nesse upload — porque o desconto vale pra matrícula independente
  * dela aparecer de novo no arquivo reenviado.
  */
-async function generateDescontoSaldoFeriasCharges(movimentos: Movimento[], ctx: EngineContext): Promise<CalculatedLine[]> {
-  const competencias = [...new Set(movimentos.map((m) => m.competencia))];
+async function generateDescontoSaldoFeriasCharges(movimentos: Movimento[], ctx: EngineContext, competenciasAlvo: string[] = []): Promise<CalculatedLine[]> {
+  const competencias = [...new Set([...movimentos.map((m) => m.competencia), ...competenciasAlvo])];
   if (competencias.length === 0) return [];
 
   // Aviso prévio em "Não" no Faturamento (aplicado = false) fica guardado, mas não é cobrado.

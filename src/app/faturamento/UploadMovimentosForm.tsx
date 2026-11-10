@@ -22,6 +22,8 @@ export function UploadMovimentosForm({ ccustosCadastrados }: { ccustosCadastrado
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [tipo, setTipo] = useState<"previa" | "folha">("previa");
+  // Competência escolhida pelo usuário (mês/ano, "AAAA-MM") — o sistema grava os lançamentos nesse mês, não no que vem na planilha.
+  const [competenciaMes, setCompetenciaMes] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -44,6 +46,7 @@ export function UploadMovimentosForm({ ccustosCadastrados }: { ccustosCadastrado
     const formData = new FormData();
     formData.append("file", file);
     formData.append("tipo", tipo);
+    formData.append("competencia", competenciaMes);
     if (confirmar) formData.append("confirmar", "true");
     if (ccusto.trim() !== "") formData.append("ccusto", ccusto.trim());
 
@@ -121,6 +124,10 @@ export function UploadMovimentosForm({ ccustosCadastrados }: { ccustosCadastrado
     const form = event.currentTarget;
     const input = form.elements.namedItem("file") as HTMLInputElement;
     const file = input.files?.[0];
+    if (!competenciaMes) {
+      setError("Escolha a competência (mês/ano) antes de importar.");
+      return;
+    }
     if (!file) {
       setError("Selecione um arquivo .xlsx ou .xls.");
       return;
@@ -150,6 +157,25 @@ export function UploadMovimentosForm({ ccustosCadastrados }: { ccustosCadastrado
             Folha (fechamento)
           </label>
         </div>
+      </div>
+
+      <div>
+        <label htmlFor="competencia" className="block text-sm font-medium text-neutral-700 mb-1">
+          Competência (mês/ano)
+        </label>
+        <p className="mb-2 text-xs text-neutral-500">
+          Escolha o mês a que este arquivo se refere. O sistema salva os lançamentos nessa competência, independente do
+          que vier na planilha.
+        </p>
+        <input
+          id="competencia"
+          name="competencia"
+          type="month"
+          required
+          value={competenciaMes}
+          onChange={(e) => setCompetenciaMes(e.target.value)}
+          className="block rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-900"
+        />
       </div>
 
       <div>
@@ -346,7 +372,7 @@ export function UploadMovimentosForm({ ccustosCadastrados }: { ccustosCadastrado
 
       <button
         type="submit"
-        disabled={busy}
+        disabled={busy || !competenciaMes}
         className="self-start rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
       >
         {busy ? "Importando…" : "Importar e calcular"}

@@ -88,7 +88,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Nenhum lançamento reconhecido no arquivo." }, { status: 422 });
   }
 
-  linhas = linhas.map((l) => ({ ...l, competencia: aplicarTipoNaCompetencia(l.competencia, tipo) }));
+  // A competência é escolhida pelo usuário no upload (calendário Mês/Ano) — vale pra TODAS as linhas do arquivo,
+  // no lugar do que vinha na planilha. Formato do campo: "AAAA-MM" (input type="month"), gravado como "MM/AAAA".
+  const competenciaRaw = formData.get("competencia");
+  const mesEscolhido = typeof competenciaRaw === "string" ? /^(\d{4})-(\d{2})$/.exec(competenciaRaw.trim()) : null;
+  if (!mesEscolhido || Number(mesEscolhido[2]) < 1 || Number(mesEscolhido[2]) > 12) {
+    return NextResponse.json({ error: "Escolha a competência (mês/ano) antes de enviar o arquivo." }, { status: 400 });
+  }
+  const competenciaEscolhida = `${mesEscolhido[2]}/${mesEscolhido[1]}`;
+
+  linhas = linhas.map((l) => ({ ...l, competencia: aplicarTipoNaCompetencia(competenciaEscolhida, tipo) }));
 
   const competencias = [...new Set(linhas.map((l) => l.competencia))];
   const matriculasPorCompetencia = new Map<string, Set<number>>();
