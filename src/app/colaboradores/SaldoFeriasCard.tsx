@@ -113,7 +113,7 @@ export function SaldoFeriasCard({
         Preencha um valor e salve para lançá-lo como provisão na fatura da competência
         {competenciaAtual ? ` ${competenciaAtual}` : " selecionada acima"} — soma no total cobrado do tomador
         pelo valor digitado (com taxa administrativa e gross-up de NF proporcionais) e entra na Rescisão — provisão
-        acumulada, somando mês a mês. O campo volta a 0 sozinho depois de lançado, mas a provisão fica salva naquela
+        acumulada, no lugar da provisão que a Folha gerou naquele mês, e os meses vão somando. O campo volta a 0 sozinho depois de lançado, mas a provisão fica salva naquela
         competência pra sempre — mesmo reenviando o arquivo de Movimentos dela depois, ela continua sendo cobrada. Cada
         competência guarda o próprio valor, sem replicar pras outras — troque de competência no seletor acima pra
         lançar em outro mês.

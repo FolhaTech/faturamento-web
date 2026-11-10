@@ -94,6 +94,15 @@ function montarLinhas(provisoes: ProvisaoMensalView[], lancadas: ProvisaoLancada
   return [...mapa.values()].sort((a, b) => (mesReserva(b.competencia) ?? -1) - (mesReserva(a.competencia) ?? -1) || b.competencia.localeCompare(a.competencia));
 }
 
+/**
+ * Provisão do mês e do tipo que vale na Rescisão: o valor LANÇADO à mão no lugar do que a Folha gerou naquele mês (quando há lançamento > 0);
+ * sem lançamento, o da Folha.
+ */
+function provisaoEfetiva(l: LinhaRescisao, tipo: "ferias" | "terco"): number {
+  const lancado = l.lancada?.[tipo] ?? 0;
+  return lancado > 0 ? lancado : tipo === "ferias" ? l.provFerias : l.prov13;
+}
+
 /** O grupo pode editar esse tipo? A reserva da Folha só edita o que já tem; a provisão lançada à mão edita os dois (férias e 13º). */
 function podeEditarTipo(g: GrupoPorCompetencia, tipo: "ferias" | "terco"): boolean {
   return g.gerenciado ? g[tipo] > 0 : true;
@@ -112,10 +121,10 @@ function inputValue(n: number): string {
 const CLASSE_INPUT = "w-28 rounded-md border border-neutral-300 px-2 py-1 text-right text-sm font-mono";
 
 /**
- * Rescisão — provisão acumulada: uma tabela com, mês a mês, a provisão de férias e de 13º (a que a Folha gerou — salva automaticamente a
- * cada Folha enviada, ver provisoesMensais.ts — somada à que foi LANÇADA à mão no card acima) e a provisão de aviso prévio lançada. Os
- * valores vão somando mês a mês. O que a reserva da Folha creditou ("Reserva da Folha") abate nas colunas (−) Desc. O líquido no rodapé é
- * a provisão (Folha + lançada) menos esses créditos.
+ * Rescisão — provisão acumulada: uma tabela com, mês a mês, a provisão de férias e de 13º — a que foi LANÇADA à mão no card acima quando
+ * existe (ela substitui a que a Folha gerou naquele mês, salva automaticamente a cada Folha enviada, ver provisoesMensais.ts) ou, sem
+ * lançamento, a da Folha — e a provisão de aviso prévio lançada. Os meses vão somando. O que a reserva da Folha creditou ("Reserva da
+ * Folha") abate nas colunas (−) Desc. O líquido no rodapé é a provisão acumulada menos esses créditos.
  */
 export function RescisaoCard({
   matricula,
@@ -135,29 +144,22 @@ export function RescisaoCard({
 }) {
   const router = useRouter();
   const linhas = montarLinhas(provisoes, lancadas, descontos);
-  const totalProvFerias = provisoes.reduce((soma, p) => soma + p.provFerias, 0);
-  const totalProv13 = provisoes.reduce((soma, p) => soma + p.prov13, 0);
   const lancadasAplicadas = lancadas.filter((v) => v.aplicado);
-  const totalLancadoFerias = lancadasAplicadas.filter((v) => v.tipo === "ferias").reduce((soma, v) => soma + Math.abs(v.valor), 0);
-  const totalLancado13 = lancadasAplicadas.filter((v) => v.tipo === "terco").reduce((soma, v) => soma + Math.abs(v.valor), 0);
   const totalAviso = lancadasAplicadas.filter((v) => v.tipo === "aviso").reduce((soma, v) => soma + Math.abs(v.valor), 0);
   const totalDescontoFerias = descontos.filter((d) => d.tipo === "ferias").reduce((soma, d) => soma + Math.abs(d.valor), 0);
   const totalDesconto13 = descontos.filter((d) => d.tipo === "terco").reduce((soma, d) => soma + Math.abs(d.valor), 0);
-  const acumuladoFerias = totalProvFerias + totalLancadoFerias;
-  const acumulado13 = totalProv13 + totalLancado13;
+  // Provisão acumulada = soma, mês a mês, do valor que vale no mês (o lançado no lugar do da Folha).
+  const acumuladoFerias = linhas.reduce((soma, l) => soma + provisaoEfetiva(l, "ferias"), 0);
+  const acumulado13 = linhas.reduce((soma, l) => soma + provisaoEfetiva(l, "terco"), 0);
   const liquidoFerias = acumuladoFerias - totalDescontoFerias;
   const liquido13 = acumulado13 - totalDesconto13;
   const mesAtual = competenciaAtual ? mesReserva(competenciaAtual) : null;
   const feriasAbatidasNoMes = mesAtual !== null && descontos.some((d) => d.tipo === "ferias" && d.automatico && mesReserva(d.competencia) === mesAtual);
   const saldoAposFerias = feriasAbatidasNoMes
-    ? (provisoes.reduce((total, p) => {
-        const mes = mesReserva(p.competencia);
-        return mes !== null && mes < mesAtual ? total + Math.round(p.provFerias * 100) : total;
-      }, 0) +
-        lancadasAplicadas.reduce((total, v) => {
-          const mes = mesReserva(v.competencia);
-          return v.tipo === "ferias" && mes !== null && mes < mesAtual ? total + Math.round(Math.abs(v.valor) * 100) : total;
-        }, 0) -
+    ? (linhas.reduce((total, l) => {
+        const mes = mesReserva(l.competencia);
+        return mes !== null && mes < mesAtual ? total + Math.round(provisaoEfetiva(l, "ferias") * 100) : total;
+      }, 0) -
         descontos.reduce((total, d) => {
           const mes = mesReserva(d.competencia);
           return d.tipo === "ferias" && mes !== null && mes <= mesAtual ? total + Math.round(Math.abs(d.valor) * 100) : total;
@@ -288,7 +290,7 @@ export function RescisaoCard({
     );
   }
 
-  /** Célula de Prov. Férias / Prov. 13º: o total do mês (Folha + lançado), com o lançado destacado embaixo; em edição, o campo do valor lançado. */
+  /** Célula de Prov. Férias / Prov. 13º: o valor que vale no mês (o lançado no lugar do da Folha); em edição, o campo do valor lançado. */
   function celulaProvisao(l: LinhaRescisao, tipo: "ferias" | "terco") {
     const daFolha = tipo === "ferias" ? l.provFerias : l.prov13;
     const lancado = l.lancada?.[tipo] ?? 0;
@@ -302,15 +304,15 @@ export function RescisaoCard({
             aria-label={tipo === "ferias" ? "Provisão lançada de férias" : "Provisão lançada de 13º salário"}
             className={CLASSE_INPUT}
           />
-          {l.temProvisao && <span className="text-[10px] font-sans text-neutral-400">+ Folha {fmt(daFolha)}</span>}
+          {l.temProvisao && <span className="text-[10px] font-sans text-neutral-400">substitui a Folha ({fmt(daFolha)})</span>}
         </div>
       );
     }
     if (!l.temProvisao && lancado === 0) return "—";
     return (
-      <div className="flex flex-col items-end">
-        <span>{fmt(daFolha + lancado)}</span>
-        {lancado > 0 && <span className="text-[10px] font-sans text-emerald-700">inclui {fmt(lancado)} lançado</span>}
+      <div className="flex flex-col items-end" title={lancado > 0 && l.temProvisao ? `Valor lançado: substitui a provisão da Folha deste mês (${fmt(daFolha)})` : undefined}>
+        <span>{fmt(lancado > 0 ? lancado : daFolha)}</span>
+        {lancado > 0 && <span className="text-[10px] font-sans text-emerald-700">lançado</span>}
       </div>
     );
   }
@@ -336,9 +338,10 @@ export function RescisaoCard({
     <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 bg-white p-4">
       <h2 className="text-sm font-semibold text-neutral-900">Rescisão — provisão acumulada</h2>
       <p className="text-xs text-neutral-500">
-        Provisão de férias e de 13º mês a mês: a que a Folha (fechamento) gerou pra esse colaborador, somada à que foi lançada no card acima (que
-        também é cobrada na fatura do mês), e a provisão de aviso prévio lançada. Os valores vão somando mês a mês. O que a reserva da Folha
-        creditou aparece em (−) Desc. e abate do acumulado. O líquido no rodapé é a base pra calcular uma rescisão.
+        Provisão de férias e de 13º mês a mês: a que foi lançada no card acima (que também é cobrada na fatura do mês) vale no lugar da que a Folha
+        (fechamento) gerou pra esse colaborador naquele mês; sem lançamento, vale a da Folha. A provisão de aviso prévio lançada tem coluna
+        própria. Os meses vão somando. O que a reserva da Folha creditou aparece em (−) Desc. e abate do acumulado. O líquido no rodapé é a
+        base pra calcular uma rescisão.
       </p>
       {linhas.length === 0 ? (
         <p className="text-sm text-neutral-400">Nenhuma Folha enviada ainda pra esse colaborador.</p>

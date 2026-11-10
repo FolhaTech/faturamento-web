@@ -299,7 +299,7 @@ async function listarBaseReservas(sql: Sql | TransactionSql, matricula: number) 
         AND item->>'tomadorCodigo' = (SELECT cod_servico::text FROM colaboradores WHERE matricula = ${matricula})
       GROUP BY f.competencia
     `,
-    // Provisões lançadas à mão na ficha do colaborador (férias, 13º, aviso prévio): somam no cobrado do mês, como as da Folha.
+    // Provisões lançadas à mão na ficha do colaborador (férias, 13º, aviso prévio): valem no lugar das da Folha no mês (ver abaixo).
     sql<{ competencia: string; tipo: ReservaTipo; valor: number }[]>`
       SELECT competencia, tipo, SUM(ABS(valor))::double precision AS valor FROM descontos_saldo
       WHERE matricula = ${matricula} AND aplicado AND valor <> 0
@@ -333,7 +333,8 @@ async function listarBaseReservas(sql: Sql | TransactionSql, matricula: number) 
       referencia: base ? base.referencia + " · aviso da fatura salva" : "Aviso da fatura salva",
     });
   }
-  // Provisão lançada à mão: soma no cobrado do mês e do tipo. Prévia e Folha do mesmo mês não se somam (vale o maior), como nos abatimentos.
+  // Provisão lançada à mão: vale NO LUGAR do que a Folha provisionou naquele mês e tipo (mesma regra da Rescisão — provisão acumulada).
+  // Prévia e Folha do mesmo mês não se somam (vale o maior), como nos abatimentos.
   const lancadoPorMesETipo = new Map<string, { mes: number; tipo: ReservaTipo; centavos: number }>();
   for (const l of lancadas) {
     const mes = mesReserva(l.competencia);
@@ -346,7 +347,7 @@ async function listarBaseReservas(sql: Sql | TransactionSql, matricula: number) 
     const base = porMes.get(mes);
     const novo = { ...(base ?? { mes, periodo: PERIODO_FOLHA, ferias: 0, terco: 0, aviso: 0, referencia: "" }) };
     novo.periodo = novo.periodo || PERIODO_FOLHA;
-    novo[tipo] += centavos;
+    novo[tipo] = centavos;
     novo.referencia = novo.referencia ? novo.referencia + " · provisão lançada" : "Provisão lançada";
     porMes.set(mes, novo);
   }
