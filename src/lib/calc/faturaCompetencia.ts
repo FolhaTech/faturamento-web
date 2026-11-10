@@ -16,7 +16,7 @@ import { trocarTipoCompetencia } from "./tipoCompetencia";
 /**
  * `valorCobrar` = "Valor a cobrar (soma por colaborador)" da Prévia: o Total fatura menos o % a deduzir (do Centro de Custo e por
  * colaborador) e os adiantamentos digitados na Prévia. É ele que a Folha desconta no complementar. `colaboradores` = o mesmo por
- * colaborador, pra casar com a Folha quando o centro de custo mudou de nome (ver acharPreviaDoCcusto). Ausentes em fotos salvas
+ * colaborador, pra casar com a Folha quando o centro de custo mudou de nome (ver casarPreviasComCcustos). Ausentes em fotos salvas
  * antes de existirem — ver resolverPreviaPorCcusto.
  */
 export type PreviaTotalPorCcusto = PreviaDoCcusto;

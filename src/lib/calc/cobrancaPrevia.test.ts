@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { camposVazios } from "../camposCompartilhados";
 import { calcularRetencoes, type CcustoResumo, type ColaboradorResumo } from "./aggregate";
-import { acharPreviaDoCcusto, complementarDaPrevia, deducoesDoCcusto, percentualFaturaDoCcusto, valorCobrarDoCcusto, type PreviaDoCcusto } from "./cobrancaPrevia";
+import { casarPreviasComCcustos, complementarDaPrevia, deducoesDoCcusto, percentualFaturaDoCcusto, valorCobrarDoCcusto, type PreviaDoCcusto } from "./cobrancaPrevia";
 
 const colaborador = (matricula: number, nf: number): ColaboradorResumo => ({
   matricula,
@@ -108,38 +108,95 @@ describe("complementarDaPrevia", () => {
   });
 });
 
-describe("acharPreviaDoCcusto", () => {
-  const previas: PreviaDoCcusto[] = [
-    {
-      ccustoCodigo: "CHAMA LOGISTICO - PREVIA 1026",
-      totalFatura: 6000,
-      valorCobrar: 3000,
-      colaboradores: [
-        { matricula: 1, totalFatura: 1000, valorCobrar: 500 },
-        { matricula: 2, totalFatura: 2000, valorCobrar: 1000 },
-        { matricula: 3, totalFatura: 3000, valorCobrar: 1500 },
-      ],
-    },
-    { ccustoCodigo: "OUTRO", totalFatura: 900, valorCobrar: 900, colaboradores: [{ matricula: 9, totalFatura: 900, valorCobrar: 900 }] },
-  ];
+describe("casarPreviasComCcustos", () => {
+  const previaChama: PreviaDoCcusto = {
+    ccustoCodigo: "CHAMA LOGISTICO - PREVIA 1026",
+    totalFatura: 6000,
+    valorCobrar: 3000,
+    colaboradores: [
+      { matricula: 1, totalFatura: 1000, valorCobrar: 500 },
+      { matricula: 2, totalFatura: 2000, valorCobrar: 1000 },
+      { matricula: 3, totalFatura: 3000, valorCobrar: 1500 },
+    ],
+  };
+  const outra: PreviaDoCcusto = { ccustoCodigo: "OUTRO", totalFatura: 900, valorCobrar: 900, colaboradores: [{ matricula: 9, totalFatura: 900, valorCobrar: 900 }] };
 
   it("usa a Prévia do mesmo código de centro de custo quando existe", () => {
-    expect(acharPreviaDoCcusto("OUTRO", [1, 2], previas)).toBe(previas[1]);
+    const r = casarPreviasComCcustos([{ ccustoCodigo: "OUTRO", matriculas: [9] }], [previaChama, outra]);
+    expect(r.get("OUTRO")).toBe(outra);
   });
 
-  it("centro de custo da Folha com outro nome: soma o que a Prévia cobrou dos colaboradores dele", () => {
-    // Folha unificada em "CHAMA LOGISTICO" (colaboradores 1 e 2 e um novo, 4); a Prévia salva ainda tem o nome antigo.
-    expect(acharPreviaDoCcusto("CHAMA LOGISTICO", [1, 2, 4], previas)).toEqual({ totalFatura: 3000, valorCobrar: 1500 });
+  it("Prévia de outro nome cujos colaboradores estão num centro da Folha que já casou por código soma nele", () => {
+    // Folha "OUTRO" casa por código com a Prévia "OUTRO" (colaborador 9) e também tem os colaboradores 1 e 2, que a Prévia cobrou noutro centro.
+    const r = casarPreviasComCcustos([{ ccustoCodigo: "OUTRO", matriculas: [9, 1, 2] }], [previaChama, outra]);
+    expect(r.get("OUTRO")).toEqual({ totalFatura: 6900, valorCobrar: 3900 });
   });
 
-  it("nenhum colaborador do centro de custo está na Prévia: não há o que comparar", () => {
-    expect(acharPreviaDoCcusto("CHAMA LOGISTICO", [7, 8], previas)).toBeNull();
-    expect(acharPreviaDoCcusto("CHAMA LOGISTICO", [1], [{ ccustoCodigo: "X", totalFatura: 10 }])).toBeNull(); // foto antiga, sem detalhe por colaborador
-    expect(acharPreviaDoCcusto("CHAMA LOGISTICO", [1], [])).toBeNull();
+  it("centro de custo da Folha com outro nome recebe a Prévia INTEIRA, inclusive colaboradores que estão noutro centro da Folha", () => {
+    // Folha: "FOLHA 1026" com os colaboradores 1 e 2 (+ um novo, 4) e "ADIANTAMENTO" com o 3. A Prévia cobrou os três juntos.
+    const r = casarPreviasComCcustos(
+      [
+        { ccustoCodigo: "CHAMA LOGISTICO - FOLHA 1026", matriculas: [1, 2, 4] },
+        { ccustoCodigo: "CHAMA LOGISTICO - ADIANTAMENTO 102026", matriculas: [3] },
+      ],
+      [previaChama],
+    );
+    expect(r.get("CHAMA LOGISTICO - FOLHA 1026")).toEqual({ totalFatura: 6000, valorCobrar: 3000 });
+    // A Prévia vai pra um centro só: o outro não desconta de novo.
+    expect(r.has("CHAMA LOGISTICO - ADIANTAMENTO 102026")).toBe(false);
   });
 
-  it("arredonda a soma em centavos", () => {
-    const p: PreviaDoCcusto[] = [{ ccustoCodigo: "A", totalFatura: 0.3, colaboradores: [{ matricula: 1, totalFatura: 0.1, valorCobrar: 0.1 }, { matricula: 2, totalFatura: 0.2, valorCobrar: 0.2 }] }];
-    expect(acharPreviaDoCcusto("B", [1, 2], p)).toEqual({ totalFatura: 0.3, valorCobrar: 0.3 });
+  it("o caso do CHAMA LOGISTICO: 41 na Folha e 2 no Adiantamento, Prévia de R$ 75.639,97 (50% de 151.279,94) dos 43", () => {
+    const colaboradores = Array.from({ length: 43 }, (_, i) => ({ matricula: 100 + i, totalFatura: 151279.94 / 43, valorCobrar: 75639.97 / 43 }));
+    const previa: PreviaDoCcusto = { ccustoCodigo: "CHAMA LOGISTICO - PREVIA", totalFatura: 151279.94, valorCobrar: 75639.97, colaboradores };
+    const r = casarPreviasComCcustos(
+      [
+        { ccustoCodigo: "CHAMA LOGISTICO - FOLHA 1026", matriculas: colaboradores.slice(0, 41).map((c) => c.matricula) },
+        { ccustoCodigo: "CHAMA LOGISTICO - ADIANTAMENTO 102026", matriculas: colaboradores.slice(41).map((c) => c.matricula) },
+      ],
+      [previa],
+    );
+    expect(r.get("CHAMA LOGISTICO - FOLHA 1026")?.valorCobrar).toBe(75639.97);
+  });
+
+  it("duas Prévias que sobraram, uma pra cada centro da Folha, cada uma vai pro seu", () => {
+    const r = casarPreviasComCcustos(
+      [
+        { ccustoCodigo: "A", matriculas: [1, 2, 3] },
+        { ccustoCodigo: "B", matriculas: [9] },
+      ],
+      [previaChama, outra],
+    );
+    expect(r.get("A")).toEqual({ totalFatura: 6000, valorCobrar: 3000 });
+    expect(r.get("B")).toEqual({ totalFatura: 900, valorCobrar: 900 });
+  });
+
+  it("duas Prévias que casam com o mesmo centro da Folha somam", () => {
+    const p2: PreviaDoCcusto = { ccustoCodigo: "P2", totalFatura: 400, valorCobrar: 200, colaboradores: [{ matricula: 5, totalFatura: 400, valorCobrar: 200 }] };
+    const r = casarPreviasComCcustos([{ ccustoCodigo: "A", matriculas: [1, 2, 3, 5] }], [previaChama, p2]);
+    expect(r.get("A")).toEqual({ totalFatura: 6400, valorCobrar: 3200 });
+  });
+
+  it("empate de colaboradores em comum: fica com o centro da Folha maior", () => {
+    const r = casarPreviasComCcustos(
+      [
+        { ccustoCodigo: "PEQUENO", matriculas: [1] },
+        { ccustoCodigo: "GRANDE", matriculas: [2, 7, 8, 9] },
+      ],
+      [{ ...previaChama, colaboradores: [previaChama.colaboradores![0], previaChama.colaboradores![1]] }],
+    );
+    expect(r.has("GRANDE")).toBe(true);
+    expect(r.has("PEQUENO")).toBe(false);
+  });
+
+  it("sem colaboradores em comum, ou foto antiga sem detalhe por colaborador, não há o que comparar", () => {
+    expect(casarPreviasComCcustos([{ ccustoCodigo: "CHAMA LOGISTICO", matriculas: [7, 8] }], [previaChama]).size).toBe(0);
+    expect(casarPreviasComCcustos([{ ccustoCodigo: "CHAMA LOGISTICO", matriculas: [1] }], [{ ccustoCodigo: "X", totalFatura: 10 }]).size).toBe(0);
+    expect(casarPreviasComCcustos([{ ccustoCodigo: "CHAMA LOGISTICO", matriculas: [1] }], []).size).toBe(0);
+  });
+
+  it("foto antiga sem valor a cobrar soma pelo Total fatura", () => {
+    const p: PreviaDoCcusto = { ccustoCodigo: "X", totalFatura: 100, colaboradores: [{ matricula: 1, totalFatura: 100, valorCobrar: 100 }] };
+    expect(casarPreviasComCcustos([{ ccustoCodigo: "A", matriculas: [1] }], [p]).get("A")).toEqual({ totalFatura: 100, valorCobrar: 100 });
   });
 });

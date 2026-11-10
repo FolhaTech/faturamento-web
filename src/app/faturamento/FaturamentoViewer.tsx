@@ -21,7 +21,7 @@ import {
   type DeducaoColaborador,
 } from "@/lib/percentualCobranca";
 import { calcularRetencoesSobreCobrado } from "@/lib/calc/retencoesCobranca";
-import { acharPreviaDoCcusto, complementarDaPrevia, valorCobrarDoCcusto, type PreviaDoCcusto, type PreviaParaComparar } from "@/lib/calc/cobrancaPrevia";
+import { casarPreviasComCcustos, complementarDaPrevia, valorCobrarDoCcusto, type PreviaDoCcusto, type PreviaParaComparar } from "@/lib/calc/cobrancaPrevia";
 import { ehPrevia } from "@/lib/calc/tipoCompetencia";
 import type { CamposCompartilhados } from "@/lib/camposCompartilhados";
 import { useCamposCompartilhados } from "./useCamposCompartilhados";
@@ -178,11 +178,15 @@ export function FaturamentoViewer({
   const vinculoPorMatricula = useMemo(() => new Map(colaboradoresVinculo.map((v) => [v.matricula, v])), [colaboradoresVinculo]);
   const codServicoPorMatricula = useMemo(() => new Map(colaboradoresTomador.map((c) => [c.matricula, c.codServico])), [colaboradoresTomador]);
   // A Prévia do centro de custo mostrado: a do mesmo código ou, quando o centro de custo da Folha tem outro nome (foi unificado ou salvo antes),
-  // a soma do que a Prévia cobrou dos colaboradores dele — ver acharPreviaDoCcusto.
-  const previaDoCcusto = useMemo(
-    () => (resumo ? acharPreviaDoCcusto(resumo.ccustoCodigo, resumo.colaboradores.map((c) => c.matricula), previaTotalFaturaPorCcusto) : null),
-    [resumo, previaTotalFaturaPorCcusto],
-  );
+  // a Prévia INTEIRA do centro de custo que tem mais colaboradores em comum com ele — ver casarPreviasComCcustos.
+  const previaDoCcusto = useMemo(() => {
+    if (!resumo) return null;
+    const casadas = casarPreviasComCcustos(
+      resumos.map((r) => ({ ccustoCodigo: r.ccustoCodigo, matriculas: r.colaboradores.map((c) => c.matricula) })),
+      previaTotalFaturaPorCcusto,
+    );
+    return casadas.get(resumo.ccustoCodigo) ?? null;
+  }, [resumo, resumos, previaTotalFaturaPorCcusto]);
   const eventosExcluidosPorMatricula = useMemo(() => {
     const map = new Map<number, { matricula: number; evento: string }[]>();
     for (const e of eventosExcluidos) {

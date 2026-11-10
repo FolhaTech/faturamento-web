@@ -3,7 +3,7 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { NextResponse } from "next/server";
 import { getUsuarioAtual } from "@/lib/auth/sessao";
 import { aggregateByCcusto } from "@/lib/calc/aggregate";
-import { acharPreviaDoCcusto, complementarDaPrevia, deducoesDoCcusto, valorCobrarDoCcusto } from "@/lib/calc/cobrancaPrevia";
+import { casarPreviasComCcustos, complementarDaPrevia, deducoesDoCcusto, valorCobrarDoCcusto } from "@/lib/calc/cobrancaPrevia";
 import { carregarEngineLines, resolverPreviaPorCcusto } from "@/lib/calc/faturaCompetencia";
 import { trocarTipoCompetencia } from "@/lib/calc/tipoCompetencia";
 import { ComparativoPdf } from "@/lib/pdf/ComparativoPdf";
@@ -39,11 +39,11 @@ export async function GET(request: Request) {
   }
 
   const previaTotalFaturaPorCcusto = await resolverPreviaPorCcusto(competenciaFolha, usuario?.email ?? null, previaCongelada);
-  const previa = acharPreviaDoCcusto(
-    resumo.ccustoCodigo,
-    resumo.colaboradores.map((c) => c.matricula),
-    previaTotalFaturaPorCcusto,
-  );
+  const previa =
+    casarPreviasComCcustos(
+      resumos.map((r) => ({ ccustoCodigo: r.ccustoCodigo, matriculas: r.colaboradores.map((c) => c.matricula) })),
+      previaTotalFaturaPorCcusto,
+    ).get(resumo.ccustoCodigo) ?? null;
   if (previa === null) {
     return NextResponse.json({ error: `Não há Prévia correspondente (${competenciaPrevia}) pra esse Centro de Custo.` }, { status: 404 });
   }

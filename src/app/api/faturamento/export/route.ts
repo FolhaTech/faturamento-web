@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getUsuarioAtual } from "@/lib/auth/sessao";
 import { aggregateByCcusto } from "@/lib/calc/aggregate";
 import { carregarEngineLines, resolverPreviaPorCcusto } from "@/lib/calc/faturaCompetencia";
-import { acharPreviaDoCcusto } from "@/lib/calc/cobrancaPrevia";
+import { casarPreviasComCcustos } from "@/lib/calc/cobrancaPrevia";
 import { trocarTipoCompetencia } from "@/lib/calc/tipoCompetencia";
 import { filtrarLinesPorColaborador } from "@/lib/calc/filtroColaboradores";
 import { gerarExcel } from "@/lib/export/excel";
@@ -75,11 +75,10 @@ export async function GET(request: Request) {
   const semFiltros = !codEmp && !descricaoCargo && !descricaoDpto && !fpas && !colaborador;
   const previa =
     semFiltros && trocarTipoCompetencia(competencia, "folha", "previa")
-      ? acharPreviaDoCcusto(
-          resumo.ccustoCodigo,
-          resumo.colaboradores.map((c) => c.matricula),
+      ? (casarPreviasComCcustos(
+          resumos.map((r) => ({ ccustoCodigo: r.ccustoCodigo, matriculas: r.colaboradores.map((c) => c.matricula) })),
           await resolverPreviaPorCcusto(competencia, usuario?.email ?? null, previaCongelada),
-        )
+        ).get(resumo.ccustoCodigo) ?? null)
       : null;
 
   // Rótulo do regime quando o filtro está ativo — aparece no PDF e no nome do arquivo pra não
