@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { getUsuarioAtual } from "@/lib/auth/sessao";
 import { aggregateByCcusto } from "@/lib/calc/aggregate";
+import { ordemCompetencia } from "@/lib/calc/tipoCompetencia";
 import { carregarEngineLines, resolverPreviaPorCcusto, type PreviaTotalPorCcusto } from "@/lib/calc/faturaCompetencia";
 import { filtrarLinesPorColaborador, type FiltrosColaborador } from "@/lib/calc/filtroColaboradores";
 import { camposVazios, type CamposCompartilhados } from "@/lib/camposCompartilhados";
 import { listCampos } from "@/lib/repo/camposFaturamento";
 import { listEventosExcluidos } from "@/lib/repo/eventosExcluidos";
-import { listMinhasCompetenciasComFaturaSalva } from "@/lib/repo/faturasSalvas";
+import { listCompetenciasComVersaoSalva, listMinhasCompetenciasComFaturaSalva, listTimelineFaturas } from "@/lib/repo/faturasSalvas";
 import { countMovimentosPorCompetencia, listCompetencias } from "@/lib/repo/movimentos";
 import { getColaboradoresPorMatriculas, listValoresDistintosDados } from "@/lib/repo/colaboradores";
 import { CHAVE_PLR_CELETISTA, getConfigNumero } from "@/lib/repo/configuracoes";
@@ -14,6 +15,7 @@ import { listEncargos } from "@/lib/repo/encargos";
 import { listTomadores } from "@/lib/repo/tomadores";
 import { ExcluirCompetencia } from "./ExcluirCompetencia";
 import { FaturaTimeline } from "./FaturaTimeline";
+import { RestaurarFaturaSalva } from "./RestaurarFaturaSalva";
 import { FaturamentoViewer } from "./FaturamentoViewer";
 import type { TomadorOpcao } from "./RegimeColaborador";
 import { TomadorPendenteForm, type TomadorPendente } from "./TomadorPendenteForm";
@@ -72,6 +74,14 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
 
   // Quantos lançamentos a competência mostrada tem — aparece no aviso do "Excluir esta Folha".
   const qtdLancamentosAtual = competenciaAtual ? ((await countMovimentosPorCompetencia([competenciaAtual])).get(competenciaAtual) ?? 0) : 0;
+  // Competências que perderam os lançamentos (excluídas) mas ainda têm fatura salva no banco: aparecem no seletor pra restaurar a foto.
+  const comLancamentos = new Set(competencias);
+  const soComFaturaSalva = (await listCompetenciasComVersaoSalva())
+    .filter((c) => !comLancamentos.has(c))
+    .sort((a, b) => (ordemCompetencia(b) ?? -1) - (ordemCompetencia(a) ?? -1) || b.localeCompare(a));
+  // Sem lançamentos e com fatura salva: a versão mais recente da timeline pode ser restaurada com um clique (ver RestaurarFaturaSalva).
+  const timelineSemLancamentos = competenciaAtual && qtdLancamentosAtual === 0 ? await listTimelineFaturas(competenciaAtual) : [];
+  const ultimaVersaoSalva = timelineSemLancamentos[0] ?? null;
 
   let resumos: ReturnType<typeof aggregateByCcusto> = [];
   let warnings: string[] = [];
@@ -215,7 +225,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
         </div>
       )}
 
-      {competencias.length === 0 ? (
+      {competencias.length === 0 && soComFaturaSalva.length === 0 ? (
         <p className="text-sm text-neutral-500">Nenhum arquivo de Movimentos importado ainda.</p>
       ) : (
         <>
@@ -238,9 +248,32 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
                 )}
               </Link>
             ))}
+            {soComFaturaSalva.map((c) => (
+              <Link
+                key={c}
+                href={filterHref({ competencia: c })}
+                title="Sem lançamentos (foram excluídos) — só a fatura salva, que dá pra restaurar"
+                className={`rounded-full border border-dashed px-3 py-1 text-sm ${
+                  c === competenciaAtual ? "border-amber-600 bg-amber-600 text-white" : "border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                }`}
+              >
+                {c}
+                <span className={`ml-1.5 text-[10px] uppercase tracking-wide ${c === competenciaAtual ? "text-amber-100" : "text-amber-700"}`}>só fatura salva</span>
+              </Link>
+            ))}
           </div>
 
           {competenciaAtual && qtdLancamentosAtual > 0 && <ExcluirCompetencia key={competenciaAtual} competencia={competenciaAtual} qtdLancamentos={qtdLancamentosAtual} />}
+
+          {competenciaAtual && ultimaVersaoSalva && !faturaSalvaEm && !versaoDe && (
+            <RestaurarFaturaSalva
+              competencia={competenciaAtual}
+              versao={ultimaVersaoSalva.id}
+              autor={ultimaVersaoSalva.usuarioNome}
+              salvoEm={ultimaVersaoSalva.salvoEm}
+              qtdVersoes={timelineSemLancamentos.length}
+            />
+          )}
 
           {competenciaAtual && versaoDe && faturaSalvaEm ? (
             <VersaoDeOutroBanner
@@ -251,7 +284,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
               salvoEm={faturaSalvaEm}
             />
           ) : (
-            competenciaAtual && <SalvarFaturaBanner competencia={competenciaAtual} salvoEm={faturaSalvaEm} />
+            competenciaAtual && !(ultimaVersaoSalva && !faturaSalvaEm && !versaoDe) && <SalvarFaturaBanner competencia={competenciaAtual} salvoEm={faturaSalvaEm} />
           )}
           {competenciaAtual && <FaturaTimeline competencia={competenciaAtual} usuarioEmail={usuarioEmail} versaoAberta={versaoDe?.id ?? null} />}
 

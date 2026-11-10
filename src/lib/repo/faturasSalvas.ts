@@ -167,6 +167,16 @@ export async function listTimelineFaturas(competencia: string): Promise<FaturaSa
   return rows.map(toFaturaSalva);
 }
 
+/**
+ * Todas as competências que têm alguma fatura salva (de qualquer usuário, ativa ou descartada) — a tela de Faturamento usa pra listar também as que
+ * perderam os lançamentos (excluídas, ver excluirCompetencia em repo/movimentos.ts) mas ainda têm a foto congelada pra restaurar.
+ */
+export async function listCompetenciasComVersaoSalva(): Promise<string[]> {
+  await ensureSchema();
+  const rows = await getDb()<{ competencia: string }[]>`SELECT DISTINCT competencia FROM faturas_salvas`;
+  return rows.map((r) => r.competencia).filter((c) => c.trim() !== "");
+}
+
 /** Quais das competências dadas têm fatura ativa salva PELO PRÓPRIO usuário — usado pro selo "salva" no seletor de competência (cada usuário só vê o selo da própria versão, ver getFaturaSalvaDoUsuario). */
 export async function listMinhasCompetenciasComFaturaSalva(competencias: string[], usuarioEmail: string): Promise<Set<string>> {
   if (competencias.length === 0 || !usuarioEmail) return new Set();
