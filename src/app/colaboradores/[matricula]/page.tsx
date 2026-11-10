@@ -106,7 +106,13 @@ export default async function EditarColaboradorPage({
         descontoAvisoPrevioNaCompetencia={descontoNaCompetencia.aviso}
         avisoPrevioAplicado={descontoNaCompetencia.avisoAplicado}
       />
-      <RescisaoCard matricula={colaborador.matricula} provisoes={provisoesMensais} descontos={descontosSaldoTodos.filter((d): d is DescontoProvisao => d.aplicado && d.tipo !== "aviso")} competenciaAtual={competenciaAtual} />
+      <RescisaoCard
+        matricula={colaborador.matricula}
+        provisoes={provisoesMensais}
+        descontos={descontosSaldoTodos.filter((d): d is DescontoProvisao => d.aplicado && d.tipo !== "aviso")}
+        avisos={descontosSaldoTodos.filter((d) => d.tipo === "aviso").map((d) => ({ competencia: d.competencia, valor: Math.abs(d.valor), aplicado: d.aplicado }))}
+        competenciaAtual={competenciaAtual}
+      />
       <ColaboradorForm matricula={colaborador.matricula} initialDados={colaborador.dados} />
     </main>
   );

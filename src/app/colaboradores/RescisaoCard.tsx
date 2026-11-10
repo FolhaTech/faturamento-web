@@ -23,6 +23,14 @@ interface DescontoSaldoView {
   automatico?: boolean;
 }
 
+/** Desconto de aviso prévio lançado numa competência (valor positivo) — aparece na tabela só pra consulta, sem entrar no líquido. */
+interface AvisoPrevioView {
+  competencia: string;
+  valor: number;
+  /** false = guardado mas fora da fatura (botão "Não" do aviso prévio no Faturamento). */
+  aplicado: boolean;
+}
+
 interface DescontoPorCompetencia {
   competencia: string;
   gerenciado: boolean;
@@ -30,7 +38,18 @@ interface DescontoPorCompetencia {
   terco: number;
 }
 
-/** Agrupa os lançamentos (férias e 13º separados na tabela) por competência, pra listar um lançamento por mês em vez de misturar tudo num total só. */
+/** Uma linha da tabela: o mês, a provisão que a Folha gerou nele e os descontos lançados nele (manual e/ou reserva da Folha) e o aviso prévio. */
+interface LinhaRescisao {
+  competencia: string;
+  temProvisao: boolean;
+  provFerias: number;
+  prov13: number;
+  manual: DescontoPorCompetencia | null;
+  reserva: DescontoPorCompetencia | null;
+  aviso: AvisoPrevioView | null;
+}
+
+/** Agrupa os lançamentos (férias e 13º separados) por competência e origem (manual x reserva da Folha), pra editar/excluir cada um sem misturar. */
 function agruparDescontosPorCompetencia(descontos: DescontoSaldoView[]): DescontoPorCompetencia[] {
   const porCompetencia = new Map<string, DescontoPorCompetencia>();
   for (const d of descontos) {
@@ -39,12 +58,45 @@ function agruparDescontosPorCompetencia(descontos: DescontoSaldoView[]): Descont
     linha[d.tipo] += Math.abs(d.valor);
     porCompetencia.set(chave, linha);
   }
-  return [...porCompetencia.values()].sort((a, b) => a.competencia.localeCompare(b.competencia));
+  return [...porCompetencia.values()];
 }
 
-/** Identifica uma linha da tabela de descontos: a mesma competência pode ter um desconto manual e uma reserva da Folha. */
+/** Identifica um grupo de descontos: a mesma competência pode ter um desconto manual e uma reserva da Folha. */
 function chaveLinha(d: DescontoPorCompetencia): string {
   return d.competencia + (d.gerenciado ? ":reserva" : ":manual");
+}
+
+/**
+ * Junta, numa tabela só, a provisão de cada mês, os descontos lançados nele e o aviso prévio — um mês por linha, mais recente primeiro.
+ * Mês que só tem desconto (sem provisão gravada) também ganha linha.
+ */
+function montarLinhas(provisoes: ProvisaoMensalView[], grupos: DescontoPorCompetencia[], avisos: AvisoPrevioView[]): LinhaRescisao[] {
+  const mapa = new Map<string, LinhaRescisao>();
+  const linhaDe = (competencia: string): LinhaRescisao => {
+    const existente = mapa.get(competencia);
+    if (existente) return existente;
+    const nova: LinhaRescisao = { competencia, temProvisao: false, provFerias: 0, prov13: 0, manual: null, reserva: null, aviso: null };
+    mapa.set(competencia, nova);
+    return nova;
+  };
+  for (const p of provisoes) {
+    const l = linhaDe(p.competencia);
+    l.temProvisao = true;
+    l.provFerias += p.provFerias;
+    l.prov13 += p.prov13;
+  }
+  for (const g of grupos) {
+    const l = linhaDe(g.competencia);
+    if (g.gerenciado) l.reserva = g;
+    else l.manual = g;
+  }
+  for (const a of avisos) linhaDe(a.competencia).aviso = a;
+  return [...mapa.values()].sort((a, b) => (mesReserva(b.competencia) ?? -1) - (mesReserva(a.competencia) ?? -1) || b.competencia.localeCompare(a.competencia));
+}
+
+/** O grupo `g` (manual ou reserva) pode editar esse tipo? Reserva só edita o que já tem; manual não edita o tipo que a reserva da Folha já ocupa no mês. */
+function podeEditarTipo(g: DescontoPorCompetencia, tipo: "ferias" | "terco", linha: LinhaRescisao): boolean {
+  return g.gerenciado ? g[tipo] > 0 : (linha.reserva?.[tipo] ?? 0) === 0;
 }
 
 function parseInputCurrency(value: string): number {
@@ -57,24 +109,36 @@ function inputValue(n: number): string {
   return n > 0 ? n.toFixed(2).replace(".", ",") : "";
 }
 
-/** Histórico mês a mês da provisão de férias/13º que a Folha gerou pra esse colaborador — salvo automaticamente a cada Folha enviada (ver provisoesMensais.ts) — menos o que já foi pago via Desconto de saldo (ver descontosSaldo.ts). Líquido no rodapé é a base pra calcular uma rescisão. */
+const CLASSE_INPUT = "w-28 rounded-md border border-neutral-300 px-2 py-1 text-right text-sm font-mono";
+
+/**
+ * Rescisão — provisão acumulada: uma tabela com, mês a mês, o Prov. Férias e o Prov. 13º que a Folha gerou pra esse colaborador (salvos
+ * automaticamente a cada Folha enviada, ver provisoesMensais.ts) e, na linha do mês, o que foi lançado como Desconto de férias, de 13º e de
+ * aviso prévio (card acima). O líquido no rodapé é a provisão menos os descontos de férias/13º (esse dinheiro já foi quitado — ver
+ * descontosSaldo.ts); o aviso prévio é só consulta, não tem provisão pra abater.
+ */
 export function RescisaoCard({
   matricula,
   provisoes,
   descontos,
+  avisos,
   competenciaAtual,
 }: {
   matricula: number;
   provisoes: ProvisaoMensalView[];
   descontos: DescontoSaldoView[];
+  /** Descontos de aviso prévio lançados (qualquer competência) — coluna só de consulta. */
+  avisos: AvisoPrevioView[];
   competenciaAtual: string | null;
 }) {
   const router = useRouter();
   const totalProvFerias = provisoes.reduce((soma, p) => soma + p.provFerias, 0);
   const totalProv13 = provisoes.reduce((soma, p) => soma + p.prov13, 0);
-  const descontosPorCompetencia = agruparDescontosPorCompetencia(descontos);
-  const totalDescontoFerias = descontosPorCompetencia.reduce((soma, d) => soma + d.ferias, 0);
-  const totalDesconto13 = descontosPorCompetencia.reduce((soma, d) => soma + d.terco, 0);
+  const grupos = agruparDescontosPorCompetencia(descontos);
+  const linhas = montarLinhas(provisoes, grupos, avisos);
+  const totalDescontoFerias = grupos.reduce((soma, d) => soma + d.ferias, 0);
+  const totalDesconto13 = grupos.reduce((soma, d) => soma + d.terco, 0);
+  const totalAviso = avisos.reduce((soma, a) => (a.aplicado ? soma + a.valor : soma), 0);
   const liquidoFerias = totalProvFerias - totalDescontoFerias;
   const mesAtual = competenciaAtual ? mesReserva(competenciaAtual) : null;
   const feriasAbatidasNoMes = mesAtual !== null && descontos.some((d) => d.tipo === "ferias" && d.automatico && mesReserva(d.competencia) === mesAtual);
@@ -106,10 +170,11 @@ export function RescisaoCard({
     setErro(null);
   }
 
-  async function salvarEdicao(d: DescontoPorCompetencia) {
+  async function salvarEdicao(d: DescontoPorCompetencia, linha: LinhaRescisao) {
     const { competencia, gerenciado } = d;
-    const ferias = parseInputCurrency(valoresEdicao.ferias);
-    const terco = parseInputCurrency(valoresEdicao.terco);
+    // Só os tipos que têm campo na tela entram; o resto segue como está (0 = nada a mudar nesse tipo).
+    const ferias = podeEditarTipo(d, "ferias", linha) ? parseInputCurrency(valoresEdicao.ferias) : 0;
+    const terco = podeEditarTipo(d, "terco", linha) ? parseInputCurrency(valoresEdicao.terco) : 0;
     if (Number.isNaN(ferias) || Number.isNaN(terco)) {
       setErro("Valor inválido.");
       return;
@@ -165,132 +230,133 @@ export function RescisaoCard({
     }
   }
 
+  /** Editar/Excluir (ou Salvar/Cancelar) de UM grupo de descontos da linha — o manual e a reserva da Folha têm botões próprios. */
+  function acoesDoGrupo(g: DescontoPorCompetencia, linha: LinhaRescisao) {
+    if (editando === chaveLinha(g)) {
+      return (
+        <div key={chaveLinha(g)} className="flex items-center justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => salvarEdicao(g, linha)}
+            disabled={busy}
+            className="text-xs font-medium text-emerald-700 hover:text-emerald-800 disabled:opacity-50"
+          >
+            Salvar
+          </button>
+          <button
+            type="button"
+            onClick={cancelarEdicao}
+            disabled={busy}
+            className="text-xs font-medium text-neutral-500 hover:text-neutral-700 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div key={chaveLinha(g)} className="flex items-center justify-center gap-2">
+        {g.gerenciado && <span className="text-xs text-neutral-500">Reserva da Folha</span>}
+        <button
+          type="button"
+          onClick={() => iniciarEdicao(g)}
+          disabled={busy}
+          className="text-xs font-medium text-emerald-700 hover:text-emerald-800 disabled:opacity-50"
+        >
+          Editar
+        </button>
+        <button
+          type="button"
+          onClick={() => excluir(g)}
+          disabled={busy}
+          className="text-xs font-medium text-red-700 hover:text-red-800 disabled:opacity-50"
+        >
+          Excluir
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 bg-white p-4">
       <h2 className="text-sm font-semibold text-neutral-900">Rescisão — provisão acumulada</h2>
       <p className="text-xs text-neutral-500">
-        Prov. Férias e Prov. 13º que a Folha (fechamento) gerou pra esse colaborador, mês a mês, menos o que já foi
-        pago via Desconto de saldo (esse dinheiro já foi quitado com ele) — salvo sozinho a cada Folha enviada ou
-        desconto lançado, sem precisar digitar nada aqui. O líquido no rodapé é a base pra calcular uma rescisão.
+        Prov. Férias e Prov. 13º que a Folha (fechamento) gerou pra esse colaborador, mês a mês, e na linha do mês o que foi lançado como
+        Desconto de férias, de 13º salário e de aviso prévio (esse dinheiro já foi quitado com ele) — salvo sozinho a cada Folha enviada ou
+        desconto lançado, sem precisar digitar nada aqui. O líquido no rodapé é a provisão menos os descontos de férias e de 13º e é a base
+        pra calcular uma rescisão; o aviso prévio aparece só pra consulta, não entra no líquido.
       </p>
-      {provisoes.length === 0 ? (
+      {linhas.length === 0 ? (
         <p className="text-sm text-neutral-400">Nenhuma Folha enviada ainda pra esse colaborador.</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-neutral-200">
-          <table className="w-full min-w-[420px] text-sm">
+          <table className="w-full min-w-[820px] text-sm">
             <thead className="bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
               <tr>
                 <th className="px-3 py-2 text-left font-medium">Competência</th>
                 <th className="px-3 py-2 text-right font-medium">Prov. Férias</th>
                 <th className="px-3 py-2 text-right font-medium">Prov. 13º</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {provisoes.map((p) => (
-                <tr key={p.competencia} className="hover:bg-neutral-50">
-                  <td className="px-3 py-2">{p.competencia}</td>
-                  <td className="px-3 py-2 text-right font-mono tabular-nums">{fmt(p.provFerias)}</td>
-                  <td className="px-3 py-2 text-right font-mono tabular-nums">{fmt(p.prov13)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="border-t border-neutral-300 bg-neutral-50 font-semibold text-neutral-900">
-                <td className="px-3 py-2">Subtotal provisão</td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums">{fmt(totalProvFerias)}</td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums">{fmt(totalProv13)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      )}
-
-      {descontosPorCompetencia.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200">
-          <table className="w-full min-w-[420px] text-sm">
-            <thead className="bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
-              <tr>
-                <th className="px-3 py-2 text-left font-medium">(−) Desconto lançado em</th>
-                <th className="px-3 py-2 text-right font-medium">Férias</th>
-                <th className="px-3 py-2 text-right font-medium">13º</th>
+                <th className="px-3 py-2 text-right font-medium">(−) Desc. Férias</th>
+                <th className="px-3 py-2 text-right font-medium">(−) Desc. 13º</th>
+                <th className="px-3 py-2 text-right font-medium">Aviso prévio</th>
                 <th className="px-3 py-2 text-center font-medium">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
-              {descontosPorCompetencia.map((d) => {
-                const emEdicao = editando === chaveLinha(d);
+              {linhas.map((l) => {
+                const emEdicao = [l.manual, l.reserva].find((g): g is DescontoPorCompetencia => g !== null && editando === chaveLinha(g)) ?? null;
+                const descFerias = (l.manual?.ferias ?? 0) + (l.reserva?.ferias ?? 0);
+                const descTerco = (l.manual?.terco ?? 0) + (l.reserva?.terco ?? 0);
                 return (
-                  <tr key={chaveLinha(d)} className="hover:bg-neutral-50">
-                    <td className="px-3 py-2">{d.competencia}</td>
+                  <tr key={l.competencia} className="hover:bg-neutral-50">
+                    <td className="px-3 py-2">{l.competencia}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums">{l.temProvisao ? fmt(l.provFerias) : "—"}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums">{l.temProvisao ? fmt(l.prov13) : "—"}</td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums">
-                      {emEdicao && (!d.gerenciado || d.ferias > 0) ? (
+                      {emEdicao && podeEditarTipo(emEdicao, "ferias", l) ? (
                         <input
                           value={valoresEdicao.ferias}
                           onChange={(e) => setValoresEdicao((v) => ({ ...v, ferias: e.target.value }))}
                           disabled={busy}
-                          className="w-28 rounded-md border border-neutral-300 px-2 py-1 text-right text-sm font-mono"
+                          aria-label="Desconto de férias"
+                          className={CLASSE_INPUT}
                         />
-                      ) : d.ferias > 0 ? (
-                        fmt(d.ferias)
+                      ) : descFerias > 0 ? (
+                        fmt(descFerias)
                       ) : (
                         "—"
                       )}
                     </td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums">
-                      {emEdicao && (!d.gerenciado || d.terco > 0) ? (
+                      {emEdicao && podeEditarTipo(emEdicao, "terco", l) ? (
                         <input
                           value={valoresEdicao.terco}
                           onChange={(e) => setValoresEdicao((v) => ({ ...v, terco: e.target.value }))}
                           disabled={busy}
-                          className="w-28 rounded-md border border-neutral-300 px-2 py-1 text-right text-sm font-mono"
+                          aria-label="Desconto de 13º salário"
+                          className={CLASSE_INPUT}
                         />
-                      ) : d.terco > 0 ? (
-                        fmt(d.terco)
+                      ) : descTerco > 0 ? (
+                        fmt(descTerco)
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums">
+                      {l.aviso ? (
+                        <span title={l.aviso.aplicado ? undefined : "Guardado, mas fora da fatura (Não no Faturamento)"} className={l.aviso.aplicado ? undefined : "text-neutral-400"}>
+                          {fmt(l.aviso.valor)}
+                          {l.aviso.aplicado ? "" : " (fora)"}
+                        </span>
                       ) : (
                         "—"
                       )}
                     </td>
                     <td className="px-3 py-2 text-center">
-                      {emEdicao ? (
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => salvarEdicao(d)}
-                            disabled={busy}
-                            className="text-xs font-medium text-emerald-700 hover:text-emerald-800 disabled:opacity-50"
-                          >
-                            Salvar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={cancelarEdicao}
-                            disabled={busy}
-                            className="text-xs font-medium text-neutral-500 hover:text-neutral-700 disabled:opacity-50"
-                          >
-                            Cancelar
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-center gap-2">
-                          {d.gerenciado && <span className="text-xs text-neutral-500">Reserva da Folha</span>}
-                          <button
-                            type="button"
-                            onClick={() => iniciarEdicao(d)}
-                            disabled={busy}
-                            className="text-xs font-medium text-emerald-700 hover:text-emerald-800 disabled:opacity-50"
-                          >
-                            Editar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => excluir(d)}
-                            disabled={busy}
-                            className="text-xs font-medium text-red-700 hover:text-red-800 disabled:opacity-50"
-                          >
-                            Excluir
-                          </button>
-                        </div>
-                      )}
+                      <div className="flex flex-col gap-1">
+                        {l.manual && acoesDoGrupo(l.manual, l)}
+                        {l.reserva && acoesDoGrupo(l.reserva, l)}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -298,9 +364,12 @@ export function RescisaoCard({
             </tbody>
             <tfoot>
               <tr className="border-t border-neutral-300 bg-neutral-50 font-semibold text-neutral-900">
-                <td className="px-3 py-2">Subtotal desconto</td>
+                <td className="px-3 py-2">Subtotal</td>
+                <td className="px-3 py-2 text-right font-mono tabular-nums">{fmt(totalProvFerias)}</td>
+                <td className="px-3 py-2 text-right font-mono tabular-nums">{fmt(totalProv13)}</td>
                 <td className="px-3 py-2 text-right font-mono tabular-nums">{fmt(totalDescontoFerias)}</td>
                 <td className="px-3 py-2 text-right font-mono tabular-nums">{fmt(totalDesconto13)}</td>
+                <td className="px-3 py-2 text-right font-mono tabular-nums">{totalAviso > 0 ? fmt(totalAviso) : "—"}</td>
                 <td className="px-3 py-2" />
               </tr>
             </tfoot>
@@ -310,7 +379,7 @@ export function RescisaoCard({
 
       {erro && <p className="text-sm text-red-700">{erro}</p>}
 
-      {(provisoes.length > 0 || descontosPorCompetencia.length > 0) && (
+      {linhas.length > 0 && (
         <div className="flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900">
           <span>{saldoAposFerias === null ? "Acumulado líquido" : "Saldo de férias após abatimento"}</span>
           <span className="font-mono tabular-nums">
