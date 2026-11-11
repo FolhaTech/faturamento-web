@@ -13,6 +13,12 @@ type Acao = { tipo: "cobranca"; cobranca: Omit<CobrancaReserva, "mes">; referenc
 
 export class ErroReserva extends Error {}
 
+/** Mês interno (ano × 12 + mês − 1, como mesReserva) de uma data AAAA-MM-DD. */
+function mesDaData(data: string): number {
+  const [ano, mes] = data.split("-").map(Number);
+  return ano * 12 + (mes - 1);
+}
+
 export async function lancarDiasGozados(matricula: number, competencia: string, dias: number, usuario: string, chave: string, substituirId: string | null = null) {
   const mes = mesReserva(competencia);
   if (mes === null || !competencia.endsWith(" (Folha)")) throw new ErroReserva("Selecione uma competência de Folha.");
@@ -108,7 +114,8 @@ export async function alterarReserva(matricula: number, competencia: string, aca
       await sql`UPDATE reservas_creditos SET retirado_em = now(), retirado_por = ${usuario} WHERE matricula = ${matricula} AND mes = ${mes} AND tipo = ${tipo} AND tomador = ${tomador} AND retirado_em IS NULL`;
       return;
     }
-    if (atual) throw new ErroReserva("Retire o crédito atual antes de recalcular.");
+    // Crédito automático deste mês (segue os dias da Folha) é substituído pelo aplicado à mão — não entra no cálculo abaixo.
+    if (atual && !atual.automatico) throw new ErroReserva("Retire o crédito atual antes de recalcular.");
     if (tipo === "aviso" && !rescisao) throw new ErroReserva("O aviso prévio exige desligamento cadastrado no mês.");
     if (tipo === "terco" && mes % 12 !== 11 && !rescisao) throw new ErroReserva("O crédito de 13º é aplicado em dezembro ou no mês da rescisão.");
     const cobrancas = await listarBaseReservas(sql, matricula);
@@ -116,9 +123,9 @@ export async function alterarReserva(matricula: number, competencia: string, aca
     if (legados.some((u) => mesReserva(u.competencia) === mes)) throw new ErroReserva("Já existe abatimento neste mês. Revise-o antes de usar a reserva.");
     if (tipo === "ferias" && !rescisao && acao.periodo === "*") throw new ErroReserva("Selecione um período de férias.");
     const periodo = tipo === "ferias" ? (rescisao ? "*" : acao.periodo) : "";
-    if (tipo === "ferias" && existentes.some((u) => u.periodo === "*")) throw new ErroReserva("As férias deste vínculo já foram encerradas em uma rescisão.");
+    if (tipo === "ferias" && existentes.some((u) => u.periodo === "*" && !(u.mes === mes && u.automatico))) throw new ErroReserva("As férias deste vínculo já foram encerradas em uma rescisão.");
     const quitar = tipo !== "ferias" || rescisao;
-    const usos = [...existentes, ...usosManuais(legados)];
+    const usos = [...existentes.filter((u) => !(u.mes === mes && u.automatico)), ...usosManuais(legados)];
     const saldo = quitar
       ? saldoReserva(cobrancas, usos, mes, tipo, periodo)
       : baseFeriasGozadas(cobrancas, usos, mes, periodo, saldoDiasFerias(colaborador.admissao, colaborador.data_demissao, [], hojeSaoPaulo()).acumulados ?? 0);
@@ -129,6 +136,9 @@ export async function alterarReserva(matricula: number, competencia: string, aca
     if (valor !== acao.esperado) throw new ErroReserva("O saldo mudou ou há descontos manuais anteriores. Revise os valores antes de aplicar.");
     if (!valor) throw new ErroReserva("Sem saldo disponível ou dias solicitados acima do saldo do período.");
     const dias = tipo === "ferias" ? (quitar ? saldo.dias : diasDaFolha) : 0;
+    if (atual?.automatico) {
+      await sql`UPDATE reservas_creditos SET retirado_em = now(), retirado_por = ${usuario} WHERE matricula = ${matricula} AND mes = ${mes} AND tipo = ${tipo} AND tomador = ${tomador} AND retirado_em IS NULL AND usuario = ${ORIGEM_FERIAS_AUTOMATICAS}`;
+    }
     await sql`
       INSERT INTO reservas_creditos (matricula, tomador, mes, competencia, tipo, periodo, valor, dias, usuario)
       VALUES (${matricula}, ${tomador}, ${mes}, ${competencia}, ${tipo}, ${periodo}, ${valor}, ${dias}, ${usuario})
@@ -213,8 +223,8 @@ export async function sincronizarCreditosFeriasDaFolha(competencia: string, matr
     if (!colaborador || tomador == null) continue;
     await sql.begin(async (tx) => {
       await tx`SELECT 1 FROM colaboradores WHERE matricula = ${matricula} FOR UPDATE`;
-      const [atual] = await tx<{ id: string; usuario: string; dias: number }[]>`
-        SELECT id, usuario, dias FROM reservas_creditos
+      const [atual] = await tx<{ id: string; usuario: string; dias: number; periodo: string }[]>`
+        SELECT id, usuario, dias, periodo FROM reservas_creditos
         WHERE matricula = ${matricula} AND mes = ${mes} AND tipo = 'ferias' AND retirado_em IS NULL
       `;
       if (atual && atual.usuario !== ORIGEM_FERIAS_AUTOMATICAS) return;
@@ -234,7 +244,9 @@ export async function sincronizarCreditosFeriasDaFolha(competencia: string, matr
         WHERE matricula = ${matricula} AND competencia = ${competencia} AND abatimento_ferias > 0
         LIMIT 1
       `;
-      if (atual && dias === atual.dias && !abatimentoNaLinha) return;
+      // Crédito já gravado com o cálculo antigo (proporcional) no mês da rescisão é refeito como quitação do saldo inteiro.
+      const quitacaoPendente = colaborador.dataDemissao != null && mesDaData(colaborador.dataDemissao) === mes && atual?.periodo !== "*";
+      if (atual && dias === atual.dias && !abatimentoNaLinha && !quitacaoPendente) return;
       if (atual) {
         await tx`UPDATE reservas_creditos SET retirado_em = now(), retirado_por = ${ORIGEM_FERIAS_AUTOMATICAS} WHERE id = ${atual.id}`;
       }
@@ -249,12 +261,15 @@ export async function sincronizarCreditosFeriasDaFolha(competencia: string, matr
         listarAbatimentosAnteriores(tx, matricula),
       ]);
       if (anteriores.some((u) => u.periodo === "*")) return;
+      // Mês da rescisão: quitação dos períodos de férias do vínculo (o saldo inteiro), não o crédito proporcional aos dias gozados.
+      const quitar = colaborador.dataDemissao != null && mesDaData(colaborador.dataDemissao) === mes;
       const periodos = cobrancas.filter((c) => c.mes < mes && c.ferias > 0).map((c) => c.periodo);
-      const periodo = periodos.includes(PERIODO_FOLHA) ? PERIODO_FOLHA : periodos[0];
+      const periodo = quitar ? "*" : periodos.includes(PERIODO_FOLHA) ? PERIODO_FOLHA : periodos[0];
       if (!periodo) return;
       const acumulados = saldoDiasFerias(colaborador.admissao, colaborador.dataDemissao, [], hojeSaoPaulo()).acumulados ?? 0;
-      const base = baseFeriasGozadas(cobrancas, [...anteriores, ...usosManuais(legados)], mes, periodo, acumulados);
-      const valor = creditoReserva(base, dias, false);
+      const usos = [...anteriores, ...usosManuais(legados)];
+      const base = quitar ? saldoReserva(cobrancas, usos, mes, "ferias", "*") : baseFeriasGozadas(cobrancas, usos, mes, periodo, acumulados);
+      const valor = creditoReserva(base, dias, quitar);
       if (valor <= 0) return;
       await tx`
         INSERT INTO reservas_creditos (matricula, tomador, mes, competencia, tipo, periodo, valor, dias, usuario)

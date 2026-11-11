@@ -119,7 +119,8 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
             {tipos.map((tipo) => {
               const atual = dados.usos.find((u) => u.tipo === tipo && u.mes === mes && !u.retirado);
               const periodoAplicado = tipo === "ferias" && rescisao ? "*" : periodo;
-              const usos = [...dados.usos.filter((u) => !u.retirado), ...dados.manuais];
+              // O crédito automático deste mês e tipo sai do cálculo: o "Aplicar" o substitui pelo valor aplicado à mão (ver alterarReserva).
+              const usos = [...dados.usos.filter((u) => !u.retirado && !(u.automatico && u.mes === mes && u.tipo === tipo)), ...dados.manuais];
               const saldo = saldoReserva(dados.cobrancas, usos, mes, tipo, periodoAplicado);
               const manual = dados.manuais.some((u) => u.tipo === tipo && u.mes === mes);
               const quitar = tipo !== "ferias" || rescisao;
@@ -154,14 +155,11 @@ export function DescontoProvisaoColaborador({ matricula, competencia, admissao =
                   <p>Cobrado: {valor(saldo.cobrado)} · Usado: {valor(saldo.usado)}</p>
                   <p>Saldo: <strong>{valor(saldo.saldo)}</strong></p>
                 </>}
-                {atual ? <>
-                  <p>{atual.automatico ? "Crédito automático" : "Crédito"} em {atual.competencia}: <strong>{valor(atual.valor)}</strong></p>
-                  {podeLancar && !atual.automatico && atual.competencia === competencia && <button type="button" className={botao} disabled={ocupado} onClick={() => atualizar({ tipo: "retirar", reserva: tipo })}>Retirar crédito</button>}
-                </> : <>
-                  {manual && <p>Já há um abatimento neste mês.</p>}
-                  {!elegivel && <p>{tipo === "aviso" ? "Disponível no mês do desligamento." : "Disponível em dezembro ou na rescisão."}</p>}
-                  {podeLancar && <button type="button" className={botao} disabled={ocupado || manual || !elegivel || sugestao <= 0} onClick={() => atualizar({ tipo: "aplicar", reserva: tipo, periodo: periodoAplicado, esperado: sugestao })}>Aplicar {valor(sugestao)}</button>}
-                </>}
+                {atual && <p>{atual.automatico ? "Crédito automático" : "Crédito"} em {atual.competencia}: <strong>{valor(atual.valor)}</strong></p>}
+                {atual && podeLancar && !atual.automatico && atual.competencia === competencia && <button type="button" className={botao} disabled={ocupado} onClick={() => atualizar({ tipo: "retirar", reserva: tipo })}>Retirar crédito</button>}
+                {!atual && manual && <p>Já há um abatimento neste mês.</p>}
+                {!atual && !elegivel && <p>{tipo === "aviso" ? "Disponível no mês do desligamento." : "Disponível em dezembro ou na rescisão."}</p>}
+                {podeLancar && <button type="button" className={botao} disabled={ocupado || manual || !elegivel || sugestao <= 0 || (atual !== undefined && !atual.automatico)} onClick={() => atualizar({ tipo: "aplicar", reserva: tipo, periodo: periodoAplicado, esperado: sugestao })}>Aplicar {valor(sugestao)}</button>}
               </div>;
             })}
           </div>

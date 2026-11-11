@@ -78,8 +78,9 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     marginTop: 2,
   },
-  summaryLabelStrong: { fontSize: 9, fontFamily: "Helvetica-Bold", color: ACCENT },
-  summaryValueStrong: { fontSize: 10, fontFamily: "Helvetica-Bold", color: ACCENT },
+  // Rótulo ocupa o espaço que sobra e quebra linha; o valor fica sempre inteiro na direita (sem sobrepor o texto do rótulo).
+  summaryLabelStrong: { flex: 1, paddingRight: 8, fontSize: 9, fontFamily: "Helvetica-Bold", color: ACCENT },
+  summaryValueStrong: { flexShrink: 0, fontSize: 10, fontFamily: "Helvetica-Bold", color: ACCENT },
 
   table: { borderWidth: 0.5, borderColor: LINE, marginTop: 4 },
   tHeadRow: { flexDirection: "row", backgroundColor: HEADER_BG },
