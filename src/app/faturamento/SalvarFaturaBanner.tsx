@@ -9,7 +9,7 @@ function fmtData(iso: string): string {
   return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
 
-export function SalvarFaturaBanner({ competencia, salvoEm }: { competencia: string; salvoEm: string | null }) {
+export function SalvarFaturaBanner({ competencia, salvoEm, aoVivo = false }: { competencia: string; salvoEm: string | null; aoVivo?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +34,13 @@ export function SalvarFaturaBanner({ competencia, salvoEm }: { competencia: stri
         setError(data.error ?? "Falha ao salvar.");
         return;
       }
-      router.refresh();
+      if (aoVivo) {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("aoVivo");
+        router.replace(url.pathname + url.search, { scroll: false });
+      } else {
+        router.refresh();
+      }
     } catch {
       setError("Falha de rede ao salvar.");
     } finally {
@@ -95,8 +101,7 @@ export function SalvarFaturaBanner({ competencia, salvoEm }: { competencia: stri
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm text-neutral-700">
       <span>
-        Mostrando o cálculo ao vivo dessa competência (você ainda não salvou uma versão sua) — edições em Encargos, Gross Up, PLR ou descontos
-        mudam esses números na hora.
+        Mostrando o cálculo ao vivo desta competência. Salve a fatura para registrar os valores atuais no histórico.
       </span>
       <button
         type="button"

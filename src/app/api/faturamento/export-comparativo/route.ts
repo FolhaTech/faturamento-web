@@ -27,7 +27,7 @@ export async function GET(request: Request) {
   }
 
   const usuario = await getUsuarioAtual();
-  const { lines, previaTotalFaturaPorCcusto: previaCongelada, campos: camposDaFolha } = await carregarEngineLines(competenciaFolha, usuario?.email ?? null);
+  const { lines, previaTotalFaturaPorCcusto: previaCongelada, campos: camposDaFolha } = await carregarEngineLines(competenciaFolha, url.searchParams.get("aoVivo") === "1" ? null : usuario?.email ?? null);
   if (lines.length === 0) {
     return NextResponse.json({ error: `Nenhum lançamento encontrado para a competência ${competenciaFolha}.` }, { status: 404 });
   }

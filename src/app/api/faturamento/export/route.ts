@@ -52,10 +52,11 @@ export async function GET(request: Request) {
   const usuario = await getUsuarioAtual();
   // Os avisos do cálculo ficam só na tela (painel "aviso(s) durante o cálculo") — não saem no PDF.
   // ?versao=: fatura salva por outra pessoa aberta na tela (ver VersaoDeOutroBanner) — o arquivo sai exatamente dela.
+  const aoVivo = url.searchParams.get("aoVivo") === "1";
   const { lines: allLines, previaTotalFaturaPorCcusto: previaCongelada } = await carregarEngineLines(
     competencia,
-    usuario?.email ?? null,
-    url.searchParams.get("versao")?.trim() || null,
+    aoVivo ? null : usuario?.email ?? null,
+    aoVivo ? null : url.searchParams.get("versao")?.trim() || null,
   );
   if (allLines.length === 0) {
     return NextResponse.json({ error: `Nenhum lançamento encontrado para a competência ${competencia}.` }, { status: 404 });

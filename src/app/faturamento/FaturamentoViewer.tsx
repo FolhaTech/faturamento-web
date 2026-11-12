@@ -293,7 +293,7 @@ export function FaturamentoViewer({
         )}
         {resumo && previaDoCcusto !== null && (
           <a
-            href={`/api/faturamento/export-comparativo?competencia=${encodeURIComponent(resumo.competencia)}&ccusto=${encodeURIComponent(resumo.ccustoCodigo)}`}
+            href={`/api/faturamento/export-comparativo?competencia=${encodeURIComponent(resumo.competencia)}&ccusto=${encodeURIComponent(resumo.ccustoCodigo)}${new URLSearchParams(filtrosQuery).get("aoVivo") === "1" ? "&aoVivo=1" : ""}`}
             className="flex items-center gap-2 rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-800"
           >
             Exportar comparativo Prévia × Folha

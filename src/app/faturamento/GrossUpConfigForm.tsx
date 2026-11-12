@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { GrossUpOperacao } from "@/lib/types";
+import { descarregarCamposPendentes } from "./useCamposCompartilhados";
 
 const OPERACOES: { valor: GrossUpOperacao; simbolo: string; label: string; dica: string }[] = [
   { valor: "+", simbolo: "+", label: "soma a tributação", dica: "Nota Fiscal = Fatura + (Fatura × Gross Up)" },
@@ -41,6 +42,9 @@ export function GrossUpConfigForm({
 
     setBusy(true);
     try {
+      if (!(await descarregarCamposPendentes())) {
+        return setError("Ainda há valores pendentes na fatura. Aguarde e tente de novo.");
+      }
       const res = await fetch(`/api/tomadores/${tomadorCodigo}/gross-up`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -49,7 +53,14 @@ export function GrossUpConfigForm({
       const data = await res.json();
       if (!res.ok) return setError(data.error ?? "Falha ao salvar.");
       setOk(true);
-      router.refresh();
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("aoVivo") === "1" && !url.searchParams.has("versao")) {
+        router.refresh();
+      } else {
+        url.searchParams.delete("versao");
+        url.searchParams.set("aoVivo", "1");
+        router.replace(url.pathname + url.search, { scroll: false });
+      }
     } catch {
       setError("Falha de rede ao salvar.");
     } finally {
@@ -93,7 +104,7 @@ export function GrossUpConfigForm({
         {busy ? "Salvando…" : "Salvar"}
       </button>
       {error && <p className="w-full text-red-700">{error}</p>}
-      {ok && <p className="w-full text-emerald-700">Gross Up salvo — a fatura já recalcula com o novo valor.</p>}
+      {ok && <p className="w-full text-emerald-700">Gross Up salvo.</p>}
     </div>
   );
 }

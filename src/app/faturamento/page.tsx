@@ -39,10 +39,12 @@ interface SearchParams {
   colaborador?: string;
   /** Id de uma fatura salva (de qualquer usuário) aberta só pra ver, pelo "Ver esta versão" da timeline — ver carregarEngineLines. */
   versao?: string;
+  aoVivo?: string;
 }
 
 export default async function FaturamentoPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const sp = await searchParams;
+  const aoVivo = sp.aoVivo === "1";
   // Competência em branco (upload antigo que caiu num bug de leitura de coluna, já corrigido —
   // ver parseMovimentos.ts) não é uma competência de verdade: sem isso, virava um botão vazio
   // e sem link funcional no seletor abaixo.
@@ -116,7 +118,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
       previaTotalFaturaPorCcusto: previaCongelada,
       versaoDe: versaoAberta,
       campos: camposDaVersao,
-    } = await carregarEngineLines(competenciaAtual, usuarioEmail, sp.versao?.trim() || null);
+    } = await carregarEngineLines(competenciaAtual, aoVivo ? null : usuarioEmail, aoVivo ? null : sp.versao?.trim() || null);
     versaoDe = versaoAberta;
     warnings = engineWarnings;
     faturaSalvaEm = salvoEm;
@@ -169,12 +171,17 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
   if (colaborador) filtrosQuery.set("colaborador", colaborador);
   // Os links de exportação (PDF/Word/Excel) levam a versão aberta, pra saírem exatamente do que está na tela.
   if (versaoDe) filtrosQuery.set("versao", versaoDe.id);
+  if (aoVivo) filtrosQuery.set("aoVivo", "1");
 
   function filterHref(overrides: Partial<SearchParams>): string {
     const params = new URLSearchParams();
-    const merged = { competencia: competenciaAtual ?? undefined, codEmp, descricaoCargo, descricaoDpto, regime, colaborador, versao: versaoDe?.id, ...overrides };
+    const merged = { competencia: competenciaAtual ?? undefined, codEmp, descricaoCargo, descricaoDpto, regime, colaborador, versao: versaoDe?.id, aoVivo: aoVivo ? "1" : undefined, ...overrides };
     // A versão aberta pertence a uma competência: ao trocar de competência ela não vale mais.
-    if (overrides.competencia !== undefined && overrides.competencia !== competenciaAtual) merged.versao = undefined;
+    if (overrides.competencia !== undefined && overrides.competencia !== competenciaAtual) {
+      merged.versao = undefined;
+      merged.aoVivo = undefined;
+    }
+    if (merged.aoVivo) params.set("aoVivo", merged.aoVivo);
     if (merged.versao) params.set("versao", merged.versao);
     if (merged.competencia) params.set("competencia", merged.competencia);
     if (merged.codEmp) params.set("codEmp", merged.codEmp);
@@ -265,7 +272,7 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
 
           {competenciaAtual && qtdLancamentosAtual > 0 && <ExcluirCompetencia key={competenciaAtual} competencia={competenciaAtual} qtdLancamentos={qtdLancamentosAtual} />}
 
-          {competenciaAtual && ultimaVersaoSalva && !faturaSalvaEm && !versaoDe && (
+          {competenciaAtual && ultimaVersaoSalva && !aoVivo && !faturaSalvaEm && !versaoDe && (
             <RestaurarFaturaSalva
               competencia={competenciaAtual}
               versao={ultimaVersaoSalva.id}
@@ -284,13 +291,14 @@ export default async function FaturamentoPage({ searchParams }: { searchParams: 
               salvoEm={faturaSalvaEm}
             />
           ) : (
-            competenciaAtual && !(ultimaVersaoSalva && !faturaSalvaEm && !versaoDe) && <SalvarFaturaBanner competencia={competenciaAtual} salvoEm={faturaSalvaEm} />
+            competenciaAtual && !(ultimaVersaoSalva && !aoVivo && !faturaSalvaEm && !versaoDe) && <SalvarFaturaBanner competencia={competenciaAtual} salvoEm={faturaSalvaEm} aoVivo={aoVivo} />
           )}
           {competenciaAtual && <FaturaTimeline competencia={competenciaAtual} usuarioEmail={usuarioEmail} versaoAberta={versaoDe?.id ?? null} />}
 
           <form method="GET" className="flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-4">
             {competenciaAtual && <input type="hidden" name="competencia" value={competenciaAtual} />}
             {versaoDe && <input type="hidden" name="versao" value={versaoDe.id} />}
+            {aoVivo && <input type="hidden" name="aoVivo" value="1" />}
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-neutral-500">Colaborador</label>
               <select name="colaborador" defaultValue={colaborador} className="min-w-56 rounded-md border border-neutral-300 px-3 py-1.5 text-sm">
